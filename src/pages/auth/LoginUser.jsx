@@ -5,6 +5,7 @@ import Avatar from "@mui/material/Avatar";
 import Typography from "@mui/material/Typography";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
+import CircularProgress from "@mui/material/CircularProgress";
 import Checkbox from "@mui/material/Checkbox";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Divider from "@mui/material/Divider";
@@ -234,7 +235,18 @@ export default function LoginUser() {
                       "&:hover": { opacity: 0.95, boxShadow: "none" }
                     }}
                   >
-                    {mutation.isLoading ? "Signing in..." : "Sign in"}
+                    {mutation.isLoading ? (
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        alignItems="center"
+                        justifyContent="center"
+                      >
+                        <CircularProgress size={18} color="inherit" />
+                      </Stack>
+                    ) : (
+                      "Sign in"
+                    )}
                   </Button>
                 </Stack>
               </Form>
