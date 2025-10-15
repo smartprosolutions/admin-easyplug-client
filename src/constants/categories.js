@@ -1,0 +1,43 @@
+export const SERVICES = [
+  "PLUMBING",
+  "GARDENING",
+  "REPAIRS",
+  "CLEANING AND CAR WASH",
+  "ELECTRICIANS",
+  "BEAUTY",
+  "CATERING",
+  "GRAPHIC DESIGN",
+  "BAKING",
+  "PHOTOGRAPHY",
+  "TUTOR",
+  "CONSTRUCTION",
+  "ACCOUNTANTS",
+  "EVENT ORGANISERS",
+  "TRANSPORTATION",
+  "OTHER"
+];
+
+export const PRODUCTS = [
+  "FOOD",
+  "HEALTH AND BEAUTY",
+  "FURNITURE",
+  "HOME, KITCHEN, GARDENING",
+  "SOAPS AND CLEANING DETERGENTS",
+  "APPLIANCES",
+  "BABIES, KIDS AND TODDLERS",
+  "STATIONERY AND OFFICE SUPPLY",
+  "ELECTRONICS",
+  "CLOTHING AND SHOES",
+  "ACCESSORIES",
+  "BOOKS",
+  "PETS",
+  "OTHER"
+];
+
+export const toOptions = (arr) => arr.map((v) => ({ value: v, label: v }));
+
+export default {
+  SERVICES,
+  PRODUCTS,
+  toOptions
+};
