@@ -4,6 +4,7 @@ import Stack from "@mui/material/Stack";
 import Avatar from "@mui/material/Avatar";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
+import CircularProgress from "@mui/material/CircularProgress";
 import { gradientPrimary } from "../../theme/theme";
 import logo from "../../assets/images/Sample Logo 1 (3).png";
 import { Formik, Form } from "formik";
@@ -386,9 +387,19 @@ export default function RegisterUser() {
                             "&:hover": { opacity: 0.95 }
                           }}
                         >
-                          {loginMutation.isLoading
-                            ? "Authenticating..."
-                            : "Login"}
+                          {loginMutation.isLoading ? (
+                            <Stack
+                              direction="row"
+                              spacing={1}
+                              alignItems="center"
+                              justifyContent="center"
+                            >
+                              <CircularProgress size={18} color="inherit" />
+                              <span>Authenticating...</span>
+                            </Stack>
+                          ) : (
+                            "Login"
+                          )}
                         </Button>
                         <Typography variant="caption" color="text.secondary">
                           Login to proceed with linking business details.
@@ -699,9 +710,18 @@ export default function RegisterUser() {
                           "&:hover": { opacity: 0.95, boxShadow: "none" }
                         }}
                       >
-                        {mutation.isLoading
-                          ? "Registering..."
-                          : "Register to sell on Easyplug"}
+                        {mutation.isLoading ? (
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            alignItems="center"
+                            justifyContent="center"
+                          >
+                            <CircularProgress size={18} color="inherit" />
+                          </Stack>
+                        ) : (
+                          "Register to sell on Easyplug"
+                        )}
                       </Button>
                     )}
                     {/* Conditional footer link to Login page: hidden only during login gate */}
