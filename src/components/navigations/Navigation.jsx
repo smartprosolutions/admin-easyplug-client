@@ -33,7 +33,7 @@ import { useState } from "react";
 
 // AppBar removed; toolbar contents moved into the drawer
 
-const drawerWidth = 220;
+const drawerWidth = 240;
 
 const openedMixin = (theme) => ({
   width: drawerWidth,
@@ -272,76 +272,94 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                         justifyContent: open ? "initial" : "center",
                         px: open ? 2.5 : 0,
                         py: open ? undefined : 0,
-                        bgcolor: isActive ? undefined : "transparent",
-                        backgroundImage: isActive ? gradientPrimary : "none",
+                        backgroundImage:
+                          open && isActive ? gradientPrimary : "none",
+                        bgcolor: isActive && !open ? "transparent" : undefined,
                         color: isActive ? "#fff" : undefined,
                         borderRadius: 2,
-                        margin: open ? "0 8px" : "0 auto",
+                        margin: open ? "6px 10px" : "0 auto",
                         width: open ? "auto" : 56,
                         height: open ? "auto" : 56,
+                        transition: "all 200ms ease",
+                        borderLeft:
+                          open && isActive
+                            ? (theme) =>
+                                `4px solid ${theme.palette.primary.main}`
+                            : "none",
+                        boxShadow:
+                          open && isActive
+                            ? "0 3px 12px rgba(0,0,0,0.12)"
+                            : "none",
                         "&:hover": {
-                          bgcolor: isActive ? undefined : "transparent"
+                          bgcolor: isActive
+                            ? undefined
+                            : (theme) => theme.palette.action.hover
                         }
                       }}
                     >
-                      <ListItemIcon
-                        sx={{
-                          minWidth: 0,
-                          color: isActive
-                            ? "#fff"
-                            : currentTheme
-                            ? "#333"
-                            : "#fff",
-                          borderRadius: open ? 2 : 3,
-                          padding: 0,
-                          width: open ? "auto" : 56,
-                          height: open ? "auto" : 56,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          mx: open ? 0 : "auto",
-                          bgcolor: "transparent",
-                          backgroundImage:
-                            !open && isActive ? gradientPrimary : "none"
-                        }}
+                      <Tooltip
+                        title={open ? "" : listItem.title}
+                        placement="right"
                       >
-                        {/* Badge logic: when collapsed show circular badge on icon; when open, show badge next to text for notifications */}
-                        {(!open && showNotificationBadge) ||
-                        (!open && showMessageBadge) ? (
-                          <Badge
-                            color="error"
-                            overlap="circular"
-                            badgeContent={
-                              showNotificationBadge
-                                ? notificationsCount
-                                : messagesCount
-                            }
-                            invisible={
-                              !(showNotificationBadge
-                                ? notificationsCount
-                                : messagesCount)
-                            }
-                            anchorOrigin={{
-                              vertical: "top",
-                              horizontal: "right"
-                            }}
-                            sx={{
-                              "& .MuiBadge-badge": {
-                                right: 0,
-                                top: 0,
-                                fontSize: 9,
-                                height: 16,
-                                minWidth: 16,
-                                px: 0.5
+                        <ListItemIcon
+                          sx={{
+                            minWidth: 0,
+                            color: isActive
+                              ? "#fff"
+                              : currentTheme
+                                ? "#333"
+                                : "#fff",
+                            borderRadius: open ? 2 : 3,
+                            padding: 0,
+                            width: open ? "auto" : 56,
+                            height: open ? "auto" : 56,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            mx: open ? 0 : "auto",
+                            bgcolor: "transparent",
+                            backgroundImage:
+                              !open && isActive ? gradientPrimary : "none",
+                            transition: "transform 180ms ease"
+                          }}
+                        >
+                          {(!open && showNotificationBadge) ||
+                          (!open && showMessageBadge) ? (
+                            <Badge
+                              color="error"
+                              overlap="circular"
+                              badgeContent={
+                                showNotificationBadge
+                                  ? notificationsCount
+                                  : messagesCount
                               }
-                            }}
-                          >
+                              invisible={
+                                !(showNotificationBadge
+                                  ? notificationsCount
+                                  : messagesCount)
+                              }
+                              anchorOrigin={{
+                                vertical: "top",
+                                horizontal: "right"
+                              }}
+                              sx={{
+                                "& .MuiBadge-badge": {
+                                  right: 0,
+                                  top: 0,
+                                  fontSize: 9,
+                                  height: 16,
+                                  minWidth: 16,
+                                  px: 0.5
+                                }
+                              }}
+                            >
+                              <IconComponent fontSize="medium" />
+                            </Badge>
+                          ) : (
                             <IconComponent fontSize="medium" />
-                          </Badge>
-                        ) : (
-                          <IconComponent fontSize="medium" />
-                        )}
-                      </ListItemIcon>
+                          )}
+                        </ListItemIcon>
+                      </Tooltip>
 
                       <ListItemText
                         primary={
@@ -382,10 +400,11 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                             open && isActive
                               ? "#fff"
                               : currentTheme
-                              ? "#333"
-                              : "#fff",
+                                ? "#333"
+                                : "#fff",
                           ml: open ? 0.5 : 0,
-                          fontSize: 10
+                          fontSize: 13,
+                          fontWeight: open && isActive ? 700 : 500
                         }}
                       />
                     </ListItemButton>
