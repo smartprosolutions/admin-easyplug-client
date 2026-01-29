@@ -44,6 +44,10 @@ export default function InventoryModal() {
   const navigate = useNavigate();
   const { id } = useParams();
   const isEdit = Boolean(id);
+  // For edit mode, only fetch when we have a non-empty string id
+  const fetchItemEnabled = Boolean(
+    isEdit && typeof id === "string" && id.trim().length > 0
+  );
 
   const [toast, setToast] = React.useState({
     open: false,
@@ -51,10 +55,11 @@ export default function InventoryModal() {
     message: ""
   });
 
-  const { data: existing, isLoading: isFetching } = useQuery({
+  const { data: existing, isPending: isFetching } = useQuery({
     queryKey: ["inventoryItem", id],
     queryFn: () => getItem(id),
-    enabled: isEdit,
+    // Only run when a non-empty id string is available
+    enabled: fetchItemEnabled,
     retry: false
   });
 
@@ -63,6 +68,8 @@ export default function InventoryModal() {
   // UI step: 0 = form, 1 = payment
   const [activeStep, setActiveStep] = React.useState(0);
   const [paymentMethod, setPaymentMethod] = React.useState("mastercard");
+  // upload progress for create/update
+  const [uploadProgress, setUploadProgress] = React.useState(0);
 
   // card state (for MasterCard mock)
   const [cardNumber, setCardNumber] = React.useState("");
@@ -177,7 +184,7 @@ export default function InventoryModal() {
   }));
 
   const createMut = useMutation({
-    mutationFn: (vals) => createItem(vals),
+    mutationFn: (vals) => createItem(vals, (pct) => setUploadProgress(pct)),
     onSuccess: async () => {
       try {
         await queryClient.invalidateQueries({ queryKey: ["inventory"] });
@@ -201,7 +208,7 @@ export default function InventoryModal() {
   });
 
   const updateMut = useMutation({
-    mutationFn: (vals) => updateItem(id, vals),
+    mutationFn: (vals) => updateItem(id, vals, (pct) => setUploadProgress(pct)),
     onSuccess: async () => {
       try {
         await queryClient.invalidateQueries({ queryKey: ["inventory"] });
@@ -294,8 +301,30 @@ export default function InventoryModal() {
           </Box>
           <Divider />
 
-          <Box sx={{ p: 2, overflow: "auto", flex: 1 }}>
-            {isFetching ? (
+          <Box sx={{ p: 2, overflow: "auto", flex: 1, position: "relative" }}>
+            {(createMut.isPending || updateMut.isPending) && (
+              <Box sx={{ position: "absolute", top: 0, left: 0, right: 0 }}>
+                <Box sx={{ px: 0.5, py: 0.5 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{ display: "block", mb: 0.5 }}
+                  >
+                    {`Uploading… ${uploadProgress || 0}%`}
+                  </Typography>
+                </Box>
+                <Box sx={{ width: "100%", height: 3, bgcolor: "divider" }}>
+                  <Box
+                    sx={{
+                      width: `${uploadProgress || 0}%`,
+                      height: "100%",
+                      bgcolor: "primary.main",
+                      transition: "width 120ms linear"
+                    }}
+                  />
+                </Box>
+              </Box>
+            )}
+            {fetchItemEnabled && isFetching ? (
               <Box display="flex" justifyContent="center" py={4}>
                 <CircularProgress />
               </Box>
@@ -360,6 +389,7 @@ export default function InventoryModal() {
 
                     // convert values to FormData so files are sent correctly
                     const payload = buildFormData(toSend);
+                    setUploadProgress(0);
                     if (isEdit) await updateMut.mutateAsync(payload);
                     else await createMut.mutateAsync(payload);
                   } finally {
@@ -912,12 +942,16 @@ export default function InventoryModal() {
               variant="contained"
               onClick={() => submitRef.current && submitRef.current()}
               disabled={
-                createMut.isLoading ||
-                updateMut.isLoading ||
+                createMut.isPending ||
+                updateMut.isPending ||
                 submittingRef.current
               }
             >
-              {isEdit ? "Update" : "Create"}
+              {createMut.isPending || updateMut.isPending
+                ? `${isEdit ? "Updating" : "Creating"}… ${uploadProgress || 0}%`
+                : isEdit
+                ? "Update"
+                : "Create"}
             </Button>
           </Box>
 
