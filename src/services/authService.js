@@ -19,13 +19,22 @@ export async function register(formData) {
   return resp.data;
 }
 
-export async function registerSeller(formData) {
+export async function registerSeller(formData, onProgress) {
   // New seller registration endpoint (supports FormData with files)
   const resp = await axiosClient.post("/auth/register/seller", formData, {
     headers:
       formData instanceof FormData
         ? { "Content-Type": "multipart/form-data" }
-        : {}
+        : {},
+    onUploadProgress: (evt) => {
+      try {
+        if (!evt || !evt.total) return;
+        const pct = Math.round((evt.loaded * 100) / evt.total);
+        if (typeof onProgress === "function") onProgress(pct, evt);
+      } catch {
+        /* no-op */
+      }
+    }
   });
   return resp.data;
 }
