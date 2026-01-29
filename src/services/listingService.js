@@ -3,24 +3,40 @@ import axiosClient from "../api/axiosClient";
 // Listings (inventory) service
 // Mirrors the style used in subscriptionService.js and authService.js
 
-export async function createListing(payload) {
+export async function createListing(payload, onProgress) {
   // payload may be FormData (for images) or plain object
-  const headers =
-    payload instanceof FormData
-      ? { headers: { "Content-Type": "multipart/form-data" } }
-      : undefined;
+  const config = {};
+  if (typeof onProgress === "function") {
+    config.onUploadProgress = (evt) => {
+      try {
+        if (!evt || !evt.total) return;
+        const pct = Math.round((evt.loaded * 100) / evt.total);
+        onProgress(pct, evt);
+      } catch {
+        /* no-op */
+      }
+    };
+  }
 
-  const resp = await axiosClient.post("/listings", payload, headers);
+  const resp = await axiosClient.post("/listings", payload, config);
   return resp.data;
 }
 
-export async function updateListing(id, payload) {
-  const headers =
-    payload instanceof FormData
-      ? { headers: { "Content-Type": "multipart/form-data" } }
-      : undefined;
+export async function updateListing(id, payload, onProgress) {
+  const config = {};
+  if (typeof onProgress === "function") {
+    config.onUploadProgress = (evt) => {
+      try {
+        if (!evt || !evt.total) return;
+        const pct = Math.round((evt.loaded * 100) / evt.total);
+        onProgress(pct, evt);
+      } catch {
+        /* no-op */
+      }
+    };
+  }
 
-  const resp = await axiosClient.put(`/listings/${id}`, payload, headers);
+  const resp = await axiosClient.put(`/listings/${id}`, payload, config);
   return resp.data;
 }
 
