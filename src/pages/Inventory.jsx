@@ -35,7 +35,7 @@ const formatDate = (value) =>
 export default function Inventory() {
   const navigate = useNavigate();
 
-  const { data: apiData, isLoading } = useQuery({
+  const { data: apiData, isPending } = useQuery({
     queryKey: ["adminListings"],
     queryFn: () => getAdminListings(),
     retry: false
@@ -164,7 +164,7 @@ export default function Inventory() {
       </Stack>
 
       <Box>
-        {isLoading ? (
+  {isPending ? (
           <Box display="flex" justifyContent="center" py={6}>
             <CircularProgress />
           </Box>
