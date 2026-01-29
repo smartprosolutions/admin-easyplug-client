@@ -183,6 +183,8 @@ export default function LoginUser() {
                 .required("Required")
             })}
             onSubmit={async (values, { setSubmitting }) => {
+
+              console.log(mutation)
               try {
                 await mutation.mutateAsync({
                   email: values.email,
@@ -224,7 +226,7 @@ export default function LoginUser() {
                   </Stack>
                   <Button
                     type="submit"
-                    disabled={isSubmitting || mutation.isLoading}
+                    disabled={isSubmitting || mutation.isPending}
                     fullWidth
                     size="large"
                     variant="contained"
@@ -235,7 +237,7 @@ export default function LoginUser() {
                       "&:hover": { opacity: 0.95, boxShadow: "none" }
                     }}
                   >
-                    {mutation.isLoading ? (
+                    {mutation.isPending ? (
                       <Stack
                         direction="row"
                         spacing={1}
@@ -243,6 +245,7 @@ export default function LoginUser() {
                         justifyContent="center"
                       >
                         <CircularProgress size={18} color="inherit" />
+                        <span>Signing in...</span>
                       </Stack>
                     ) : (
                       "Sign in"
