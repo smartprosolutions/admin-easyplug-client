@@ -5,6 +5,7 @@ import Avatar from "@mui/material/Avatar";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
+import LinearProgress from "@mui/material/LinearProgress";
 import { gradientPrimary } from "../../theme/theme";
 import logo from "../../assets/images/Sample Logo 1 (3).png";
 import { Formik, Form } from "formik";
@@ -45,9 +46,11 @@ function isValidSouthAfricanId(id) {
 
 export default function RegisterUser() {
   const navigate = useNavigate();
+  const [uploadProgress, setUploadProgress] = React.useState(0);
 
   const mutation = useMutation({
-    mutationFn: (values) => registerSellerRequest(values),
+    mutationFn: (values) =>
+      registerSellerRequest(values, (pct) => setUploadProgress(pct)),
     onSuccess: (data) => {
       if (data?.accessToken || data?.token) {
         const token = data.accessToken || data.token;
@@ -65,7 +68,8 @@ export default function RegisterUser() {
       const msg =
         err?.response?.data?.message || err?.message || "Register failed";
       setAuthToast({ open: true, severity: "error", message: msg });
-    }
+    },
+    onSettled: () => setUploadProgress(0)
   });
 
   const loginMutation = useMutation({
@@ -141,8 +145,15 @@ export default function RegisterUser() {
     >
       <Paper
         elevation={3}
-        sx={{ maxWidth: 500, width: "100%", borderRadius: 3 }}
+        sx={{ maxWidth: 500, width: "100%", borderRadius: 3, position: "relative" }}
       >
+  {mutation.isPending && (
+          <LinearProgress
+            variant={uploadProgress > 0 ? "determinate" : "indeterminate"}
+            value={uploadProgress}
+            sx={{ position: "absolute", top: 0, left: 0, width: "100%", borderTopLeftRadius: 12, borderTopRightRadius: 12 }}
+          />
+        )}
         <Stack spacing={3} sx={{ p: 4 }}>
           <Stack alignItems="center" justifyContent="center">
             <Avatar src={logo} alt="Logo" sx={{ width: 150, height: 150 }} />
@@ -373,7 +384,7 @@ export default function RegisterUser() {
                         />
                         <Button
                           variant="contained"
-                          disabled={loginMutation.isLoading}
+                          disabled={loginMutation.isPending}
                           onClick={() =>
                             loginMutation.mutate({
                               email: values.existingEmail,
@@ -387,7 +398,7 @@ export default function RegisterUser() {
                             "&:hover": { opacity: 0.95 }
                           }}
                         >
-                          {loginMutation.isLoading ? (
+                          {loginMutation.isPending ? (
                             <Stack
                               direction="row"
                               spacing={1}
@@ -485,7 +496,7 @@ export default function RegisterUser() {
                                 sendCodeMutation.mutate({ email });
                               }}
                             >
-                              {sendCodeMutation.isLoading
+                              {sendCodeMutation.isPending
                                 ? "Sending..."
                                 : "Get Code"}
                             </Button>
@@ -690,7 +701,7 @@ export default function RegisterUser() {
                             sendCodeMutation.mutate({ email });
                           }}
                         >
-                          {sendCodeMutation.isLoading
+                          {sendCodeMutation.isPending
                             ? "Sending..."
                             : "Get Code"}
                         </Button>
@@ -699,7 +710,7 @@ export default function RegisterUser() {
                     {!requiresLogin && (
                       <Button
                         type="submit"
-                        disabled={isSubmitting || mutation.isLoading}
+                        disabled={isSubmitting || mutation.isPending}
                         fullWidth
                         size="large"
                         variant="contained"
@@ -710,7 +721,7 @@ export default function RegisterUser() {
                           "&:hover": { opacity: 0.95, boxShadow: "none" }
                         }}
                       >
-                        {mutation.isLoading ? (
+                        {mutation.isPending ? (
                           <Stack
                             direction="row"
                             spacing={1}
@@ -718,6 +729,7 @@ export default function RegisterUser() {
                             justifyContent="center"
                           >
                             <CircularProgress size={18} color="inherit" />
+                            <span>{uploadProgress > 0 ? `${uploadProgress}%` : "Registering..."}</span>
                           </Stack>
                         ) : (
                           "Register to sell on Easyplug"
