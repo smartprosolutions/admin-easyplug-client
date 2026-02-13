@@ -1,0 +1,52 @@
+/* Custom styles for Tiptap editor */
+.rich-text-editor {
+  font-family: "Roboto", "Helvetica", "Arial", sans-serif;
+}
+
+.rich-text-editor__toolbar .MuiIconButton-root {
+  border-radius: 6px;
+}
+
+.rich-text-editor__toolbar .MuiIconButton-root.is-active {
+  background-color: rgba(25, 118, 210, 0.12);
+}
+
+.rich-text-editor__content .ProseMirror {
+  outline: none;
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 120px;
+}
+
+.rich-text-editor__content .ProseMirror p {
+  margin: 0 0 8px;
+}
+
+.rich-text-editor__content .ProseMirror p:last-child {
+  margin-bottom: 0;
+}
+
+.rich-text-editor__content .ProseMirror ul,
+.rich-text-editor__content .ProseMirror ol {
+  padding-left: 20px;
+  margin: 0 0 8px;
+}
+
+.rich-text-editor__content .ProseMirror a {
+  color: #1976d2;
+  text-decoration: underline;
+}
+
+.rich-text-editor__content .ProseMirror p.is-empty:first-child::before {
+  color: rgba(0, 0, 0, 0.45);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .rich-text-editor__content .ProseMirror p.is-empty:first-child::before {
+    color: rgba(255, 255, 255, 0.5);
+  }
+}

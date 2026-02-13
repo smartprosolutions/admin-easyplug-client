@@ -16,7 +16,7 @@ import {
   Card,
   CardContent,
   IconButton,
-  Tooltip
+  Tooltip,
 } from "@mui/material";
 import { alpha, keyframes } from "@mui/material/styles";
 import { useNavigate, Outlet } from "react-router-dom";
@@ -50,7 +50,7 @@ export default function Subscriptions() {
 
   const { data, isPending, error, refetch } = useQuery({
     queryKey: ["subscriptions"],
-    queryFn: () => getSubscriptions()
+    queryFn: () => getSubscriptions(),
   });
 
   const allSubscriptions =
@@ -64,7 +64,7 @@ export default function Subscriptions() {
   const filteredSubscriptions = allSubscriptions.filter(
     (s) =>
       s.name?.toLowerCase().includes(query.toLowerCase()) ||
-      s.description?.toLowerCase().includes(query.toLowerCase())
+      s.description?.toLowerCase().includes(query.toLowerCase()),
   );
 
   // Pagination
@@ -73,7 +73,7 @@ export default function Subscriptions() {
   const currentPage = Math.min(page, totalPages);
   const paginatedSubscriptions = filteredSubscriptions.slice(
     (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
+    currentPage * itemsPerPage,
   );
 
   useEffect(() => {
@@ -97,6 +97,15 @@ export default function Subscriptions() {
     if (hours < 24) return `${hours} hrs`;
     const days = Math.floor(hours / 24);
     return days === 1 ? "1 day" : `${days} days`;
+  };
+
+  const formatTierLabel = (tier) => {
+    const priceLabel = formatCurrency(tier?.price);
+    const users = Number(tier?.usersPerHour);
+    const usersLabel = Number.isFinite(users)
+      ? `${users.toLocaleString("en-ZA")} users/hr`
+      : "users/hr";
+    return `${priceLabel} • ${usersLabel}`;
   };
 
   if (error) {
@@ -148,7 +157,7 @@ export default function Subscriptions() {
                 <SearchIcon />
               </InputAdornment>
             ),
-            sx: { borderRadius: 2, bgcolor: alpha("#667eea", 0.04) }
+            sx: { borderRadius: 2, bgcolor: alpha("#667eea", 0.04) },
           }}
         />
         <Button
@@ -163,7 +172,7 @@ export default function Subscriptions() {
             borderRadius: 2,
             px: 3,
             py: 1.5,
-            "&:hover": { opacity: 0.92 }
+            "&:hover": { opacity: 0.92 },
           }}
         >
           Add Subscription
@@ -181,7 +190,7 @@ export default function Subscriptions() {
             justifyContent: "center",
             alignItems: "center",
             minHeight: "60vh",
-            mt: 4
+            mt: 4,
           }}
         >
           <Card
@@ -195,7 +204,7 @@ export default function Subscriptions() {
               boxShadow: "0 8px 32px rgba(0,0,0,0.08)",
               position: "relative",
               overflow: "visible",
-              borderRadius: 3
+              borderRadius: 3,
             }}
           >
             <CardContent sx={{ p: { xs: 4, sm: 6 } }}>
@@ -211,7 +220,7 @@ export default function Subscriptions() {
                   background: (theme) =>
                     alpha(theme.palette.primary.main, 0.05),
                   animation: `${pulse} 3s ease-in-out infinite`,
-                  zIndex: 0
+                  zIndex: 0,
                 }}
               />
               <Box
@@ -225,7 +234,7 @@ export default function Subscriptions() {
                   background: (theme) =>
                     alpha(theme.palette.secondary.main, 0.05),
                   animation: `${pulse} 3s ease-in-out infinite 1.5s`,
-                  zIndex: 0
+                  zIndex: 0,
                 }}
               />
 
@@ -244,7 +253,7 @@ export default function Subscriptions() {
                     justifyContent: "center",
                     animation: `${float} 4s ease-in-out infinite`,
                     border: (theme) =>
-                      `3px solid ${alpha(theme.palette.primary.main, 0.2)}`
+                      `3px solid ${alpha(theme.palette.primary.main, 0.2)}`,
                   }}
                 >
                   {query ? (
@@ -252,7 +261,7 @@ export default function Subscriptions() {
                       sx={{
                         fontSize: { xs: 50, sm: 60 },
                         color: "primary.main",
-                        opacity: 0.8
+                        opacity: 0.8,
                       }}
                     />
                   ) : (
@@ -260,7 +269,7 @@ export default function Subscriptions() {
                       sx={{
                         fontSize: { xs: 50, sm: 60 },
                         color: "primary.main",
-                        opacity: 0.8
+                        opacity: 0.8,
                       }}
                     />
                   )}
@@ -274,7 +283,7 @@ export default function Subscriptions() {
                     background: gradientPrimary,
                     WebkitBackgroundClip: "text",
                     WebkitTextFillColor: "transparent",
-                    backgroundClip: "text"
+                    backgroundClip: "text",
                   }}
                 >
                   {query ? "No Results Found" : "No Subscriptions Yet"}
@@ -308,8 +317,8 @@ export default function Subscriptions() {
                       "&:hover": {
                         boxShadow: "0 6px 20px rgba(0,0,0,0.2)",
                         transform: "translateY(-2px)",
-                        transition: "all 0.3s ease"
-                      }
+                        transition: "all 0.3s ease",
+                      },
                     }}
                   >
                     Add Subscription
@@ -328,7 +337,7 @@ export default function Subscriptions() {
                       fontWeight: 600,
                       borderWidth: 2,
                       borderRadius: 2,
-                      "&:hover": { borderWidth: 2 }
+                      "&:hover": { borderWidth: 2 },
                     }}
                   >
                     Clear Search
@@ -362,8 +371,8 @@ export default function Subscriptions() {
                     "&:hover": {
                       boxShadow: "0 8px 30px rgba(102, 126, 234, 0.15)",
                       transform: "translateY(-4px)",
-                      borderColor: alpha("#667eea", 0.3)
-                    }
+                      borderColor: alpha("#667eea", 0.3),
+                    },
                   }}
                 >
                   {/* Header with gradient */}
@@ -372,7 +381,7 @@ export default function Subscriptions() {
                       backgroundImage: gradientPrimary,
                       p: 2,
                       position: "relative",
-                      overflow: "hidden"
+                      overflow: "hidden",
                     }}
                   >
                     <Box
@@ -383,7 +392,7 @@ export default function Subscriptions() {
                         width: 80,
                         height: 80,
                         borderRadius: "50%",
-                        bgcolor: "rgba(255,255,255,0.1)"
+                        bgcolor: "rgba(255,255,255,0.1)",
                       }}
                     />
                     <Box
@@ -394,7 +403,7 @@ export default function Subscriptions() {
                         width: 60,
                         height: 60,
                         borderRadius: "50%",
-                        bgcolor: "rgba(255,255,255,0.08)"
+                        bgcolor: "rgba(255,255,255,0.08)",
                       }}
                     />
                     <Stack
@@ -409,7 +418,7 @@ export default function Subscriptions() {
                           color: "#fff",
                           width: 44,
                           height: 44,
-                          backdropFilter: "blur(10px)"
+                          backdropFilter: "blur(10px)",
                         }}
                       >
                         <SubscriptionsIcon />
@@ -420,7 +429,7 @@ export default function Subscriptions() {
                           sx={{
                             fontWeight: 700,
                             fontSize: 15,
-                            color: "#fff"
+                            color: "#fff",
                           }}
                         >
                           {sub.name || "Untitled"}
@@ -445,7 +454,7 @@ export default function Subscriptions() {
                                 : sub.status?.toLowerCase() === "draft"
                                   ? "rgba(33, 150, 243, 0.9)"
                                   : "rgba(244, 67, 54, 0.9)",
-                            color: "#fff"
+                            color: "#fff",
                           }}
                         />
                       </Box>
@@ -459,7 +468,7 @@ export default function Subscriptions() {
                       flex: 1,
                       display: "flex",
                       flexDirection: "column",
-                      gap: 1.5
+                      gap: 1.5,
                     }}
                   >
                     {/* Price highlight */}
@@ -471,7 +480,7 @@ export default function Subscriptions() {
                         p: 1.5,
                         borderRadius: 2,
                         bgcolor: alpha("#4caf50", 0.08),
-                        border: `1px solid ${alpha("#4caf50", 0.15)}`
+                        border: `1px solid ${alpha("#4caf50", 0.15)}`,
                       }}
                     >
                       <Typography
@@ -506,6 +515,59 @@ export default function Subscriptions() {
                       </Typography>
                     </Stack>
 
+                    {/* Pricing tiers */}
+                    <Box sx={{ px: 0.5 }}>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ fontWeight: 600 }}
+                      >
+                        Pricing tiers
+                      </Typography>
+                      {Array.isArray(sub.pricingTiers) &&
+                      sub.pricingTiers.length > 0 ? (
+                        <Stack
+                          spacing={0.75}
+                          sx={{ mt: 0.75 }}
+                          divider={
+                            <Box
+                              sx={{
+                                borderBottom: "1px dashed",
+                                borderColor: "divider",
+                              }}
+                            />
+                          }
+                        >
+                          {sub.pricingTiers.map((tier, index) => (
+                            <Stack
+                              key={`${sub.subscriptionId}-tier-${index}`}
+                              direction="row"
+                              alignItems="center"
+                              spacing={1}
+                            >
+                              <AttachMoneyIcon
+                                sx={{ fontSize: 16, color: "text.secondary" }}
+                              />
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
+                                {formatTierLabel(tier)}
+                              </Typography>
+                            </Stack>
+                          ))}
+                        </Stack>
+                      ) : (
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ mt: 0.5 }}
+                        >
+                          No tiers configured
+                        </Typography>
+                      )}
+                    </Box>
+
                     {/* Description */}
                     <Typography
                       variant="body2"
@@ -518,7 +580,7 @@ export default function Subscriptions() {
                         WebkitBoxOrient: "vertical",
                         minHeight: 40,
                         lineHeight: 1.5,
-                        px: 0.5
+                        px: 0.5,
                       }}
                     >
                       {sub.description || "No description provided"}
@@ -532,7 +594,7 @@ export default function Subscriptions() {
                         mt: "auto",
                         pt: 1.5,
                         borderTop: "1px solid",
-                        borderColor: "divider"
+                        borderColor: "divider",
                       }}
                     >
                       <Button
@@ -542,7 +604,7 @@ export default function Subscriptions() {
                           flex: 1,
                           borderRadius: 2,
                           textTransform: "none",
-                          fontWeight: 600
+                          fontWeight: 600,
                         }}
                       >
                         View
@@ -562,8 +624,8 @@ export default function Subscriptions() {
                           backgroundImage: gradientPrimary,
                           boxShadow: "none",
                           "&:hover": {
-                            boxShadow: "0 4px 12px rgba(102, 126, 234, 0.3)"
-                          }
+                            boxShadow: "0 4px 12px rgba(102, 126, 234, 0.3)",
+                          },
                         }}
                       >
                         Edit
@@ -583,7 +645,7 @@ export default function Subscriptions() {
                 justifyContent: "center",
                 alignItems: "center",
                 gap: 2,
-                mt: 4
+                mt: 4,
               }}
             >
               <Button
@@ -606,7 +668,7 @@ export default function Subscriptions() {
                   color: "#fff",
                   borderRadius: 2,
                   "&:hover": { filter: "brightness(0.95)" },
-                  "&:disabled": { backgroundImage: "none" }
+                  "&:disabled": { backgroundImage: "none" },
                 }}
               >
                 Next

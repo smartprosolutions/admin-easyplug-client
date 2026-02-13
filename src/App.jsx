@@ -6,10 +6,12 @@ import { lightTheme, darkTheme } from "./theme/theme";
 import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
 import Advertisements from "./pages/Advertisements";
+import AdvertisementDetails from "./pages/AdvertisementDetails";
 import Sellers from "./pages/Sellers";
 import Subscriptions from "./pages/Subscriptions";
 import SubscriptionModal from "./components/modals/SubscriptionModal";
 import InventoryModal from "./components/modals/InventoryModal";
+import ListingAdvModal from "./components/modals/ListingAdvModal";
 import NotFound from "./pages/NotFound";
 import Transactions from "./pages/Transactions";
 import UserManagement from "./pages/UserManagement";
@@ -59,18 +61,28 @@ const App = () => {
             path="/"
             element={
               <PrivateRoute>
-                <Navigation currentTheme={themeMode} setThemeMode={setThemeMode} theme={theme} />
+                <Navigation
+                  currentTheme={themeMode}
+                  setThemeMode={setThemeMode}
+                  theme={theme}
+                />
               </PrivateRoute>
             }
           >
             <Route index element={<Dashboard />} />
             <Route path="dashboard" element={<Dashboard />} />
-            <Route path="inventory" element={<Inventory />} />
             <Route path="inventory" element={<Inventory />}>
               <Route path="add" element={<InventoryModal />} />
               <Route path=":id/edit" element={<InventoryModal />} />
             </Route>
-            <Route path="advertisements" element={<Advertisements />} />
+            <Route path="advertisements" element={<Advertisements />}>
+              <Route path="add" element={<ListingAdvModal />} />
+              <Route path=":id/edit" element={<ListingAdvModal />} />
+            </Route>
+            <Route
+              path="advertisements/:id"
+              element={<AdvertisementDetails />}
+            />
             <Route path="sellers" element={<Sellers />} />
             <Route path="subscriptions" element={<Subscriptions />}>
               <Route path="add" element={<SubscriptionModal />} />

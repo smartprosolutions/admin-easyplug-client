@@ -1,6 +1,6 @@
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
-import MetricsDataGrid from "../components/metrics/MetricsDataGrid";
+import CustomDataGrid from "../components/customization/CustomDataGrid";
 import {
   Stack,
   Typography,
@@ -169,7 +169,7 @@ export default function Inventory() {
             <CircularProgress />
           </Box>
         ) : (
-          <MetricsDataGrid
+          <CustomDataGrid
             autoHeight
             rows={rows}
             columns={[
@@ -198,7 +198,6 @@ export default function Inventory() {
           />
         )}
       </Box>
-
       <Outlet />
     </Box>
   );
