@@ -154,22 +154,46 @@ export default function LoginUser() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        bgcolor: (theme) =>
-          theme.palette.mode === "light" ? "#f7f7f7" : "#0f1115",
+        background: (theme) =>
+          theme.palette.mode === "light"
+            ? "radial-gradient(circle at top, rgba(102,126,234,0.16), rgba(247,247,247,1) 45%)"
+            : "radial-gradient(circle at top, rgba(102,126,234,0.18), rgba(15,17,21,1) 45%)",
         p: 2
       }}
     >
       <Paper
-        elevation={3}
-        sx={{ maxWidth: 500, width: "100%", borderRadius: 3 }}
+        elevation={0}
+        sx={{
+          maxWidth: 500,
+          width: "100%",
+          borderRadius: 4,
+          border: "1px solid",
+          borderColor: "divider",
+          boxShadow: (theme) =>
+            theme.palette.mode === "light"
+              ? "0 18px 48px rgba(15, 23, 42, 0.14)"
+              : "0 18px 48px rgba(0, 0, 0, 0.5)",
+          backdropFilter: "blur(6px)",
+          backgroundColor: "background.paper"
+        }}
       >
-        <Stack spacing={3} sx={{ p: 4 }}>
+        <Stack spacing={3} sx={{ p: { xs: 3, sm: 4 } }}>
           <Stack alignItems="center" justifyContent="center">
-            <Avatar src={logo} alt="Logo" sx={{ width: 150, height: 150 }} />
+            <Avatar
+              src={logo}
+              alt="Logo"
+              sx={{
+                width: { xs: 110, sm: 140 },
+                height: { xs: 110, sm: 140 },
+                border: "1px solid",
+                borderColor: "divider",
+                bgcolor: "background.paper"
+              }}
+            />
           </Stack>
           <Typography
             variant="h5"
-            sx={{ fontWeight: 700, textAlign: "center" }}
+            sx={{ fontWeight: 800, textAlign: "center", letterSpacing: 0.2 }}
           >
             Welcome back
           </Typography>
