@@ -11,6 +11,7 @@ import {
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import VisibilityIcon from "@mui/icons-material/Visibility";
+import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { useNavigate, Outlet } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -215,7 +216,7 @@ export default function Inventory() {
               {
                 field: "actions",
                 headerName: "Actions",
-                width: 120,
+                width: 160,
                 sortable: false,
                 renderCell: (params) => (
                   <Stack direction="row" spacing={1} alignItems="center">
@@ -236,6 +237,24 @@ export default function Inventory() {
                         }}
                       >
                         <VisibilityIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Edit item">
+                      <IconButton
+                        sx={{
+                          background: gradientPrimary,
+                          color: "#fff",
+                          "&:hover": { opacity: 0.92 },
+                        }}
+                        onClick={() => {
+                          const rowId =
+                            params.row.listingId ??
+                            params.row.listing_id ??
+                            params.row.id;
+                          navigate(`/inventory/${rowId}/edit`);
+                        }}
+                      >
+                        <EditIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Delete item">
