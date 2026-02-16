@@ -143,7 +143,7 @@ const InfoCard = ({ label, value }) => (
 
 export default function AdvertisementDetails() {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const navigate = useNavigate();
   const { id } = useParams();
   const [isCatalogueOpen, setIsCatalogueOpen] = React.useState(false);
@@ -172,6 +172,14 @@ export default function AdvertisementDetails() {
   const subscriptionName = subscriptions[0]?.subscription?.name || "-";
   const subTier = subscriptions[0]?.subscription?.pricingTiers?.[0];
   const tierUsers = subTier?.usersPerHour || "-";
+  const advertUrl =
+    advert?.url ||
+    advert?.advertUrl ||
+    advert?.websiteURL ||
+    advert?.link ||
+    "";
+  const hasAdvertUrl = Boolean(String(advertUrl || "").trim());
+
   const sellerName = advert?.seller
     ? `${advert.seller.firstName || ""} ${advert.seller.lastName || ""}`.trim()
     : "-";
@@ -258,20 +266,6 @@ export default function AdvertisementDetails() {
             />
           </Stack>
         </Stack>
-        <Stack direction="row" spacing={1} alignItems="center">
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setIsCatalogueOpen(true)}
-            sx={{
-              background: gradientPrimary,
-              color: "#fff",
-              "&:hover": { opacity: 0.92 },
-            }}
-          >
-            Add Catalogue Item
-          </Button>
-        </Stack>
       </Stack>
 
       {error ? (
@@ -347,78 +341,143 @@ export default function AdvertisementDetails() {
             </Stack>
           </Grid>
           <Grid size={{ xs: 12 }}>
-            <Stack direction="row" spacing={1} alignItems="center" mb={2}>
-              <LocalOfferOutlinedIcon color="primary" fontSize="small" />
-              <Typography
-                variant="h6"
-                fontWeight={700}
-                sx={{
-                  background: gradientPrimary,
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                }}
-              >
-                Catalogue Items
-              </Typography>
-            </Stack>
-            <Stack
-              direction={{ xs: "column", md: "row" }}
-              justifyContent="space-between"
-              alignItems={{ xs: "flex-start", md: "center" }}
-              spacing={2}
-            >
-              <Box>
-                <Typography variant="body2" color="text.secondary">
-                  {Array.isArray(catalogueItems)
-                    ? `${catalogueItems.length} item(s) linked to this advert`
-                    : "No items linked"}
-                </Typography>
-              </Box>
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => setIsCatalogueOpen(true)}
-                sx={{
-                  background: gradientPrimary,
-                  color: "#fff",
-                  "&:hover": { opacity: 0.92 },
-                }}
-              >
-                Add Catalogue Item
-              </Button>
-            </Stack>
-            <Divider sx={{ my: 2 }} />
-            {formattedCatalogueItems.length > 0 ? (
-              <Grid container spacing={isMobile ? 1.5 : 3}>
-                {formattedCatalogueItems.map((item) => (
-                  <Grid
-                    item
-                    size={isMobile ? { xs: 6 } : { md: 2.4 }}
-                    key={item.id}
+            {hasAdvertUrl ? (
+              <>
+                <Stack direction="row" spacing={1} alignItems="center" mb={2}>
+                  <LocalOfferOutlinedIcon color="primary" fontSize="small" />
+                  <Typography
+                    variant="h6"
+                    fontWeight={700}
+                    sx={{
+                      background: gradientPrimary,
+                      WebkitBackgroundClip: "text",
+                      WebkitTextFillColor: "transparent",
+                    }}
                   >
-                    {isMobile ? (
-                      <MobileListingItem listing={item} />
-                    ) : (
-                      <ListingTile listing={item} />
-                    )}
-                  </Grid>
-                ))}
-              </Grid>
+                    URL
+                  </Typography>
+                </Stack>
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 3,
+                    borderRadius: 2,
+                    borderColor: "divider",
+                  }}
+                >
+                  {hasAdvertUrl ? (
+                    <Stack spacing={1.5}>
+                      <Typography variant="body2" color="text.secondary">
+                        This advert uses an external URL.
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        sx={{ wordBreak: "break-all" }}
+                      >
+                        {advertUrl}
+                      </Typography>
+                      <Box>
+                        <Button
+                          component="a"
+                          href={advertUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          variant="contained"
+                          sx={{
+                            background: gradientPrimary,
+                            color: "#fff",
+                            "&:hover": { opacity: 0.92 },
+                          }}
+                        >
+                          Open URL
+                        </Button>
+                      </Box>
+                    </Stack>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      No URL configured for this advert.
+                    </Typography>
+                  )}
+                </Paper>
+              </>
             ) : (
-              <Paper
-                variant="outlined"
-                sx={{
-                  p: 3,
-                  borderRadius: 2,
-                  borderStyle: "dashed",
-                  textAlign: "center",
-                  color: "text.secondary",
-                }}
-              >
-                <Typography variant="body2">
-                  No catalogue items yet. Add one to showcase this advert.
-                </Typography>
-              </Paper>
+              <>
+                <Stack direction="row" spacing={1} alignItems="center" mb={2}>
+                  <LocalOfferOutlinedIcon color="primary" fontSize="small" />
+                  <Typography
+                    variant="h6"
+                    fontWeight={700}
+                    sx={{
+                      background: gradientPrimary,
+                      WebkitBackgroundClip: "text",
+                      WebkitTextFillColor: "transparent",
+                    }}
+                  >
+                    Catalogue Items
+                  </Typography>
+                </Stack>
+                <Stack
+                  direction={{ xs: "column", md: "row" }}
+                  justifyContent="space-between"
+                  alignItems={{ xs: "flex-start", md: "center" }}
+                  spacing={2}
+                >
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">
+                      {Array.isArray(catalogueItems)
+                        ? `${catalogueItems.length} item(s) linked to this advert`
+                        : "No items linked"}
+                    </Typography>
+                  </Box>
+                  {!hasAdvertUrl && (
+                    <Button
+                      variant="contained"
+                      startIcon={<AddIcon />}
+                      onClick={() => setIsCatalogueOpen(true)}
+                      sx={{
+                        background: gradientPrimary,
+                        color: "#fff",
+                        "&:hover": { opacity: 0.92 },
+                      }}
+                    >
+                      Add Catalogue Item
+                    </Button>
+                  )}
+                </Stack>
+                <Divider sx={{ my: 2 }} />
+                {formattedCatalogueItems.length > 0 ? (
+                  <Grid container spacing={{ xs: 1.5, sm: 2, md: 3 }}>
+                    {formattedCatalogueItems.map((item) => (
+                      <Grid
+                        item
+                        size={{ xs: 6, sm: 6, md: 4, lg: 3, xl: 2.4 }}
+                        key={item.id}
+                      >
+                        {isMobile ? (
+                          <MobileListingItem listing={item} />
+                        ) : (
+                          <ListingTile listing={item} />
+                        )}
+                      </Grid>
+                    ))}
+                  </Grid>
+                ) : (
+                  <Paper
+                    variant="outlined"
+                    sx={{
+                      p: 3,
+                      borderRadius: 2,
+                      borderStyle: "dashed",
+                      textAlign: "center",
+                      color: "text.secondary",
+                    }}
+                  >
+                    <Typography variant="body2">
+                      No catalogue items yet. Add one to showcase this advert.
+                    </Typography>
+                  </Paper>
+                )}
+              </>
             )}
           </Grid>
         </Grid>
