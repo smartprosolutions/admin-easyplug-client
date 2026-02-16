@@ -33,30 +33,6 @@ const formatDate = (value) =>
       })
     : "";
 
-const stripHtml = (value = "") =>
-  String(value)
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;|&amp;|&quot;|&#39;|&lt;|&gt;/g, (entity) => {
-      switch (entity) {
-        case "&nbsp;":
-          return " ";
-        case "&amp;":
-          return "&";
-        case "&quot;":
-          return '"';
-        case "&#39;":
-          return "'";
-        case "&lt;":
-          return "<";
-        case "&gt;":
-          return ">";
-        default:
-          return " ";
-      }
-    })
-    .replace(/\s+/g, " ")
-    .trim();
-
 export default function Advertisements() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -126,11 +102,12 @@ export default function Advertisements() {
   };
 
   const columns = [
-    { field: "title", headerName: "Title", width: 180 },
+    { field: "title", headerName: "Title", width: 180, flex: 1 },
     {
       field: "subscriptionName",
       headerName: "Subscription",
       width: 180,
+      flex: 1,
       renderCell: (params) => {
         const subs = params.row.sellerSubscriptions || [];
         const name = subs[0]?.subscription?.name || "-";
@@ -141,6 +118,7 @@ export default function Advertisements() {
       field: "subscriptionTier",
       headerName: "Tier",
       width: 180,
+      flex: 0.9,
       renderCell: (params) => {
         const subs = params.row.sellerSubscriptions || [];
         const subTier = subs[0]?.subscription?.pricingTiers?.[0];
@@ -172,6 +150,7 @@ export default function Advertisements() {
       field: "createdAt",
       headerName: "Created",
       width: 180,
+      flex: 1,
       renderCell: (params) => (
         <Box sx={{ display: "flex", alignItems: "center", height: "100%" }}>
           <Typography variant="body2">
@@ -186,6 +165,7 @@ export default function Advertisements() {
       field: "updatedAt",
       headerName: "Updated",
       width: 180,
+      flex: 1,
       renderCell: (params) => (
         <Box sx={{ display: "flex", alignItems: "center", height: "100%" }}>
           <Typography variant="body2">
@@ -206,19 +186,15 @@ export default function Advertisements() {
         alignItems="center"
         mb={3}
       >
-        <Typography variant="h5">Advertisements</Typography>
+        <Box>
+          <Typography variant="h5" fontWeight={700}>
+            Advertisements
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Manage adverts and linked subscriptions
+          </Typography>
+        </Box>
         <Stack direction="row" spacing={1} alignItems="center">
-          <Button
-            variant="outlined"
-            onClick={() => navigate("/inventory/add")}
-            sx={{
-              borderColor: "divider",
-              color: "text.primary",
-              "&:hover": { borderColor: "primary.main" },
-            }}
-          >
-            Catalogue
-          </Button>
           <Button
             variant="contained"
             startIcon={<AddIcon />}
