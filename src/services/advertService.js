@@ -5,6 +5,11 @@ export async function createAdvert(payload) {
   return resp.data;
 }
 
+export async function updateAdvert(advertId, payload) {
+  const resp = await axiosClient.put(`/listings/${advertId}`, payload);
+  return resp.data;
+}
+
 export async function addListingToAdvert(advertId, payload) {
   const resp = await axiosClient.post(
     `/listings/advert/${advertId}/items`,
