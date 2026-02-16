@@ -271,13 +271,18 @@ export default function ListingAdvModal() {
     itemData?.link ||
     "";
 
+  const initialImages = React.useMemo(
+    () => (Array.isArray(itemData?.images) ? itemData.images : []),
+    [itemData?.images],
+  );
+
   const initialValues = {
     description: itemData?.description || "",
     category: itemData?.category || "",
     type: itemData?.type || "PRODUCTS",
     advertSourceType: initialUrl ? "URL" : "CATALOGUE",
     url: initialUrl,
-    images: itemData?.images || [],
+    images: initialImages,
     status: itemData?.status || "active",
     expires_at: itemData?.expires_at || "",
     subscriptionId: initialSubscriptionId,
@@ -296,11 +301,11 @@ export default function ListingAdvModal() {
   const [imageHelper, setImageHelper] = React.useState("");
 
   React.useEffect(() => {
-    const next = Array.isArray(initialValues.images)
-      ? initialValues.images.map((img, idx) => toPreviewItem(img, idx))
+    const next = Array.isArray(initialImages)
+      ? initialImages.map((img, idx) => toPreviewItem(img, idx))
       : [];
     setPreviews(next);
-  }, [initialValues.images, toPreviewItem]);
+  }, [initialImages, toPreviewItem]);
 
   React.useEffect(() => {
     return () => {
