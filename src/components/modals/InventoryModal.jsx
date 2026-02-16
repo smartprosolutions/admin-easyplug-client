@@ -118,7 +118,7 @@ export default function InventoryModal({
   const createMut = useMutation({
     mutationFn: (vals) =>
       advertId
-        ? addListingToAdvert(advertId, vals)
+        ? addListingToAdvert(advertId, vals, (pct) => setUploadProgress(pct))
         : createItem(vals, (pct) => setUploadProgress(pct)),
     onSuccess: async () => {
       try {
@@ -171,12 +171,13 @@ export default function InventoryModal({
       }),
   });
 
-  const itemData =
-    existing?.listing ||
-    existing?.item ||
-    existing?.data ||
-    (existing?.subscription ? existing.subscription : existing) ||
-    null;
+  const itemData = isEdit
+    ? existing?.listing ||
+      existing?.item ||
+      existing?.data ||
+      (existing?.subscription ? existing.subscription : existing) ||
+      null
+    : null;
 
   const resolvedType = itemData?.type || presetType || "PRODUCTS";
   const resolvedCategory = itemData?.category || presetCategory || "";
