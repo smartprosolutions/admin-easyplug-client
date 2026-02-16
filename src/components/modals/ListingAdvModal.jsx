@@ -20,6 +20,7 @@ import * as Yup from "yup";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import SelectFieldWrapper from "../../components/forms/SelectFieldWrapper";
+import TextFieldWrapper from "../../components/forms/TextFieldWrapper";
 import RichTextEditor from "../../components/forms/RichTextEditor";
 import { SERVICES, PRODUCTS, toOptions } from "../../constants/categories";
 import ToastAlert from "../../components/alerts/ToastAlert";
@@ -27,7 +28,11 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import { gradientPrimary } from "../../theme/theme";
 import { getSubscriptions } from "../../services/subscriptionService";
-import { createAdvert, getAdvert } from "../../services/advertService";
+import {
+  createAdvert,
+  getAdvert,
+  updateAdvert,
+} from "../../services/advertService";
 
 const formatCurrency = (val) => {
   try {
@@ -37,6 +42,15 @@ const formatCurrency = (val) => {
     return val;
   }
 };
+
+const getImageRef = (img) => {
+  if (!img) return "";
+  if (typeof img === "string") return img;
+  if (img instanceof File) return "";
+  return img?.url || img?.path || img?.name || "";
+};
+
+const unique = (arr = []) => [...new Set(arr.filter(Boolean))];
 
 export default function ListingAdvModal() {
   const theme = useTheme();
@@ -85,8 +99,85 @@ export default function ListingAdvModal() {
     label: s.name,
   }));
 
+  const itemData =
+    existing?.advert ||
+    existing?.advertisement ||
+    existing?.listing ||
+    existing?.data ||
+    existing ||
+    null;
+
+  const previewSellerEmail =
+    itemData?.seller?.email || itemData?.sellerEmail || "";
+  const previewSubscriptionName =
+    itemData?.sellerSubscriptions?.[0]?.subscription?.name ||
+    itemData?.subscriptionName ||
+    "";
+
   const queryClient = useQueryClient();
   const [uploadProgress, setUploadProgress] = React.useState(0);
+  const MAX_IMAGES = 6;
+
+  const resolveImageUrl = React.useCallback(
+    (raw) => {
+      if (!raw || typeof raw !== "string") return "";
+      if (/^https?:\/\//i.test(raw)) return raw;
+
+      const apiBase =
+        import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+      const base = apiBase.replace(/\/api\/v1\/?$/, "");
+      if (!base) return raw;
+
+      if (raw.includes("/")) {
+        return raw.startsWith("/") ? `${base}${raw}` : `${base}/${raw}`;
+      }
+
+      if (previewSellerEmail && previewSubscriptionName) {
+        const encodedEmail = encodeURIComponent(previewSellerEmail);
+        const encodedFolder = encodeURIComponent(previewSubscriptionName);
+        const encodedFile = encodeURIComponent(raw);
+        return `${base}/uploads/listings/${encodedEmail}/${encodedFolder}/${encodedFile}`;
+      }
+
+      return `${base}/${raw}`;
+    },
+    [previewSellerEmail, previewSubscriptionName],
+  );
+
+  const getImageName = React.useCallback((raw) => {
+    if (typeof raw !== "string") return "image";
+    const clean = raw.split("?")[0];
+    const parts = clean.split("/");
+    return parts[parts.length - 1] || "image";
+  }, []);
+
+  const toPreviewItem = React.useCallback(
+    (img, index) => {
+      if (img instanceof File) {
+        return {
+          key: `file-${index}-${img.name}-${img.size}`,
+          file: img,
+          raw: img,
+          url: URL.createObjectURL(img),
+          isObjectUrl: true,
+          name: img.name,
+        };
+      }
+
+      const raw = typeof img === "string" ? img : img?.url || img?.path || "";
+      const resolved = resolveImageUrl(raw);
+
+      return {
+        key: `existing-${index}-${raw}`,
+        file: null,
+        raw,
+        url: resolved || raw,
+        isObjectUrl: false,
+        name: (typeof img === "object" && img?.name) || getImageName(raw),
+      };
+    },
+    [getImageName, resolveImageUrl],
+  );
 
   const buildFormData = (vals) => {
     const fd = new FormData();
@@ -131,20 +222,72 @@ export default function ListingAdvModal() {
       }),
   });
 
-  const itemData =
-    existing && existing.subscription ? existing.subscription : existing;
+  const updateMut = useMutation({
+    mutationFn: (vals) => updateAdvert(id, vals),
+    onSuccess: async () => {
+      try {
+        await queryClient.invalidateQueries({ queryKey: ["advertCatalogue"] });
+        await queryClient.invalidateQueries({ queryKey: ["adverts"] });
+        await queryClient.invalidateQueries({ queryKey: ["advert", id] });
+      } catch {
+        // ignore
+      }
+      setToast({
+        open: true,
+        severity: "success",
+        message: "Advertisement updated",
+      });
+      setTimeout(() => navigate("/advertisements"), 700);
+    },
+    onError: (err) =>
+      setToast({
+        open: true,
+        severity: "error",
+        message: err?.response?.data?.message || err.message || "Update failed",
+      }),
+  });
+
+  const isSaving = createMut.isPending || updateMut.isPending;
+
+  const initialSubscriptionId =
+    itemData?.subscriptionId ||
+    itemData?.sellerSubscriptions?.[0]?.subscriptionId ||
+    itemData?.sellerSubscriptions?.[0]?.subscription?.subscriptionId ||
+    "";
+
+  const initialTierUsersPerHour =
+    itemData?.pricingTier?.usersPerHour ||
+    itemData?.usersPerHour ||
+    itemData?.subscriptionTierUsersPerHour ||
+    itemData?.sellerSubscriptions?.[0]?.pricingTier?.usersPerHour ||
+    itemData?.sellerSubscriptions?.[0]?.subscription?.pricingTiers?.[0]
+      ?.usersPerHour ||
+    "";
+
+  const initialUrl =
+    itemData?.url ||
+    itemData?.advertUrl ||
+    itemData?.websiteURL ||
+    itemData?.link ||
+    "";
 
   const initialValues = {
     description: itemData?.description || "",
     category: itemData?.category || "",
     type: itemData?.type || "PRODUCTS",
+    advertSourceType: initialUrl ? "URL" : "CATALOGUE",
+    url: initialUrl,
     images: itemData?.images || [],
     status: itemData?.status || "active",
     expires_at: itemData?.expires_at || "",
-    subscriptionId: itemData?.subscriptionId || "",
-    subscriptionTierUsersPerHour:
-      itemData?.pricingTier?.usersPerHour || itemData?.usersPerHour || "",
+    subscriptionId: initialSubscriptionId,
+    subscriptionTierUsersPerHour: initialTierUsersPerHour,
   };
+
+  const originalImageRefs = React.useMemo(
+    () => unique((itemData?.images || []).map((img) => getImageRef(img))),
+    [itemData?.images],
+  );
 
   const submitRef = React.useRef(null);
   const submittingRef = React.useRef(false);
@@ -153,12 +296,21 @@ export default function ListingAdvModal() {
   const [imageHelper, setImageHelper] = React.useState("");
 
   React.useEffect(() => {
+    const next = Array.isArray(initialValues.images)
+      ? initialValues.images.map((img, idx) => toPreviewItem(img, idx))
+      : [];
+    setPreviews(next);
+  }, [initialValues.images, toPreviewItem]);
+
+  React.useEffect(() => {
     return () => {
       previews.forEach((p) => {
-        try {
-          URL.revokeObjectURL(p.url);
-        } catch {
-          /* ignore */
+        if (p?.isObjectUrl && p?.url) {
+          try {
+            URL.revokeObjectURL(p.url);
+          } catch {
+            /* ignore */
+          }
         }
       });
     };
@@ -192,7 +344,7 @@ export default function ListingAdvModal() {
         paddingRight: "env(safe-area-inset-right)",
       }}
     >
-      {createMut.isPending && (
+      {isSaving && (
         <Box
           sx={{
             position: "absolute",
@@ -210,7 +362,7 @@ export default function ListingAdvModal() {
           <Stack alignItems="center" spacing={2}>
             <CircularProgress />
             <Typography variant="body2" color="text.secondary">
-              {isEdit ? "Loading..." : "Creating..."}
+              {isEdit ? "Updating..." : "Creating..."}
             </Typography>
           </Stack>
         </Box>
@@ -239,7 +391,7 @@ export default function ListingAdvModal() {
             </Box>
             <IconButton
               onClick={handleClose}
-              disabled={createMut.isPending}
+              disabled={isSaving}
               sx={{
                 color: "white",
                 background: alpha("#fff", 0.1),
@@ -264,7 +416,7 @@ export default function ListingAdvModal() {
             minHeight: 0,
           }}
         >
-          {createMut.isPending && (
+          {isSaving && (
             <Box sx={{ position: "absolute", top: 0, left: 0, right: 0 }}>
               <Box sx={{ px: 0.5, py: 0.5 }}>
                 <Typography
@@ -295,21 +447,25 @@ export default function ListingAdvModal() {
               enableReinitialize
               initialValues={initialValues}
               validationSchema={Yup.object({
-                images: Yup.array().min(3, "At least 3 images required"),
+                images: Yup.array().max(6, "Maximum 6 images allowed"),
                 description: Yup.string(),
                 subscriptionId: Yup.string().required("Required"),
                 subscriptionTierUsersPerHour: Yup.string().required("Required"),
+                advertSourceType: Yup.string()
+                  .oneOf(["CATALOGUE", "URL"])
+                  .required("Required"),
+                url: Yup.string().when("advertSourceType", {
+                  is: "URL",
+                  then: (schema) =>
+                    schema
+                      .trim()
+                      .required("URL is required")
+                      .url("Enter a valid URL, e.g. https://example.com"),
+                  otherwise: (schema) => schema.notRequired().nullable(),
+                }),
               })}
               onSubmit={async (values, { setSubmitting }) => {
                 try {
-                  if (isEdit) {
-                    setToast({
-                      open: true,
-                      severity: "info",
-                      message: "Editing adverts is not supported yet",
-                    });
-                    return;
-                  }
                   const selectedSubscription = subscriptionList.find(
                     (s) => s.subscriptionId === values.subscriptionId,
                   );
@@ -326,14 +482,31 @@ export default function ListingAdvModal() {
                     });
                     return;
                   }
+                  const isUrlSource = values.advertSourceType === "URL";
+                  const currentExistingRefs = unique(
+                    (values.images || [])
+                      .filter((img) => !(img instanceof File))
+                      .map((img) => getImageRef(img)),
+                  );
+                  const removedImages = originalImageRefs.filter(
+                    (img) => !currentExistingRefs.includes(img),
+                  );
                   const toSend = {
                     ...values,
+                    url: isUrlSource ? String(values.url || "").trim() : "",
                     pricingTier: selectedTier || null,
                   };
 
+                  if (isEdit) {
+                    toSend.existingImages = currentExistingRefs;
+                    toSend.retainedImages = currentExistingRefs;
+                    toSend.removedImages = removedImages;
+                  }
+
                   const payload = buildFormData(toSend);
                   setUploadProgress(0);
-                  await createMut.mutateAsync(payload);
+                  if (isEdit) await updateMut.mutateAsync(payload);
+                  else await createMut.mutateAsync(payload);
                 } finally {
                   setSubmitting(false);
                 }
@@ -365,6 +538,26 @@ export default function ListingAdvModal() {
                 return (
                   <Form>
                     <Stack spacing={2} sx={{ pt: 1 }}>
+                      <SelectFieldWrapper
+                        name="advertSourceType"
+                        label="Advert Source"
+                        options={[
+                          { value: "CATALOGUE", label: "Catalogue" },
+                          { value: "URL", label: "URL" },
+                        ]}
+                      />
+                      {values.advertSourceType === "URL" ? (
+                        <TextFieldWrapper
+                          name="url"
+                          label="URL"
+                          placeholder="https://example.com"
+                        />
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">
+                          Create this advert now, then add catalogue items on
+                          the details page.
+                        </Typography>
+                      )}
                       <SelectFieldWrapper
                         name="type"
                         label="Type"
@@ -455,27 +648,40 @@ export default function ListingAdvModal() {
                             style={{ display: "none" }}
                             onChange={(e) => {
                               const picked = Array.from(e.target.files || []);
-                              const existingFiles =
-                                (values && values.images) || [];
-                              const combined = existingFiles.concat(picked);
-                              const MAX = 6;
-                              const limited = combined.slice(0, MAX);
-                              if (combined.length > MAX) {
-                                setImageHelper(`Maximum ${MAX} images allowed`);
+                              const pickedPreviewItems = picked.map(
+                                (file, idx) =>
+                                  toPreviewItem(file, idx + previews.length),
+                              );
+                              const combined =
+                                previews.concat(pickedPreviewItems);
+                              const limited = combined.slice(0, MAX_IMAGES);
+
+                              if (combined.length > MAX_IMAGES) {
+                                setImageHelper(
+                                  `Maximum ${MAX_IMAGES} images allowed`,
+                                );
+                              } else {
+                                setImageHelper("");
                               }
-                              setFieldValue("images", limited);
-                              previews.forEach((p) => {
-                                try {
-                                  URL.revokeObjectURL(p.url);
-                                } catch {
-                                  /* ignore */
-                                }
-                              });
-                              const next = limited.map((f) => ({
-                                file: f,
-                                url: URL.createObjectURL(f),
-                              }));
-                              setPreviews(next);
+
+                              setPreviews(limited);
+                              setFieldValue(
+                                "images",
+                                limited.map((item) => item.file || item.raw),
+                              );
+
+                              if (combined.length > MAX_IMAGES) {
+                                combined.slice(MAX_IMAGES).forEach((item) => {
+                                  if (item?.isObjectUrl && item?.url) {
+                                    try {
+                                      URL.revokeObjectURL(item.url);
+                                    } catch {
+                                      /* ignore */
+                                    }
+                                  }
+                                });
+                              }
+
                               if (inputRef.current) inputRef.current.value = "";
                             }}
                           />
@@ -488,12 +694,6 @@ export default function ListingAdvModal() {
                             onClick={() =>
                               inputRef.current && inputRef.current.click()
                             }
-                            disabled={
-                              ((values &&
-                                values.images &&
-                                values.images.length) ||
-                                previews.length) >= 6
-                            }
                           >
                             Upload images
                           </Button>
@@ -501,7 +701,7 @@ export default function ListingAdvModal() {
                           {previews && previews.length > 0 && (
                             <Grid container spacing={1} sx={{ mt: 1 }}>
                               {previews.map((p, idx) => (
-                                <Grid item key={idx}>
+                                <Grid item key={p.key || idx}>
                                   <Box component="div">
                                     <Box
                                       component="div"
@@ -529,17 +729,25 @@ export default function ListingAdvModal() {
                                           const remaining = previews.filter(
                                             (_, i) => i !== idx,
                                           );
+                                          const removed = previews[idx];
+                                          if (
+                                            removed?.isObjectUrl &&
+                                            removed?.url
+                                          ) {
+                                            try {
+                                              URL.revokeObjectURL(removed.url);
+                                            } catch {
+                                              /* ignore */
+                                            }
+                                          }
                                           setPreviews(remaining);
                                           setFieldValue(
                                             "images",
-                                            remaining.map((r) => r.file),
+                                            remaining.map(
+                                              (item) => item.file || item.raw,
+                                            ),
                                           );
                                           setImageHelper("");
-                                          try {
-                                            URL.revokeObjectURL(p.url);
-                                          } catch {
-                                            /* ignore */
-                                          }
                                         }}
                                         sx={{
                                           position: "absolute",
@@ -563,7 +771,7 @@ export default function ListingAdvModal() {
                                         whiteSpace: "nowrap",
                                       }}
                                     >
-                                      {p.file.name}
+                                      {p.name || "image"}
                                     </Typography>
                                   </Box>
                                 </Grid>
@@ -611,7 +819,7 @@ export default function ListingAdvModal() {
           <Button
             variant="contained"
             onClick={() => submitRef.current && submitRef.current()}
-            disabled={createMut.isPending || submittingRef.current}
+            disabled={isSaving || submittingRef.current}
             sx={{
               color: "#fff",
               background: gradientPrimary,
@@ -621,8 +829,8 @@ export default function ListingAdvModal() {
               },
             }}
           >
-            {createMut.isPending
-              ? `Creating... ${uploadProgress || 0}%`
+            {isSaving
+              ? `${isEdit ? "Updating" : "Creating"}... ${uploadProgress || 0}%`
               : isEdit
                 ? "Save"
                 : "Create"}
