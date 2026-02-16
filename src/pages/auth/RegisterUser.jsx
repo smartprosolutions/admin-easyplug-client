@@ -353,14 +353,74 @@ export default function RegisterUser() {
                       </Typography>
                     )}
                     {/* Registration Type */}
-                    <SelectFieldWrapper
-                      name="registrationType"
-                      label="Registering As"
-                      options={[
-                        { value: "sole", label: "Sole Provider" },
-                        { value: "business", label: "Registered Business" }
-                      ]}
-                    />
+                    <Box>
+                      <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>
+                        Registering As
+                      </Typography>
+                      <Stack
+                        direction={{ xs: "column", sm: "row" }}
+                        spacing={1.5}
+                      >
+                        {[
+                          {
+                            value: "sole",
+                            title: "Sole Provider",
+                            caption: "Register as an individual seller"
+                          },
+                          {
+                            value: "business",
+                            title: "Registered Business",
+                            caption: "Register and manage a business profile"
+                          }
+                        ].map((option) => {
+                          const selected = values.registrationType === option.value;
+                          return (
+                            <Paper
+                              key={option.value}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() =>
+                                setFieldValue("registrationType", option.value)
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setFieldValue("registrationType", option.value);
+                                }
+                              }}
+                              variant="outlined"
+                              sx={{
+                                p: 1.5,
+                                flex: 1,
+                                cursor: "pointer",
+                                borderRadius: 2,
+                                borderColor: selected ? "primary.main" : "divider",
+                                bgcolor: selected
+                                  ? "action.selected"
+                                  : "background.paper",
+                                transition: "all 120ms ease-in-out"
+                              }}
+                            >
+                              <Typography variant="subtitle2" fontWeight={700}>
+                                {option.title}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {option.caption}
+                              </Typography>
+                            </Paper>
+                          );
+                        })}
+                      </Stack>
+                      {(submitCount > 0 || touched.registrationType) &&
+                      errors.registrationType ? (
+                        <Typography
+                          variant="caption"
+                          sx={{ color: "error.main", mt: 0.5, display: "block" }}
+                        >
+                          {errors.registrationType}
+                        </Typography>
+                      ) : null}
+                    </Box>
                     <SelectFieldWrapper
                       name="alreadyHasAccount"
                       label="Already have an account?"
