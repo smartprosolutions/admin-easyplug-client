@@ -124,7 +124,9 @@ export default function InventoryModal({
       try {
         await queryClient.invalidateQueries({ queryKey: ["inventory"] });
         if (advertId) {
-          await queryClient.invalidateQueries({ queryKey: ["advert", advertId] });
+          await queryClient.invalidateQueries({
+            queryKey: ["advert", advertId],
+          });
           await queryClient.invalidateQueries({ queryKey: ["adverts"] });
         }
       } catch {
@@ -170,7 +172,11 @@ export default function InventoryModal({
   });
 
   const itemData =
-    existing && existing.subscription ? existing.subscription : existing;
+    existing?.listing ||
+    existing?.item ||
+    existing?.data ||
+    (existing?.subscription ? existing.subscription : existing) ||
+    null;
 
   const resolvedType = itemData?.type || presetType || "PRODUCTS";
   const resolvedCategory = itemData?.category || presetCategory || "";
@@ -347,7 +353,7 @@ export default function InventoryModal({
                   .typeError("Must be a number")
                   .min(0, "Must be >= 0")
                   .required("Required"),
-                images: Yup.array().min(3, "At least 3 images required"),
+                images: Yup.array().max(6, "Maximum 6 images allowed"),
                 description: Yup.string(),
               })}
               onSubmit={async (values, { setSubmitting }) => {
