@@ -10,10 +10,24 @@ export async function updateAdvert(advertId, payload) {
   return resp.data;
 }
 
-export async function addListingToAdvert(advertId, payload) {
+export async function addListingToAdvert(advertId, payload, onProgress) {
+  const config = {};
+  if (typeof onProgress === "function") {
+    config.onUploadProgress = (evt) => {
+      try {
+        if (!evt || !evt.total) return;
+        const pct = Math.round((evt.loaded * 100) / evt.total);
+        onProgress(pct, evt);
+      } catch {
+        /* no-op */
+      }
+    };
+  }
+
   const resp = await axiosClient.post(
     `/listings/advert/${advertId}/items`,
     payload,
+    config,
   );
   return resp.data;
 }
