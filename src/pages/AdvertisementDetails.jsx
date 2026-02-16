@@ -15,6 +15,7 @@ import {
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import AddIcon from "@mui/icons-material/Add";
+import EditIcon from "@mui/icons-material/Edit";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import LocalOfferOutlinedIcon from "@mui/icons-material/LocalOfferOutlined";
 import { useNavigate, useParams } from "react-router-dom";
@@ -266,6 +267,18 @@ export default function AdvertisementDetails() {
             />
           </Stack>
         </Stack>
+        <Button
+          variant="contained"
+          startIcon={<EditIcon />}
+          onClick={() => navigate(`/advertisements/${id}/edit`)}
+          sx={{
+            background: gradientPrimary,
+            color: "#fff",
+            "&:hover": { opacity: 0.92 },
+          }}
+        >
+          Edit Advert
+        </Button>
       </Stack>
 
       {error ? (
