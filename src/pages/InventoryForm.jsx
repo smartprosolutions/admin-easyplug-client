@@ -39,6 +39,53 @@ const sectionCaptionSx = {
   color: "text.secondary",
 };
 
+const resolveImageUrl = (raw) => {
+  if (!raw || typeof raw !== "string") return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  const apiBase = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+  const base = apiBase.replace(/\/api\/v1\/?$/, "");
+  if (!base) return raw;
+
+  if (raw.includes("/")) {
+    return raw.startsWith("/") ? `${base}${raw}` : `${base}/${raw}`;
+  }
+
+  return `${base}/${raw}`;
+};
+
+const getImageName = (raw) => {
+  if (typeof raw !== "string") return "image";
+  const clean = raw.split("?")[0];
+  const parts = clean.split("/");
+  return parts[parts.length - 1] || "image";
+};
+
+const toPreviewItem = (img, index) => {
+  if (img instanceof File) {
+    return {
+      key: `file-${index}-${img.name}-${img.size}`,
+      file: img,
+      raw: img,
+      url: URL.createObjectURL(img),
+      isObjectUrl: true,
+      name: img.name,
+    };
+  }
+
+  const raw = typeof img === "string" ? img : img?.url || img?.path || "";
+  const resolved = resolveImageUrl(raw);
+
+  return {
+    key: `existing-${index}-${raw}`,
+    file: null,
+    raw,
+    url: resolved || raw,
+    isObjectUrl: false,
+    name: (typeof img === "object" && img?.name) || getImageName(raw),
+  };
+};
+
 export default function InventoryForm() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -239,17 +286,33 @@ export default function InventoryForm() {
   const inputRef = React.useRef(null);
   const [imageHelper, setImageHelper] = React.useState("");
 
+  const revokeObjectUrls = React.useCallback((items = []) => {
+    items.forEach((item) => {
+      if (!item?.isObjectUrl) return;
+      try {
+        URL.revokeObjectURL(item.url);
+      } catch {
+        /* ignore */
+      }
+    });
+  }, []);
+
   React.useEffect(() => {
     return () => {
-      previews.forEach((p) => {
-        try {
-          URL.revokeObjectURL(p.url);
-        } catch {
-          /* ignore */
-        }
-      });
+      revokeObjectUrls(previews);
     };
-  }, [previews]);
+  }, [previews, revokeObjectUrls]);
+
+  React.useEffect(() => {
+    if (!isEdit) return;
+    const existingImages = Array.isArray(itemData?.images) ? itemData.images : [];
+    if (!existingImages.length) {
+      setPreviews([]);
+      return;
+    }
+    const next = existingImages.map((img, index) => toPreviewItem(img, index));
+    setPreviews(next);
+  }, [isEdit, itemData]);
 
   const handleClose = () => {
     navigate("/inventory");
@@ -638,17 +701,10 @@ export default function InventoryForm() {
                                   );
                                 }
                                 setFieldValue("images", limited);
-                                previews.forEach((p) => {
-                                  try {
-                                    URL.revokeObjectURL(p.url);
-                                  } catch {
-                                    /* ignore */
-                                  }
-                                });
-                                const next = limited.map((f) => ({
-                                  file: f,
-                                  url: URL.createObjectURL(f),
-                                }));
+                                revokeObjectUrls(previews);
+                                const next = limited.map((img, index) =>
+                                  toPreviewItem(img, index),
+                                );
                                 setPreviews(next);
                                 if (inputRef.current)
                                   inputRef.current.value = "";
@@ -677,7 +733,7 @@ export default function InventoryForm() {
                             {previews && previews.length > 0 && (
                               <Grid container spacing={1} sx={{ mt: 1 }}>
                                 {previews.map((p, idx) => (
-                                  <Grid item key={idx}>
+                                  <Grid item key={p.key || idx}>
                                     <Box component="div">
                                       <Box
                                         component="div"
@@ -708,14 +764,10 @@ export default function InventoryForm() {
                                             setPreviews(remaining);
                                             setFieldValue(
                                               "images",
-                                              remaining.map((r) => r.file),
+                                              remaining.map((r) => r.file ?? r.raw),
                                             );
                                             setImageHelper("");
-                                            try {
-                                              URL.revokeObjectURL(p.url);
-                                            } catch {
-                                              /* ignore */
-                                            }
+                                            revokeObjectUrls([p]);
                                           }}
                                           sx={{
                                             position: "absolute",
@@ -739,7 +791,7 @@ export default function InventoryForm() {
                                           whiteSpace: "nowrap",
                                         }}
                                       >
-                                        {p.file.name}
+                                        {p.name || p.file?.name || "image"}
                                       </Typography>
                                     </Box>
                                   </Grid>
