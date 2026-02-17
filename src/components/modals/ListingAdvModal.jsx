@@ -33,6 +33,7 @@ import {
   getAdvert,
   updateAdvert,
 } from "../../services/advertService";
+import { resolveListingImagePath } from "../../utils/listingImages";
 
 const formatCurrency = (val) => {
   try {
@@ -109,39 +110,18 @@ export default function ListingAdvModal() {
 
   const previewSellerEmail =
     itemData?.seller?.email || itemData?.sellerEmail || "";
-  const previewSubscriptionName =
-    itemData?.sellerSubscriptions?.[0]?.subscription?.name ||
-    itemData?.subscriptionName ||
-    "";
 
   const queryClient = useQueryClient();
   const [uploadProgress, setUploadProgress] = React.useState(0);
   const MAX_IMAGES = 6;
 
-  const resolveImageUrl = React.useCallback(
-    (raw) => {
-      if (!raw || typeof raw !== "string") return "";
-      if (/^https?:\/\//i.test(raw)) return raw;
-
-      const apiBase =
-        import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
-      const base = apiBase.replace(/\/api\/v1\/?$/, "");
-      if (!base) return raw;
-
-      if (raw.includes("/")) {
-        return raw.startsWith("/") ? `${base}${raw}` : `${base}/${raw}`;
-      }
-
-      if (previewSellerEmail && previewSubscriptionName) {
-        const encodedEmail = encodeURIComponent(previewSellerEmail);
-        const encodedFolder = encodeURIComponent(previewSubscriptionName);
-        const encodedFile = encodeURIComponent(raw);
-        return `${base}/uploads/listings/${encodedEmail}/${encodedFolder}/${encodedFile}`;
-      }
-
-      return `${base}/${raw}`;
-    },
-    [previewSellerEmail, previewSubscriptionName],
+  const imageResolveOptions = React.useMemo(
+    () => ({
+      sellerEmail: previewSellerEmail,
+      isAdvertisement: true,
+      variant: "advert",
+    }),
+    [previewSellerEmail],
   );
 
   const getImageName = React.useCallback((raw) => {
@@ -165,7 +145,7 @@ export default function ListingAdvModal() {
       }
 
       const raw = typeof img === "string" ? img : img?.url || img?.path || "";
-      const resolved = resolveImageUrl(raw);
+      const resolved = resolveListingImagePath(raw, imageResolveOptions);
 
       return {
         key: `existing-${index}-${raw}`,
@@ -176,7 +156,7 @@ export default function ListingAdvModal() {
         name: (typeof img === "object" && img?.name) || getImageName(raw),
       };
     },
-    [getImageName, resolveImageUrl],
+    [getImageName, imageResolveOptions],
   );
 
   const buildFormData = (vals) => {
