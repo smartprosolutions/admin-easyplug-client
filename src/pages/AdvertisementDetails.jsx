@@ -25,6 +25,7 @@ import { gradientPrimary } from "../theme/theme";
 import InventoryModal from "../components/modals/InventoryModal";
 import { ListingTile } from "../components/listing/ListingTile";
 import { MobileListingItem } from "../components/listing/MobileListingItem";
+import { resolveListingImages } from "../utils/listingImages";
 
 const formatDate = (value) =>
   value
@@ -74,53 +75,6 @@ const statusColor = (status) => {
     default:
       return "primary";
   }
-};
-
-const resolveImagePath = (raw, { sellerEmail, folderName } = {}) => {
-  if (!raw || typeof raw !== "string") return null;
-  if (/^https?:\/\//i.test(raw)) return raw;
-
-  const apiBase =
-    import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
-  const base = apiBase.replace(/\/api\/v1\/?$/, "");
-  if (!base) return raw;
-
-  if (raw.includes("/")) {
-    return raw.startsWith("/") ? `${base}${raw}` : `${base}/${raw}`;
-  }
-
-  if (sellerEmail && folderName) {
-    const encodedEmail = encodeURIComponent(sellerEmail);
-    const encodedFolder = encodeURIComponent(folderName);
-    const encodedFile = encodeURIComponent(raw);
-    return `${base}/uploads/listings/${encodedEmail}/${encodedFolder}/${encodedFile}`;
-  }
-
-  return raw.startsWith("/") ? `${base}${raw}` : `${base}/${raw}`;
-};
-
-const resolveItemImages = (item, options) => {
-  const images = [];
-  if (Array.isArray(item?.images)) {
-    item.images.forEach((img) => {
-      const raw = img?.url || img;
-      const resolved = resolveImagePath(raw, options);
-      if (resolved) images.push(resolved);
-    });
-  }
-  if (Array.isArray(item?.media)) {
-    item.media.forEach((img) => {
-      const raw = img?.url || img;
-      const resolved = resolveImagePath(raw, options);
-      if (resolved) images.push(resolved);
-    });
-  }
-  const fallback = resolveImagePath(
-    item?.image || item?.thumbnail || item?.coverImage,
-    options,
-  );
-  if (fallback) images.push(fallback);
-  return images;
 };
 
 const InfoCard = ({ label, value }) => (
@@ -205,9 +159,9 @@ export default function AdvertisementDetails() {
           ? `R ${Number(priceValue).toLocaleString("en-ZA")}`
           : "-";
 
-      const images = resolveItemImages(item, {
+      const images = resolveListingImages(item, {
         sellerEmail,
-        folderName: "catalogue-items",
+        variant: "catalogue",
       });
       const image = images[0];
 
