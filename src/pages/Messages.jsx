@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars */
-import React, { useState, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Container,
@@ -31,7 +31,7 @@ import {
   FormControlLabel,
   Radio,
   Snackbar,
-  Alert
+  Alert,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import SearchIcon from "@mui/icons-material/Search";
@@ -58,6 +58,14 @@ import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import { gradientPrimary } from "../theme/theme";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  getConversations,
+  getConversationMessages,
+  sendConversationMessage,
+} from "../services/messageService";
+import { resolveListingImagePath } from "../utils/listingImages";
+import { useUserProfileQuery } from "../services/queries";
 
 // Dummy conversations data
 const conversations = [
@@ -69,7 +77,7 @@ const conversations = [
       verified: true,
       online: true,
       rating: 4.8,
-      reviews: 127
+      reviews: 127,
     },
     lastMessage: "Is this still available?",
     time: "2 min ago",
@@ -78,8 +86,8 @@ const conversations = [
       title: "iPhone 13 Pro Max",
       price: "R 12,999",
       image:
-        "https://images.unsplash.com/photo-1632661674596-df8be070a5c5?w=100"
-    }
+        "https://images.unsplash.com/photo-1632661674596-df8be070a5c5?w=100",
+    },
   },
   {
     id: 2,
@@ -89,7 +97,7 @@ const conversations = [
       verified: true,
       online: false,
       rating: 4.9,
-      reviews: 89
+      reviews: 89,
     },
     lastMessage: "Thank you for your interest! Yes, it's available.",
     time: "1 hour ago",
@@ -98,8 +106,8 @@ const conversations = [
       title: "MacBook Pro M2",
       price: "R 28,999",
       image:
-        "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=100"
-    }
+        "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=100",
+    },
   },
   {
     id: 3,
@@ -109,7 +117,7 @@ const conversations = [
       verified: false,
       online: true,
       rating: 4.2,
-      reviews: 34
+      reviews: 34,
     },
     lastMessage: "Can you do R10,000?",
     time: "3 hours ago",
@@ -118,8 +126,8 @@ const conversations = [
       title: "Samsung Galaxy S23",
       price: "R 11,999",
       image:
-        "https://images.unsplash.com/photo-1610945415295-d9bbf067e59c?w=100"
-    }
+        "https://images.unsplash.com/photo-1610945415295-d9bbf067e59c?w=100",
+    },
   },
   {
     id: 4,
@@ -129,7 +137,7 @@ const conversations = [
       verified: true,
       online: false,
       rating: 5.0,
-      reviews: 156
+      reviews: 156,
     },
     lastMessage: "Great, I'll take it. When can we meet?",
     time: "Yesterday",
@@ -137,8 +145,8 @@ const conversations = [
     listing: {
       title: "Sony WH-1000XM5",
       price: "R 6,999",
-      image: "https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=100"
-    }
+      image: "https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=100",
+    },
   },
   {
     id: 5,
@@ -148,7 +156,7 @@ const conversations = [
       verified: false,
       online: false,
       rating: 3.8,
-      reviews: 12
+      reviews: 12,
     },
     lastMessage: "Is the price negotiable?",
     time: "2 days ago",
@@ -157,9 +165,9 @@ const conversations = [
       title: "Gaming Laptop RTX 4060",
       price: "R 22,500",
       image:
-        "https://images.unsplash.com/photo-1603302576837-37561b2e2302?w=100"
-    }
-  }
+        "https://images.unsplash.com/photo-1603302576837-37561b2e2302?w=100",
+    },
+  },
 ];
 
 // Dummy messages for selected conversation
@@ -169,63 +177,296 @@ const dummyMessages = [
     senderId: "other",
     text: "Hi! I saw your listing for the iPhone 13 Pro Max. Is it still available?",
     time: "10:30 AM",
-    read: true
+    read: true,
   },
   {
     id: 2,
     senderId: "me",
     text: "Yes, it's still available! Are you interested?",
     time: "10:32 AM",
-    read: true
+    read: true,
   },
   {
     id: 3,
     senderId: "other",
     text: "Yes! What's the condition like? Any scratches or damage?",
     time: "10:35 AM",
-    read: true
+    read: true,
   },
   {
     id: 4,
     senderId: "me",
     text: "It's in excellent condition. No scratches on the screen, and the body is pristine. Battery health is at 95%.",
     time: "10:38 AM",
-    read: true
+    read: true,
   },
   {
     id: 5,
     senderId: "other",
     text: "That sounds great! Does it come with original accessories?",
     time: "10:40 AM",
-    read: true
+    read: true,
   },
   {
     id: 6,
     senderId: "me",
     text: "Yes, it comes with the original box, charger, cable, and earphones. Everything is included.",
     time: "10:42 AM",
-    read: true
+    read: true,
   },
   {
     id: 7,
     senderId: "other",
     text: "Is this still available?",
     time: "2 min ago",
-    read: false
-  }
+    read: false,
+  },
 ];
+
+const FALLBACK_AVATAR = "https://i.pravatar.cc/150?img=1";
+const FALLBACK_LISTING_IMAGE = "https://via.placeholder.com/100";
+
+const pickFirst = (...values) =>
+  values.find((value) => value !== undefined && value !== null && value !== "");
+
+const formatCurrency = (value) => {
+  if (value === undefined || value === null || value === "") return "";
+  if (typeof value === "number") return `R ${value.toLocaleString()}`;
+  const parsed = Number(value);
+  return Number.isFinite(parsed)
+    ? `R ${parsed.toLocaleString()}`
+    : String(value);
+};
+
+const formatMessageTime = (value) => {
+  if (!value) return "Just now";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+};
+
+const resolveAssetUrl = (raw) => {
+  if (!raw || typeof raw !== "string") return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  const apiBase =
+    import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+  const base = apiBase.replace(/\/api\/v1\/?$/, "");
+  if (!base) return raw;
+
+  if (raw.startsWith("/")) return `${base}${raw}`;
+  return `${base}/${raw}`;
+};
+
+const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
+  const source =
+    payload?.chats ||
+    payload?.conversations ||
+    payload?.items ||
+    payload?.results ||
+    payload?.data ||
+    payload;
+  const rows = Array.isArray(source) ? source : [];
+
+  return rows.map((item, idx) => {
+    const user =
+      item?.user ||
+      item?.otherUser ||
+      item?.participant ||
+      item?.sender ||
+      item?.seller ||
+      item?.buyer ||
+      {};
+    const listing =
+      item?.listing || item?.item || item?.product || item?.advert || {};
+    const lastMessageObj = item?.lastMessage || item?.latestMessage || {};
+
+    const combinedName = [user?.firstName, user?.lastName]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    const listingImageRaw =
+      pickFirst(
+        listing?.image,
+        listing?.thumbnail,
+        listing?.coverImage,
+        Array.isArray(listing?.images)
+          ? listing.images[0]?.url || listing.images[0]
+          : null,
+        FALLBACK_LISTING_IMAGE,
+      ) || FALLBACK_LISTING_IMAGE;
+    const listingSellerEmail =
+      item?.seller?.email ||
+      item?.sellerEmail ||
+      listing?.seller?.email ||
+      user?.email ||
+      "";
+
+    const unreadRaw =
+      pickFirst(item?.unread, item?.unreadCount, item?.unreadMessages, 0) || 0;
+    const unread = Number(unreadRaw) || 0;
+    const sellerId = pickFirst(
+      item?.sellerId,
+      item?.seller?.userId,
+      item?.seller?.id,
+    );
+    const lastMessageSenderId = pickFirst(
+      item?.lastMessageSenderId,
+      lastMessageObj?.senderId,
+      lastMessageObj?.sender?.userId,
+      lastMessageObj?.sender?.id,
+      lastMessageObj?.sender,
+    );
+    const lastMessageRead = Boolean(
+      pickFirst(lastMessageObj?.isRead, lastMessageObj?.read, item?.lastMessageRead, false),
+    );
+    const lastMessageIsMine = Boolean(
+      (currentUserId &&
+        lastMessageSenderId &&
+        String(lastMessageSenderId) === String(currentUserId)) ||
+        (sellerId &&
+          lastMessageSenderId &&
+          String(lastMessageSenderId) === String(sellerId)) ||
+        lastMessageObj?.isMine === true ||
+        item?.lastMessageIsMine === true,
+    );
+
+    return {
+      id: pickFirst(
+        item?.id,
+        item?._id,
+        item?.conversationId,
+        item?.chatId,
+        idx + 1,
+      ),
+      sellerId,
+      buyerId: pickFirst(item?.buyerId, item?.buyer?.userId, item?.buyer?.id),
+      user: {
+        name: pickFirst(
+          user?.name,
+          user?.fullName,
+          combinedName,
+          user?.username,
+          user?.email,
+          "Unknown user",
+        ),
+        avatar: resolveAssetUrl(
+          pickFirst(
+            user?.avatar,
+            user?.photo,
+            user?.image,
+            user?.profilePicture,
+            FALLBACK_AVATAR,
+          ),
+        ),
+        verified: Boolean(user?.verified || user?.isVerified),
+        online: Boolean(user?.online || user?.isOnline),
+        rating: Number(pickFirst(user?.rating, 0)) || 0,
+        reviews: Number(pickFirst(user?.reviews, user?.reviewCount, 0)) || 0,
+      },
+      lastMessage:
+        pickFirst(
+          item?.lastMessageText,
+          lastMessageObj?.text,
+          lastMessageObj?.message,
+          lastMessageObj?.content,
+          item?.message,
+          item?.preview,
+          "",
+        ) || "",
+      lastMessageSenderId,
+      lastMessageRead,
+      lastMessageIsMine,
+      time: formatMessageTime(
+        pickFirst(
+          item?.updatedAt,
+          item?.lastMessageAt,
+          lastMessageObj?.createdAt,
+          item?.createdAt,
+        ),
+      ),
+      unread,
+      type: pickFirst(item?.type, unread > 0 ? "buying" : "selling", "buying"),
+      listing: {
+        title: pickFirst(listing?.title, listing?.name, "Listing"),
+        price: formatCurrency(pickFirst(listing?.price, listing?.amount, "")),
+        image: resolveListingImagePath(listingImageRaw, {
+          sellerEmail: listingSellerEmail,
+          isAdvertisement: Boolean(
+            listing?.isAdvertisement ?? listing?.is_advertisement,
+          ),
+        }),
+      },
+    };
+  });
+};
+
+const normalizeMessagesResponse = (
+  payload,
+  { currentUserId, sellerId } = {},
+) => {
+  const source =
+    payload?.messages || payload?.items || payload?.data || payload;
+  const rows = Array.isArray(source) ? source : [];
+
+  return rows.map((item, idx) => {
+    const senderIdentifier = pickFirst(
+      item?.senderId,
+      item?.sender?.userId,
+      item?.sender?.id,
+      item?.sender,
+    );
+    const mineByUserId =
+      currentUserId &&
+      senderIdentifier &&
+      String(senderIdentifier) === String(currentUserId);
+    const mineBySellerId =
+      sellerId &&
+      senderIdentifier &&
+      String(senderIdentifier) === String(sellerId);
+    const mine =
+      mineByUserId ||
+      mineBySellerId ||
+      item?.senderId === "me" ||
+      item?.sender === "me" ||
+      item?.isMine === true ||
+      item?.isFromMe === true;
+    const location = item?.location;
+    const hasLocation =
+      location &&
+      Number.isFinite(Number(location?.lat)) &&
+      Number.isFinite(Number(location?.lng));
+
+    return {
+      id: pickFirst(item?.id, item?._id, item?.messageId, idx + 1),
+      senderId: mine ? "me" : "other",
+      text:
+        pickFirst(item?.text, item?.message, item?.content, item?.body, "") ||
+        "(empty)",
+      time: formatMessageTime(
+        pickFirst(item?.createdAt, item?.timestamp, item?.time),
+      ),
+      read: Boolean(pickFirst(item?.read, item?.isRead, mine)),
+      location: hasLocation
+        ? { lat: Number(location.lat), lng: Number(location.lng) }
+        : undefined,
+    };
+  });
+};
 
 export default function Messages() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
-  const [selectedConversation, setSelectedConversation] = useState(null);
+  const queryClient = useQueryClient();
+  const { data: profileData } = useUserProfileQuery({ retry: false });
+  const [selectedConversationId, setSelectedConversationId] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [messageInput, setMessageInput] = useState("");
-  const [messages, setMessages] = useState(dummyMessages);
+  const [messages, setMessages] = useState([]);
   const [activeFilter, setActiveFilter] = useState("all");
   const [attachmentMenuAnchor, setAttachmentMenuAnchor] = useState(null);
   const [chatMenuAnchor, setChatMenuAnchor] = useState(null);
-  const [conversationsList, setConversationsList] = useState(conversations);
+  const [conversationsList, setConversationsList] = useState([]);
   const [archivedChats, setArchivedChats] = useState([]);
   const [blockedUsers, setBlockedUsers] = useState([]);
 
@@ -257,12 +498,107 @@ export default function Messages() {
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
-    severity: "success"
+    severity: "success",
   });
 
   const showSnackbar = (message, severity = "success") => {
     setSnackbar({ open: true, message, severity });
   };
+
+  const currentUserId = useMemo(
+    () =>
+      pickFirst(
+        profileData?.user?.userId,
+        profileData?.user?.id,
+        profileData?.userId,
+        profileData?.id,
+        profileData?.data?.user?.userId,
+        profileData?.data?.userId,
+      ),
+    [profileData],
+  );
+
+  const {
+    data: conversationsResponse,
+    isPending: isLoadingConversations,
+    isError: isConversationsError,
+  } = useQuery({
+    queryKey: ["messages", "conversations"],
+    queryFn: () => getConversations(),
+    retry: false,
+  });
+
+  const normalizedConversations = useMemo(
+    () => normalizeConversationsResponse(conversationsResponse, { currentUserId }),
+    [conversationsResponse, currentUserId],
+  );
+
+  useEffect(() => {
+    setConversationsList(normalizedConversations);
+  }, [normalizedConversations]);
+
+  const selectedConversation = useMemo(
+    () =>
+      conversationsList.find(
+        (conversation) =>
+          String(conversation.id) === String(selectedConversationId),
+      ) || null,
+    [conversationsList, selectedConversationId],
+  );
+
+  const {
+    data: messagesResponse,
+    isPending: isLoadingMessages,
+    isError: isMessagesError,
+  } = useQuery({
+    queryKey: ["messages", "conversation", selectedConversationId],
+    queryFn: () => getConversationMessages(selectedConversationId),
+    enabled: Boolean(selectedConversationId),
+    retry: false,
+  });
+
+  const normalizedMessages = useMemo(
+    () =>
+      normalizeMessagesResponse(messagesResponse, {
+        currentUserId,
+        sellerId: selectedConversation?.sellerId,
+      }),
+    [messagesResponse, currentUserId, selectedConversation?.sellerId],
+  );
+
+  useEffect(() => {
+    if (selectedConversationId) {
+      setMessages(normalizedMessages);
+      return;
+    }
+    setMessages([]);
+  }, [selectedConversationId, normalizedMessages]);
+
+  const sendMessageMutation = useMutation({
+    mutationFn: ({ conversationId, text }) =>
+      sendConversationMessage(conversationId, {
+        text,
+        message: text,
+        content: text,
+      }),
+    onSuccess: async () => {
+      setMessageInput("");
+      await queryClient.invalidateQueries({
+        queryKey: ["messages", "conversation", selectedConversationId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["messages", "conversations"],
+      });
+    },
+    onError: (error) => {
+      showSnackbar(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Failed to send message",
+        "error",
+      );
+    },
+  });
 
   const chatMenuOptions = [
     { id: "profile", label: "Profile", icon: PersonIcon, color: "#667eea" },
@@ -271,7 +607,7 @@ export default function Messages() {
       id: "archive",
       label: "Archive Chat",
       icon: ArchiveIcon,
-      color: "#607d8b"
+      color: "#607d8b",
     },
     { id: "report", label: "Report", icon: ReportIcon, color: "#ff9800" },
     { id: "block", label: "Block", icon: BlockIcon, color: "#f44336" },
@@ -280,9 +616,9 @@ export default function Messages() {
       label: "Clear Chat",
       icon: DeleteSweepIcon,
       color: "#9e9e9e",
-      divider: true
+      divider: true,
     },
-    { id: "delete", label: "Delete Chat", icon: DeleteIcon, color: "#f44336" }
+    { id: "delete", label: "Delete Chat", icon: DeleteIcon, color: "#f44336" },
   ];
 
   const attachmentOptions = [
@@ -291,21 +627,21 @@ export default function Messages() {
       id: "photos",
       label: "Photos & Videos",
       icon: ImageIcon,
-      color: "#9c27b0"
+      color: "#9c27b0",
     },
     {
       id: "documents",
       label: "Documents",
       icon: DescriptionIcon,
-      color: "#3f51b5"
+      color: "#3f51b5",
     },
     {
       id: "location",
       label: "Location",
       icon: LocationOnIcon,
-      color: "#4caf50"
+      color: "#4caf50",
     },
-    { id: "contact", label: "Contact", icon: ContactsIcon, color: "#00bcd4" }
+    { id: "contact", label: "Contact", icon: ContactsIcon, color: "#00bcd4" },
   ];
 
   const filterTags = [
@@ -313,29 +649,25 @@ export default function Messages() {
     { id: "unread", label: "Unread" },
     { id: "buying", label: "Buying" },
     { id: "selling", label: "Selling" },
-    { id: "archived", label: "Archived" }
+    { id: "archived", label: "Archived" },
   ];
 
   const handleSelectConversation = (conversation) => {
-    setSelectedConversation(conversation);
+    setSelectedConversationId(conversation.id);
   };
 
   const handleBackToList = () => {
-    setSelectedConversation(null);
+    setSelectedConversationId(null);
   };
 
   const handleSendMessage = () => {
-    if (messageInput.trim()) {
-      const newMessage = {
-        id: messages.length + 1,
-        senderId: "me",
-        text: messageInput,
-        time: "Just now",
-        read: false
-      };
-      setMessages([...messages, newMessage]);
-      setMessageInput("");
-    }
+    const text = messageInput.trim();
+    if (!text || !selectedConversationId || sendMessageMutation.isPending)
+      return;
+    sendMessageMutation.mutate({
+      conversationId: selectedConversationId,
+      text,
+    });
   };
 
   const handleKeyPress = (e) => {
@@ -379,9 +711,9 @@ export default function Messages() {
     if (selectedConversation) {
       setArchivedChats([...archivedChats, selectedConversation.id]);
       setConversationsList(
-        conversationsList.filter((c) => c.id !== selectedConversation.id)
+        conversationsList.filter((c) => c.id !== selectedConversation.id),
       );
-      setSelectedConversation(null);
+      setSelectedConversationId(null);
       showSnackbar("Chat archived successfully");
     }
   };
@@ -390,13 +722,13 @@ export default function Messages() {
     if (selectedConversation) {
       setBlockedUsers([...blockedUsers, selectedConversation.user.name]);
       setConversationsList(
-        conversationsList.filter((c) => c.id !== selectedConversation.id)
+        conversationsList.filter((c) => c.id !== selectedConversation.id),
       );
-      setSelectedConversation(null);
+      setSelectedConversationId(null);
       setBlockDialogOpen(false);
       showSnackbar(
         `${selectedConversation.user.name} has been blocked`,
-        "warning"
+        "warning",
       );
     }
   };
@@ -410,9 +742,9 @@ export default function Messages() {
   const handleDeleteChat = () => {
     if (selectedConversation) {
       setConversationsList(
-        conversationsList.filter((c) => c.id !== selectedConversation.id)
+        conversationsList.filter((c) => c.id !== selectedConversation.id),
       );
-      setSelectedConversation(null);
+      setSelectedConversationId(null);
       setDeleteChatDialogOpen(false);
       showSnackbar("Chat deleted successfully");
     }
@@ -423,7 +755,7 @@ export default function Messages() {
       // Here you would send the report to your backend
       console.log("Report submitted:", {
         user: selectedConversation?.user.name,
-        reason: reportReason
+        reason: reportReason,
       });
       setReportDialogOpen(false);
       setReportReason("");
@@ -461,7 +793,7 @@ export default function Messages() {
       const file = files[0];
       // Create a message with the file
       const newMessage = {
-        id: messages.length + 1,
+        id: `${Date.now()}-${Math.random()}`,
         senderId: "me",
         text: `📎 ${type}: ${file.name}`,
         time: "Just now",
@@ -470,10 +802,10 @@ export default function Messages() {
           type: type,
           name: file.name,
           size: file.size,
-          url: URL.createObjectURL(file)
-        }
+          url: URL.createObjectURL(file),
+        },
       };
-      setMessages([...messages, newMessage]);
+      setMessages((prev) => [...prev, newMessage]);
       showSnackbar(`${type} attached successfully`);
     }
     // Reset input
@@ -490,7 +822,7 @@ export default function Messages() {
         (position) => {
           setUserLocation({
             lat: position.coords.latitude,
-            lng: position.coords.longitude
+            lng: position.coords.longitude,
           });
           setLocationLoading(false);
         },
@@ -518,7 +850,7 @@ export default function Messages() {
           }
           setLocationError(errorMessage);
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
       );
     } else {
       setLocationLoading(false);
@@ -529,16 +861,16 @@ export default function Messages() {
   const handleSendLocation = () => {
     if (userLocation) {
       const newMessage = {
-        id: messages.length + 1,
+        id: `${Date.now()}-${Math.random()}`,
         senderId: "me",
         text: selectedLocationName
           ? `📍 ${selectedLocationName}`
           : `📍 Location shared`,
         time: "Just now",
         read: false,
-        location: userLocation
+        location: userLocation,
       };
-      setMessages([...messages, newMessage]);
+      setMessages((prev) => [...prev, newMessage]);
       setLocationDialogOpen(false);
       setUserLocation(null);
       setLocationSearch("");
@@ -557,7 +889,7 @@ export default function Messages() {
     try {
       // Using OpenStreetMap Nominatim API (free, no API key needed)
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch)}&limit=5`
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch)}&limit=5`,
       );
       const data = await response.json();
 
@@ -567,8 +899,8 @@ export default function Messages() {
             name: item.display_name,
             lat: parseFloat(item.lat),
             lng: parseFloat(item.lon),
-            type: item.type
-          }))
+            type: item.type,
+          })),
         );
       } else {
         setLocationSearchResults([]);
@@ -591,14 +923,14 @@ export default function Messages() {
 
   const handleSendContact = (contact) => {
     const newMessage = {
-      id: messages.length + 1,
+      id: `${Date.now()}-${Math.random()}`,
       senderId: "me",
       text: `👤 Contact: ${contact.name}`,
       time: "Just now",
       read: false,
-      contact
+      contact,
     };
-    setMessages([...messages, newMessage]);
+    setMessages((prev) => [...prev, newMessage]);
     setContactDialogOpen(false);
     showSnackbar("Contact sent successfully");
   };
@@ -616,10 +948,10 @@ export default function Messages() {
         matchesFilter = conv.unread > 0;
         break;
       case "buying":
-        matchesFilter = conv.id % 2 === 1;
+        matchesFilter = conv.type === "buying";
         break;
       case "selling":
-        matchesFilter = conv.id % 2 === 0;
+        matchesFilter = conv.type === "selling";
         break;
       case "archived":
         matchesFilter = archivedChats.includes(conv.id);
@@ -641,7 +973,7 @@ export default function Messages() {
         border: isMobile ? "none" : "1px solid #e0e0e0",
         borderRadius: 0,
         display: "flex",
-        flexDirection: "column"
+        flexDirection: "column",
       }}
     >
       {/* Header */}
@@ -660,13 +992,13 @@ export default function Messages() {
               <InputAdornment position="start">
                 <SearchIcon sx={{ color: "text.secondary" }} />
               </InputAdornment>
-            )
+            ),
           }}
           sx={{
             "& .MuiOutlinedInput-root": {
               borderRadius: 2,
-              bgcolor: alpha("#667eea", 0.05)
-            }
+              bgcolor: alpha("#667eea", 0.05),
+            },
           }}
         />
         {/* Filter Tags */}
@@ -679,7 +1011,7 @@ export default function Messages() {
             pb: 0.5,
             "&::-webkit-scrollbar": { display: "none" },
             msOverflowStyle: "none",
-            scrollbarWidth: "none"
+            scrollbarWidth: "none",
           }}
         >
           {filterTags.map((tag) => (
@@ -698,8 +1030,10 @@ export default function Messages() {
                 transition: "all 0.2s ease",
                 "&:hover": {
                   bgcolor:
-                    activeFilter === tag.id ? "#667eea" : alpha("#667eea", 0.15)
-                }
+                    activeFilter === tag.id
+                      ? "#667eea"
+                      : alpha("#667eea", 0.15),
+                },
               }}
             />
           ))}
@@ -708,146 +1042,195 @@ export default function Messages() {
 
       {/* Conversation List */}
       <List sx={{ flex: 1, overflow: "auto", p: 0 }}>
-        {filteredConversations.map((conversation) => (
-          <ListItem
-            key={conversation.id}
-            onClick={() => handleSelectConversation(conversation)}
-            sx={{
-              cursor: "pointer",
-              borderBottom: "1px solid #f0f0f0",
-              bgcolor:
-                selectedConversation?.id === conversation.id
-                  ? alpha("#667eea", 0.08)
-                  : "transparent",
-              "&:hover": { bgcolor: alpha("#667eea", 0.05) },
-              py: 1.5,
-              px: 2
-            }}
-          >
-            {/* Product Image - Primary */}
-            <ListItemAvatar>
-              <Box
-                sx={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: 2,
-                  overflow: "hidden",
-                  border: "1px solid #e0e0e0",
-                  position: "relative"
-                }}
-              >
-                <img
-                  src={conversation.listing.image}
-                  alt={conversation.listing.title}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
-                {/* User avatar overlay */}
-                <Badge
-                  overlap="circular"
-                  anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-                  badgeContent={
-                    conversation.user.online ? (
-                      <Box
-                        sx={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          bgcolor: "#4caf50",
-                          border: "1.5px solid white"
-                        }}
-                      />
-                    ) : null
-                  }
-                  sx={{ position: "absolute", bottom: -4, right: -4 }}
+        {isLoadingConversations ? (
+          <Box sx={{ p: 3 }}>
+            <Typography fontSize={13} color="text.secondary">
+              Loading conversations...
+            </Typography>
+          </Box>
+        ) : isConversationsError ? (
+          <Box sx={{ p: 3 }}>
+            <Typography fontSize={13} color="error.main">
+              Unable to load conversations.
+            </Typography>
+          </Box>
+        ) : filteredConversations.length === 0 ? (
+          <Box sx={{ p: 3 }}>
+            <Typography fontSize={13} color="text.secondary">
+              No conversations found.
+            </Typography>
+          </Box>
+        ) : (
+          filteredConversations.map((conversation) => (
+            <ListItem
+              key={conversation.id}
+              onClick={() => handleSelectConversation(conversation)}
+              sx={{
+                cursor: "pointer",
+                borderBottom: "1px solid #f0f0f0",
+                bgcolor:
+                  selectedConversation?.id === conversation.id
+                    ? alpha("#667eea", 0.08)
+                    : "transparent",
+                "&:hover": { bgcolor: alpha("#667eea", 0.05) },
+                py: 1.5,
+                px: 2,
+              }}
+            >
+              {/* Product Image - Primary */}
+              <ListItemAvatar>
+                <Box
+                  sx={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 2,
+                    overflow: "hidden",
+                    border: "1px solid #e0e0e0",
+                    position: "relative",
+                  }}
                 >
-                  <Avatar
-                    src={conversation.user.avatar}
-                    sx={{
-                      width: 24,
-                      height: 24,
-                      border: "2px solid white",
-                      boxShadow: "0 1px 3px rgba(0,0,0,0.2)"
+                  <img
+                    src={conversation.listing.image}
+                    alt={conversation.listing.title}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
                     }}
                   />
-                </Badge>
-              </Box>
-            </ListItemAvatar>
-            <ListItemText
-              primary={
-                <Stack spacing={0.25}>
-                  <Stack direction="row" alignItems="center" spacing={0.5}>
+                  {/* User avatar overlay */}
+                  <Badge
+                    overlap="circular"
+                    anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                    badgeContent={
+                      conversation.user.online ? (
+                        <Box
+                          sx={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            bgcolor: "#4caf50",
+                            border: "1.5px solid white",
+                          }}
+                        />
+                      ) : null
+                    }
+                    sx={{ position: "absolute", bottom: -4, right: -4 }}
+                  >
+                    <Avatar
+                      src={conversation.user.avatar}
+                      sx={{
+                        width: 24,
+                        height: 24,
+                        border: "2px solid white",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                      }}
+                    />
+                  </Badge>
+                </Box>
+              </ListItemAvatar>
+              <ListItemText
+                primary={
+                  <Stack spacing={0.25}>
+                    <Stack direction="row" alignItems="center" spacing={0.5}>
+                      <Typography
+                        component="span"
+                        fontWeight={600}
+                        fontSize={14}
+                        sx={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          maxWidth: 180,
+                        }}
+                      >
+                        {conversation.listing.title} - {conversation.user.name}
+                      </Typography>
+                      {conversation.user.verified && (
+                        <VerifiedIcon sx={{ fontSize: 14, color: "#667eea" }} />
+                      )}
+                    </Stack>
                     <Typography
                       component="span"
+                      fontSize={13}
                       fontWeight={600}
-                      fontSize={14}
+                      sx={{ color: "#667eea", display: "block" }}
+                    >
+                      {conversation.listing.price}
+                    </Typography>
+                  </Stack>
+                }
+                primaryTypographyProps={{ component: "div" }}
+                secondary={
+                  <Stack
+                    direction="row"
+                    spacing={0.4}
+                    alignItems="center"
+                    sx={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      maxWidth: 180,
+                      display: "flex",
+                    }}
+                  >
+                    {conversation.lastMessageIsMine && (
+                      <DoneAllIcon
+                        sx={{
+                          fontSize: 14,
+                          color: conversation.lastMessageRead
+                            ? "#4caf50"
+                            : "text.disabled",
+                          flexShrink: 0,
+                        }}
+                      />
+                    )}
+                    <Typography
+                      component="span"
+                      fontSize={12}
+                      color="text.secondary"
                       sx={{
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
-                        maxWidth: 180
+                        display: "block",
+                        fontWeight: conversation.unread > 0 ? 600 : 400,
                       }}
                     >
-                      {conversation.listing.title} - {conversation.user.name}
+                      {conversation.lastMessageIsMine
+                        ? `You: ${conversation.lastMessage}`
+                        : conversation.lastMessage}
                     </Typography>
-                    {conversation.user.verified && (
-                      <VerifiedIcon sx={{ fontSize: 14, color: "#667eea" }} />
-                    )}
                   </Stack>
-                  <Typography
-                    component="span"
-                    fontSize={13}
-                    fontWeight={600}
-                    sx={{ color: "#667eea", display: "block" }}
-                  >
-                    {conversation.listing.price}
-                  </Typography>
-                </Stack>
-              }
-              primaryTypographyProps={{ component: "div" }}
-              secondary={
-                <Typography
-                  component="span"
-                  fontSize={12}
-                  color="text.secondary"
-                  sx={{
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    maxWidth: 180,
-                    display: "block",
-                    fontWeight: conversation.unread > 0 ? 600 : 400
-                  }}
-                >
-                  {conversation.lastMessage}
+                }
+                secondaryTypographyProps={{ component: "div" }}
+                sx={{ ml: 1.5 }}
+              />
+              <Stack alignItems="flex-end" spacing={0.5}>
+                <Typography fontSize={11} color="text.disabled">
+                  {conversation.time}
                 </Typography>
-              }
-              secondaryTypographyProps={{ component: "div" }}
-              sx={{ ml: 1.5 }}
-            />
-            <Stack alignItems="flex-end" spacing={0.5}>
-              <Typography fontSize={11} color="text.disabled">
-                {conversation.time}
-              </Typography>
-              {conversation.unread > 0 && (
-                <Box
-                  sx={{
-                    minWidth: 20,
-                    height: 20,
-                    borderRadius: "50%",
-                    background: gradientPrimary,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center"
-                  }}
-                >
-                  <Typography fontSize={11} fontWeight={700} color="white">
-                    {conversation.unread}
-                  </Typography>
-                </Box>
-              )}
-            </Stack>
-          </ListItem>
-        ))}
+                {conversation.unread > 0 && (
+                  <Box
+                    sx={{
+                      minWidth: 20,
+                      height: 20,
+                      borderRadius: "50%",
+                      background: gradientPrimary,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Typography fontSize={11} fontWeight={700} color="white">
+                      {conversation.unread}
+                    </Typography>
+                  </Box>
+                )}
+              </Stack>
+            </ListItem>
+          ))
+        )}
       </List>
     </Paper>
   );
@@ -862,7 +1245,7 @@ export default function Messages() {
         border: isMobile ? "none" : "1px solid #e0e0e0",
         borderRadius: 0,
         display: "flex",
-        flexDirection: "column"
+        flexDirection: "column",
       }}
     >
       {selectedConversation ? (
@@ -874,7 +1257,7 @@ export default function Messages() {
               borderBottom: "1px solid #e0e0e0",
               display: "flex",
               alignItems: "center",
-              gap: 2
+              gap: 2,
             }}
           >
             {isMobile && (
@@ -890,7 +1273,7 @@ export default function Messages() {
                 borderRadius: 1.5,
                 overflow: "hidden",
                 border: "1px solid #e0e0e0",
-                flexShrink: 0
+                flexShrink: 0,
               }}
             >
               <img
@@ -919,8 +1302,8 @@ export default function Messages() {
                   transition: "all 0.2s ease",
                   "&:hover": {
                     bgcolor: alpha("#667eea", 0.2),
-                    transform: "scale(1.05)"
-                  }
+                    transform: "scale(1.05)",
+                  },
                 }}
               >
                 <SearchIcon sx={{ fontSize: 20 }} />
@@ -934,8 +1317,8 @@ export default function Messages() {
                   transition: "all 0.2s ease",
                   "&:hover": {
                     bgcolor: alpha("#667eea", 0.2),
-                    transform: "scale(1.05)"
-                  }
+                    transform: "scale(1.05)",
+                  },
                 }}
               >
                 <PhoneIcon sx={{ fontSize: 20 }} />
@@ -949,8 +1332,8 @@ export default function Messages() {
                   transition: "all 0.2s ease",
                   "&:hover": {
                     bgcolor: alpha("#667eea", 0.2),
-                    transform: "scale(1.05)"
-                  }
+                    transform: "scale(1.05)",
+                  },
                 }}
               >
                 <VideocamIcon sx={{ fontSize: 20 }} />
@@ -962,7 +1345,7 @@ export default function Messages() {
                   width: 38,
                   height: 38,
                   transition: "all 0.2s ease",
-                  "&:hover": { bgcolor: alpha("#000", 0.05) }
+                  "&:hover": { bgcolor: alpha("#000", 0.05) },
                 }}
               >
                 <MoreVertIcon sx={{ fontSize: 20 }} />
@@ -980,8 +1363,8 @@ export default function Messages() {
                     borderRadius: 3,
                     boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
                     minWidth: 200,
-                    p: 1
-                  }
+                    p: 1,
+                  },
                 }}
               >
                 {chatMenuOptions.map((option) => (
@@ -999,7 +1382,7 @@ export default function Messages() {
                         px: 2,
                         mb: 0.5,
                         transition: "all 0.2s ease",
-                        "&:hover": { bgcolor: alpha(option.color, 0.1) }
+                        "&:hover": { bgcolor: alpha(option.color, 0.1) },
                       }}
                     >
                       <ListItemIcon>
@@ -1014,7 +1397,7 @@ export default function Messages() {
                           color:
                             option.id === "delete" || option.id === "block"
                               ? option.color
-                              : "inherit"
+                              : "inherit",
                         }}
                       >
                         {option.label}
@@ -1035,7 +1418,7 @@ export default function Messages() {
               borderBottom: "1px solid #e0e0e0",
               display: "flex",
               alignItems: "center",
-              gap: 1.5
+              gap: 1.5,
             }}
           >
             <Badge
@@ -1049,7 +1432,7 @@ export default function Messages() {
                       height: 10,
                       borderRadius: "50%",
                       bgcolor: "#4caf50",
-                      border: "2px solid white"
+                      border: "2px solid white",
                     }}
                   />
                 ) : null
@@ -1077,7 +1460,7 @@ export default function Messages() {
                     px: 0.75,
                     py: 0.25,
                     borderRadius: 1,
-                    ml: 0.5
+                    ml: 0.5,
                   }}
                 >
                   <StarIcon sx={{ fontSize: 14, color: "#ffc107" }} />
@@ -1110,137 +1493,203 @@ export default function Messages() {
               display: "flex",
               flexDirection: "column",
               gap: 1.5,
-              bgcolor: "#fafafa"
+              bgcolor: "#fafafa",
             }}
           >
-            {messages.map((message) => (
-              <Box
-                key={message.id}
-                sx={{
-                  display: "flex",
-                  justifyContent:
-                    message.senderId === "me" ? "flex-end" : "flex-start"
-                }}
-              >
-                {message.location ? (
-                  // Location Message with Map Preview
-                  <Box
-                    onClick={() => {
-                      setViewingLocation({
-                        ...message.location,
-                        name: message.text.replace("📍 ", "")
-                      });
-                      setMapViewOpen(true);
-                    }}
-                    sx={{
-                      maxWidth: "70%",
-                      borderRadius: 2,
-                      overflow: "hidden",
-                      cursor: "pointer",
-                      boxShadow:
-                        message.senderId === "me"
-                          ? "0 2px 8px rgba(102, 126, 234, 0.3)"
-                          : "0 1px 3px rgba(0,0,0,0.1)",
-                      transition: "transform 0.2s ease",
-                      "&:hover": { transform: "scale(1.02)" }
-                    }}
-                  >
-                    {/* Map Preview */}
+            {isLoadingMessages ? (
+              <Typography fontSize={13} color="text.secondary">
+                Loading messages...
+              </Typography>
+            ) : isMessagesError ? (
+              <Typography fontSize={13} color="error.main">
+                Unable to load messages for this conversation.
+              </Typography>
+            ) : messages.length === 0 ? (
+              <Typography fontSize={13} color="text.secondary">
+                No messages yet.
+              </Typography>
+            ) : (
+              messages.map((message) => (
+                <Box
+                  key={message.id}
+                  sx={{
+                    display: "flex",
+                    justifyContent:
+                      message.senderId === "me" ? "flex-end" : "flex-start",
+                  }}
+                >
+                  {message.location ? (
+                    // Location Message with Map Preview
                     <Box
+                      onClick={() => {
+                        setViewingLocation({
+                          ...message.location,
+                          name: message.text.replace("📍 ", ""),
+                        });
+                        setMapViewOpen(true);
+                      }}
                       sx={{
-                        width: 250,
-                        height: 150,
-                        bgcolor: alpha("#4caf50", 0.1),
-                        position: "relative",
-                        overflow: "hidden"
+                        maxWidth: "70%",
+                        borderRadius: 2,
+                        overflow: "hidden",
+                        cursor: "pointer",
+                        boxShadow:
+                          message.senderId === "me"
+                            ? "0 2px 8px rgba(102, 126, 234, 0.3)"
+                            : "0 1px 3px rgba(0,0,0,0.1)",
+                        transition: "transform 0.2s ease",
+                        "&:hover": { transform: "scale(1.02)" },
                       }}
                     >
-                      <iframe
-                        title="Location Map"
-                        width="100%"
-                        height="100%"
-                        frameBorder="0"
-                        scrolling="no"
-                        style={{ border: 0, pointerEvents: "none" }}
-                        src={`https://www.openstreetmap.org/export/embed.html?bbox=${message.location.lng - 0.01},${message.location.lat - 0.01},${message.location.lng + 0.01},${message.location.lat + 0.01}&layer=mapnik&marker=${message.location.lat},${message.location.lng}`}
-                      />
-                      {/* Tap to view overlay */}
+                      {/* Map Preview */}
                       <Box
                         sx={{
-                          position: "absolute",
-                          bottom: 0,
-                          left: 0,
-                          right: 0,
-                          background:
-                            "linear-gradient(transparent, rgba(0,0,0,0.5))",
-                          p: 1,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 0.5
+                          width: 250,
+                          height: 150,
+                          bgcolor: alpha("#4caf50", 0.1),
+                          position: "relative",
+                          overflow: "hidden",
                         }}
                       >
-                        <LocationOnIcon sx={{ fontSize: 16, color: "white" }} />
-                        <Typography fontSize={11} color="white">
-                          Tap to view
-                        </Typography>
-                      </Box>
-                    </Box>
-                    {/* Location Info */}
-                    <Box
-                      sx={{
-                        p: 1.5,
-                        bgcolor: message.senderId === "me" ? "#667eea" : "white"
-                      }}
-                    >
-                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <iframe
+                          title="Location Map"
+                          width="100%"
+                          height="100%"
+                          frameBorder="0"
+                          scrolling="no"
+                          style={{ border: 0, pointerEvents: "none" }}
+                          src={`https://www.openstreetmap.org/export/embed.html?bbox=${message.location.lng - 0.01},${message.location.lat - 0.01},${message.location.lng + 0.01},${message.location.lat + 0.01}&layer=mapnik&marker=${message.location.lat},${message.location.lng}`}
+                        />
+                        {/* Tap to view overlay */}
                         <Box
                           sx={{
-                            width: 32,
-                            height: 32,
-                            borderRadius: 1,
-                            bgcolor:
-                              message.senderId === "me"
-                                ? "rgba(255,255,255,0.2)"
-                                : alpha("#4caf50", 0.1),
+                            position: "absolute",
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            background:
+                              "linear-gradient(transparent, rgba(0,0,0,0.5))",
+                            p: 1,
                             display: "flex",
                             alignItems: "center",
-                            justifyContent: "center"
+                            gap: 0.5,
                           }}
                         >
                           <LocationOnIcon
-                            sx={{
-                              fontSize: 18,
-                              color:
-                                message.senderId === "me" ? "white" : "#4caf50"
-                            }}
+                            sx={{ fontSize: 16, color: "white" }}
                           />
-                        </Box>
-                        <Box flex={1}>
-                          <Typography
-                            fontSize={13}
-                            fontWeight={500}
-                            color={
-                              message.senderId === "me"
-                                ? "white"
-                                : "text.primary"
-                            }
-                            noWrap
-                          >
-                            {message.text.replace("📍 ", "")}
+                          <Typography fontSize={11} color="white">
+                            Tap to view
                           </Typography>
+                        </Box>
+                      </Box>
+                      {/* Location Info */}
+                      <Box
+                        sx={{
+                          p: 1.5,
+                          bgcolor:
+                            message.senderId === "me" ? "#667eea" : "white",
+                        }}
+                      >
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                          <Box
+                            sx={{
+                              width: 32,
+                              height: 32,
+                              borderRadius: 1,
+                              bgcolor:
+                                message.senderId === "me"
+                                  ? "rgba(255,255,255,0.2)"
+                                  : alpha("#4caf50", 0.1),
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <LocationOnIcon
+                              sx={{
+                                fontSize: 18,
+                                color:
+                                  message.senderId === "me"
+                                    ? "white"
+                                    : "#4caf50",
+                              }}
+                            />
+                          </Box>
+                          <Box flex={1}>
+                            <Typography
+                              fontSize={13}
+                              fontWeight={500}
+                              color={
+                                message.senderId === "me"
+                                  ? "white"
+                                  : "text.primary"
+                              }
+                              noWrap
+                            >
+                              {message.text.replace("📍 ", "")}
+                            </Typography>
+                            <Typography
+                              fontSize={11}
+                              color={
+                                message.senderId === "me"
+                                  ? "rgba(255,255,255,0.7)"
+                                  : "text.secondary"
+                              }
+                            >
+                              {message.location.lat.toFixed(4)},{" "}
+                              {message.location.lng.toFixed(4)}
+                            </Typography>
+                          </Box>
+                        </Stack>
+                        <Stack
+                          direction="row"
+                          alignItems="center"
+                          justifyContent="flex-end"
+                          spacing={0.5}
+                          mt={0.5}
+                        >
                           <Typography
-                            fontSize={11}
+                            fontSize={10}
                             color={
                               message.senderId === "me"
                                 ? "rgba(255,255,255,0.7)"
-                                : "text.secondary"
+                                : "text.disabled"
                             }
                           >
-                            {message.location.lat.toFixed(4)},{" "}
-                            {message.location.lng.toFixed(4)}
+                            {message.time}
                           </Typography>
-                        </Box>
-                      </Stack>
+                          {message.senderId === "me" && (
+                            <DoneAllIcon
+                              sx={{
+                                fontSize: 14,
+                                color: message.read
+                                  ? "#4caf50"
+                                  : "rgba(255,255,255,0.5)",
+                              }}
+                            />
+                          )}
+                        </Stack>
+                      </Box>
+                    </Box>
+                  ) : (
+                    // Regular Message
+                    <Box
+                      sx={{
+                        maxWidth: "70%",
+                        p: 1.5,
+                        borderRadius: 2,
+                        bgcolor:
+                          message.senderId === "me" ? "#667eea" : "white",
+                        color:
+                          message.senderId === "me" ? "white" : "text.primary",
+                        boxShadow:
+                          message.senderId === "me"
+                            ? "0 2px 8px rgba(102, 126, 234, 0.3)"
+                            : "0 1px 3px rgba(0,0,0,0.1)",
+                      }}
+                    >
+                      <Typography fontSize={14}>{message.text}</Typography>
                       <Stack
                         direction="row"
                         alignItems="center"
@@ -1264,92 +1713,48 @@ export default function Messages() {
                               fontSize: 14,
                               color: message.read
                                 ? "#4caf50"
-                                : "rgba(255,255,255,0.5)"
+                                : "rgba(255,255,255,0.5)",
                             }}
                           />
                         )}
                       </Stack>
                     </Box>
-                  </Box>
-                ) : (
-                  // Regular Message
-                  <Box
-                    sx={{
-                      maxWidth: "70%",
-                      p: 1.5,
-                      borderRadius: 2,
-                      bgcolor: message.senderId === "me" ? "#667eea" : "white",
-                      color:
-                        message.senderId === "me" ? "white" : "text.primary",
-                      boxShadow:
-                        message.senderId === "me"
-                          ? "0 2px 8px rgba(102, 126, 234, 0.3)"
-                          : "0 1px 3px rgba(0,0,0,0.1)"
-                    }}
-                  >
-                    <Typography fontSize={14}>{message.text}</Typography>
-                    <Stack
-                      direction="row"
-                      alignItems="center"
-                      justifyContent="flex-end"
-                      spacing={0.5}
-                      mt={0.5}
-                    >
-                      <Typography
-                        fontSize={10}
-                        color={
-                          message.senderId === "me"
-                            ? "rgba(255,255,255,0.7)"
-                            : "text.disabled"
-                        }
-                      >
-                        {message.time}
-                      </Typography>
-                      {message.senderId === "me" && (
-                        <DoneAllIcon
-                          sx={{
-                            fontSize: 14,
-                            color: message.read
-                              ? "#4caf50"
-                              : "rgba(255,255,255,0.5)"
-                          }}
-                        />
-                      )}
-                    </Stack>
-                  </Box>
-                )}
-              </Box>
-            ))}
+                  )}
+                </Box>
+              ))
+            )}
           </Box>
 
           {/* Message Input */}
           <Box sx={{ p: 2, bgcolor: "white", borderTop: "1px solid #e0e0e0" }}>
             {/* Quick Actions */}
             <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
-              {["Is this available?", "What's the lowest?", "Can we meet?"].map(
-                (quickMsg) => (
-                  <Chip
-                    key={quickMsg}
-                    label={quickMsg}
-                    size="small"
-                    onClick={() => setMessageInput(quickMsg)}
-                    sx={{
-                      fontSize: 11,
-                      fontWeight: 500,
-                      bgcolor: alpha("#667eea", 0.08),
-                      color: "#667eea",
-                      border: "1px solid",
-                      borderColor: alpha("#667eea", 0.2),
-                      cursor: "pointer",
-                      transition: "all 0.2s ease",
-                      "&:hover": {
-                        bgcolor: alpha("#667eea", 0.15),
-                        borderColor: "#667eea"
-                      }
-                    }}
-                  />
-                )
-              )}
+              {[
+                "Yes, it's available.",
+                "The price is fixed, but it's in excellent condition.",
+                "Sure, when would you like to collect?",
+              ].map((quickMsg) => (
+                <Chip
+                  key={quickMsg}
+                  label={quickMsg}
+                  size="small"
+                  onClick={() => setMessageInput(quickMsg)}
+                  sx={{
+                    fontSize: 11,
+                    fontWeight: 500,
+                    bgcolor: alpha("#667eea", 0.08),
+                    color: "#667eea",
+                    border: "1px solid",
+                    borderColor: alpha("#667eea", 0.2),
+                    cursor: "pointer",
+                    transition: "all 0.2s ease",
+                    "&:hover": {
+                      bgcolor: alpha("#667eea", 0.15),
+                      borderColor: "#667eea",
+                    },
+                  }}
+                />
+              ))}
             </Stack>
 
             {/* Input Area */}
@@ -1367,8 +1772,8 @@ export default function Messages() {
                 "&:focus-within": {
                   borderColor: alpha("#667eea", 0.3),
                   bgcolor: alpha("#667eea", 0.06),
-                  boxShadow: `0 0 0 3px ${alpha("#667eea", 0.1)}`
-                }
+                  boxShadow: `0 0 0 3px ${alpha("#667eea", 0.1)}`,
+                },
               }}
             >
               {/* Attachment Icons */}
@@ -1384,8 +1789,8 @@ export default function Messages() {
                   "&:hover": {
                     background: gradientPrimary,
                     transform: "scale(1.05) rotate(90deg)",
-                    boxShadow: "0 4px 12px rgba(102, 126, 234, 0.4)"
-                  }
+                    boxShadow: "0 4px 12px rgba(102, 126, 234, 0.4)",
+                  },
                 }}
               >
                 <AddIcon sx={{ fontSize: 24 }} />
@@ -1403,8 +1808,8 @@ export default function Messages() {
                     borderRadius: 3,
                     boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
                     minWidth: 200,
-                    p: 1
-                  }
+                    p: 1,
+                  },
                 }}
               >
                 {attachmentOptions.map((option) => (
@@ -1418,7 +1823,7 @@ export default function Messages() {
                       mb: 0.5,
                       mr: 2,
                       transition: "all 0.2s ease",
-                      "&:hover": { bgcolor: alpha(option.color, 0.1) }
+                      "&:hover": { bgcolor: alpha(option.color, 0.1) },
                     }}
                   >
                     <ListItemIcon>
@@ -1430,7 +1835,7 @@ export default function Messages() {
                           bgcolor: alpha(option.color, 0.15),
                           display: "flex",
                           alignItems: "center",
-                          justifyContent: "center"
+                          justifyContent: "center",
                         }}
                       >
                         <option.icon
@@ -1459,14 +1864,14 @@ export default function Messages() {
                 InputProps={{ disableUnderline: true }}
                 sx={{
                   "& .MuiInputBase-root": { fontSize: 14, px: 1 },
-                  "& .MuiInputBase-input": { py: 1 }
+                  "& .MuiInputBase-input": { py: 1 },
                 }}
               />
 
               {/* Send Button */}
               <IconButton
                 onClick={handleSendMessage}
-                disabled={!messageInput.trim()}
+                disabled={!messageInput.trim() || sendMessageMutation.isPending}
                 sx={{
                   width: 44,
                   height: 44,
@@ -1483,12 +1888,12 @@ export default function Messages() {
                     transform: messageInput.trim() ? "scale(1.05)" : "none",
                     boxShadow: messageInput.trim()
                       ? "0 4px 15px rgba(102, 126, 234, 0.4)"
-                      : "none"
+                      : "none",
                   },
                   "&:disabled": {
                     background: alpha("#667eea", 0.1),
-                    color: alpha("#667eea", 0.4)
-                  }
+                    color: alpha("#667eea", 0.4),
+                  },
                 }}
               >
                 <SendIcon sx={{ fontSize: 22 }} />
@@ -1505,7 +1910,7 @@ export default function Messages() {
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            color: "text.secondary"
+            color: "text.secondary",
           }}
         >
           <Box
@@ -1517,7 +1922,7 @@ export default function Messages() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              mb: 2
+              mb: 2,
             }}
           >
             <SendIcon sx={{ fontSize: 40, color: "#667eea" }} />
@@ -1606,7 +2011,7 @@ export default function Messages() {
                     : alpha("#9e9e9e", 0.1),
                   color: selectedConversation?.user.online
                     ? "#4caf50"
-                    : "#9e9e9e"
+                    : "#9e9e9e",
                 }}
               />
             </Box>
@@ -1621,7 +2026,7 @@ export default function Messages() {
                     height: 50,
                     borderRadius: 1.5,
                     overflow: "hidden",
-                    border: "1px solid #e0e0e0"
+                    border: "1px solid #e0e0e0",
                   }}
                 >
                   <img
@@ -1630,7 +2035,7 @@ export default function Messages() {
                     style={{
                       width: "100%",
                       height: "100%",
-                      objectFit: "cover"
+                      objectFit: "cover",
                     }}
                   />
                 </Box>
@@ -1658,7 +2063,7 @@ export default function Messages() {
             sx={{
               borderRadius: 2,
               background: gradientPrimary,
-              "&:hover": { background: gradientPrimary, opacity: 0.9 }
+              "&:hover": { background: gradientPrimary, opacity: 0.9 },
             }}
           >
             View Full Profile
@@ -1737,7 +2142,7 @@ export default function Messages() {
             sx={{
               borderRadius: 2,
               bgcolor: "#ff9800",
-              "&:hover": { bgcolor: "#f57c00" }
+              "&:hover": { bgcolor: "#f57c00" },
             }}
           >
             Submit Report
@@ -1778,7 +2183,7 @@ export default function Messages() {
             sx={{
               borderRadius: 2,
               bgcolor: "#f44336",
-              "&:hover": { bgcolor: "#d32f2f" }
+              "&:hover": { bgcolor: "#d32f2f" },
             }}
           >
             Block User
@@ -1819,7 +2224,7 @@ export default function Messages() {
             sx={{
               borderRadius: 2,
               bgcolor: "#9e9e9e",
-              "&:hover": { bgcolor: "#757575" }
+              "&:hover": { bgcolor: "#757575" },
             }}
           >
             Clear Chat
@@ -1860,7 +2265,7 @@ export default function Messages() {
             sx={{
               borderRadius: 2,
               bgcolor: "#f44336",
-              "&:hover": { bgcolor: "#d32f2f" }
+              "&:hover": { bgcolor: "#d32f2f" },
             }}
           >
             Delete Chat
@@ -1919,7 +2324,7 @@ export default function Messages() {
                   bgcolor: alpha("#4caf50", 0.1),
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center"
+                  justifyContent: "center",
                 }}
               >
                 <LocationOnIcon sx={{ color: "#4caf50" }} />
@@ -1970,7 +2375,7 @@ export default function Messages() {
               onClick={() => {
                 if (viewingLocation) {
                   navigator.clipboard.writeText(
-                    `${viewingLocation.lat}, ${viewingLocation.lng}`
+                    `${viewingLocation.lat}, ${viewingLocation.lng}`,
                   );
                   showSnackbar("Coordinates copied to clipboard");
                 }
@@ -1981,8 +2386,8 @@ export default function Messages() {
                 color: "text.secondary",
                 "&:hover": {
                   borderColor: "#4caf50",
-                  bgcolor: alpha("#4caf50", 0.05)
-                }
+                  bgcolor: alpha("#4caf50", 0.05),
+                },
               }}
             >
               Copy Coordinates
@@ -1995,7 +2400,7 @@ export default function Messages() {
                 if (viewingLocation) {
                   window.open(
                     `https://www.google.com/maps?q=${viewingLocation.lat},${viewingLocation.lng}`,
-                    "_blank"
+                    "_blank",
                   );
                 }
               }}
@@ -2005,8 +2410,8 @@ export default function Messages() {
                 color: "#4caf50",
                 "&:hover": {
                   borderColor: "#43a047",
-                  bgcolor: alpha("#4caf50", 0.05)
-                }
+                  bgcolor: alpha("#4caf50", 0.05),
+                },
               }}
             >
               Open in Google Maps
@@ -2017,14 +2422,14 @@ export default function Messages() {
                 if (viewingLocation) {
                   window.open(
                     `https://www.openstreetmap.org/?mlat=${viewingLocation.lat}&mlon=${viewingLocation.lng}#map=17/${viewingLocation.lat}/${viewingLocation.lng}`,
-                    "_blank"
+                    "_blank",
                   );
                 }
               }}
               sx={{
                 borderRadius: 2,
                 bgcolor: "#4caf50",
-                "&:hover": { bgcolor: "#43a047" }
+                "&:hover": { bgcolor: "#43a047" },
               }}
             >
               Open in OpenStreetMap
