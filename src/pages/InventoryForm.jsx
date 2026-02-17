@@ -29,6 +29,7 @@ import {
   updateListing as updateItem,
   getListing as getItem,
 } from "../services/listingService";
+import { resolveListingImagePath } from "../utils/listingImages";
 
 const sectionTitleSx = {
   fontWeight: 700,
@@ -39,21 +40,6 @@ const sectionCaptionSx = {
   color: "text.secondary",
 };
 
-const resolveImageUrl = (raw) => {
-  if (!raw || typeof raw !== "string") return "";
-  if (/^https?:\/\//i.test(raw)) return raw;
-
-  const apiBase = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
-  const base = apiBase.replace(/\/api\/v1\/?$/, "");
-  if (!base) return raw;
-
-  if (raw.includes("/")) {
-    return raw.startsWith("/") ? `${base}${raw}` : `${base}/${raw}`;
-  }
-
-  return `${base}/${raw}`;
-};
-
 const getImageName = (raw) => {
   if (typeof raw !== "string") return "image";
   const clean = raw.split("?")[0];
@@ -61,7 +47,7 @@ const getImageName = (raw) => {
   return parts[parts.length - 1] || "image";
 };
 
-const toPreviewItem = (img, index) => {
+const toPreviewItem = (img, index, imageOptions = {}) => {
   if (img instanceof File) {
     return {
       key: `file-${index}-${img.name}-${img.size}`,
@@ -74,7 +60,7 @@ const toPreviewItem = (img, index) => {
   }
 
   const raw = typeof img === "string" ? img : img?.url || img?.path || "";
-  const resolved = resolveImageUrl(raw);
+  const resolved = resolveListingImagePath(raw, imageOptions);
 
   return {
     key: `existing-${index}-${raw}`,
@@ -285,6 +271,20 @@ export default function InventoryForm() {
   const [previews, setPreviews] = React.useState([]);
   const inputRef = React.useRef(null);
   const [imageHelper, setImageHelper] = React.useState("");
+  const imageResolveOptions = React.useMemo(
+    () => ({
+      sellerEmail: itemData?.seller?.email || itemData?.sellerEmail || "",
+      isAdvertisement: Boolean(
+        itemData?.isAdvertisement ?? itemData?.is_advertisement,
+      ),
+    }),
+    [
+      itemData?.isAdvertisement,
+      itemData?.is_advertisement,
+      itemData?.seller?.email,
+      itemData?.sellerEmail,
+    ],
+  );
 
   const revokeObjectUrls = React.useCallback((items = []) => {
     items.forEach((item) => {
@@ -305,14 +305,18 @@ export default function InventoryForm() {
 
   React.useEffect(() => {
     if (!isEdit) return;
-    const existingImages = Array.isArray(itemData?.images) ? itemData.images : [];
+    const existingImages = Array.isArray(itemData?.images)
+      ? itemData.images
+      : [];
     if (!existingImages.length) {
       setPreviews([]);
       return;
     }
-    const next = existingImages.map((img, index) => toPreviewItem(img, index));
+    const next = existingImages.map((img, index) =>
+      toPreviewItem(img, index, imageResolveOptions),
+    );
     setPreviews(next);
-  }, [isEdit, itemData]);
+  }, [isEdit, itemData, imageResolveOptions]);
 
   const handleClose = () => {
     navigate("/inventory");
@@ -703,7 +707,11 @@ export default function InventoryForm() {
                                 setFieldValue("images", limited);
                                 revokeObjectUrls(previews);
                                 const next = limited.map((img, index) =>
-                                  toPreviewItem(img, index),
+                                  toPreviewItem(
+                                    img,
+                                    index,
+                                    imageResolveOptions,
+                                  ),
                                 );
                                 setPreviews(next);
                                 if (inputRef.current)
@@ -764,7 +772,9 @@ export default function InventoryForm() {
                                             setPreviews(remaining);
                                             setFieldValue(
                                               "images",
-                                              remaining.map((r) => r.file ?? r.raw),
+                                              remaining.map(
+                                                (r) => r.file ?? r.raw,
+                                              ),
                                             );
                                             setImageHelper("");
                                             revokeObjectUrls([p]);
