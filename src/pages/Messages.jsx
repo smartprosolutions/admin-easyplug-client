@@ -66,6 +66,7 @@ import {
 } from "../services/messageService";
 import { resolveListingImagePath } from "../utils/listingImages";
 import { useUserProfileQuery } from "../services/queries";
+import { connectSocket, getSocket } from "../socket/socketClient";
 
 // Dummy conversations data
 const conversations = [
@@ -269,14 +270,16 @@ const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
   const rows = Array.isArray(source) ? source : [];
 
   return rows.map((item, idx) => {
-    const user =
-      item?.user ||
-      item?.otherUser ||
-      item?.participant ||
-      item?.sender ||
-      item?.seller ||
-      item?.buyer ||
-      {};
+    // Determine the "other" participant based on who is logged in
+    const buyerId = pickFirst(item?.buyerId, item?.buyer?.userId, item?.buyer?.id);
+    const sellerId = pickFirst(item?.sellerId, item?.seller?.userId, item?.seller?.id);
+    const user = (() => {
+      if (currentUserId) {
+        if (String(currentUserId) === String(sellerId)) return item?.buyer || {};
+        if (String(currentUserId) === String(buyerId)) return item?.seller || {};
+      }
+      return item?.user || item?.otherUser || item?.participant || item?.seller || item?.buyer || {};
+    })();
     const listing =
       item?.listing || item?.item || item?.product || item?.advert || {};
     const lastMessageObj = item?.lastMessage || item?.latestMessage || {};
@@ -305,11 +308,6 @@ const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
     const unreadRaw =
       pickFirst(item?.unread, item?.unreadCount, item?.unreadMessages, 0) || 0;
     const unread = Number(unreadRaw) || 0;
-    const sellerId = pickFirst(
-      item?.sellerId,
-      item?.seller?.userId,
-      item?.seller?.id,
-    );
     const lastMessageSenderId = pickFirst(
       item?.lastMessageSenderId,
       lastMessageObj?.senderId,
@@ -340,7 +338,7 @@ const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
         idx + 1,
       ),
       sellerId,
-      buyerId: pickFirst(item?.buyerId, item?.buyer?.userId, item?.buyer?.id),
+      buyerId,
       user: {
         name: pickFirst(
           user?.name,
@@ -574,12 +572,79 @@ export default function Messages() {
     setMessages([]);
   }, [selectedConversationId, normalizedMessages]);
 
+  // Connect socket once on mount
+  useEffect(() => {
+    connectSocket();
+  }, []);
+
+  // Track which chat rooms we have already joined to avoid redundant emits
+  const joinedRoomsRef = useRef(new Set());
+
+  // Join a room for every conversation so the list updates in real time even when
+  // no specific chat is open. New rooms are joined incrementally as new chats appear.
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+    conversationsList.forEach((conv) => {
+      const chatId = String(conv.id ?? "");
+      if (chatId && chatId !== "undefined" && !joinedRoomsRef.current.has(chatId)) {
+        socket.emit("join_chat", conv.id);
+        joinedRoomsRef.current.add(chatId);
+      }
+    });
+  }, [conversationsList]);
+
+  // Single global new_message listener — updates the conversation list for any chat
+  // and appends to the messages view only when the incoming chat is currently open.
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const handleNewMessage = ({ message: incoming }) => {
+      const incomingChatId = incoming?.chatId;
+      const [normalized] = normalizeMessagesResponse(
+        { messages: [incoming] },
+        { currentUserId, sellerId: selectedConversation?.sellerId },
+      );
+      if (!normalized) return;
+      const isMine = normalized.senderId === "me";
+
+      // Append to active messages only if this chat is open and sent by the other party
+      if (!isMine && String(incomingChatId) === String(selectedConversationId)) {
+        setMessages((prev) => [...prev, normalized]);
+      }
+
+      // Update conversation list in-place (last message preview + unread badge)
+      setConversationsList((prev) =>
+        prev.map((conv) =>
+          String(conv.id) === String(incomingChatId)
+            ? {
+                ...conv,
+                lastMessage: normalized.text,
+                lastMessageIsMine: isMine,
+                lastMessageRead: false,
+                time: formatMessageTime(incoming?.createdAt),
+                unread:
+                  !isMine && String(conv.id) !== String(selectedConversationId)
+                    ? (conv.unread || 0) + 1
+                    : conv.unread,
+              }
+            : conv,
+        ),
+      );
+    };
+
+    socket.on("new_message", handleNewMessage);
+    return () => socket.off("new_message", handleNewMessage);
+  }, [currentUserId, selectedConversationId, selectedConversation?.sellerId]);
+
   const sendMessageMutation = useMutation({
-    mutationFn: ({ conversationId, text }) =>
+    mutationFn: ({ conversationId, text, receiverId }) =>
       sendConversationMessage(conversationId, {
         text,
         message: text,
         content: text,
+        receiverId,
       }),
     onSuccess: async () => {
       setMessageInput("");
@@ -664,9 +729,11 @@ export default function Messages() {
     const text = messageInput.trim();
     if (!text || !selectedConversationId || sendMessageMutation.isPending)
       return;
+    const receiverId = selectedConversation?.buyerId || selectedConversation?.user?.id;
     sendMessageMutation.mutate({
       conversationId: selectedConversationId,
       text,
+      receiverId,
     });
   };
 

@@ -29,7 +29,9 @@ import { Outlet, Link, useLocation } from "react-router-dom";
 import { gradientPrimary } from "../../theme/theme";
 import ConfirmDialog from "../modals/ConfirmDialog";
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getUnreadCount } from "../../services/notificationService";
+import { getConversations } from "../../services/messageService";
 
 // AppBar removed; toolbar contents moved into the drawer
 
@@ -142,9 +144,54 @@ export default function Navigation({ currentTheme, setThemeMode }) {
   const navigate = useNavigate();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // TODO: replace with real counts from API or context
-  const notificationsCount = 3;
-  const messagesCount = 2;
+  const [notificationsCount, setNotificationsCount] = useState(0);
+  const [messagesCount, setMessagesCount] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchCounts = async () => {
+      try {
+        const [notifData, convsData] = await Promise.allSettled([
+          getUnreadCount(),
+          getConversations(),
+        ]);
+
+        if (cancelled) return;
+
+        if (notifData.status === "fulfilled") {
+          setNotificationsCount(
+            notifData.value?.unreadCount ?? notifData.value?.count ?? 0,
+          );
+        }
+
+        if (convsData.status === "fulfilled") {
+          const chats =
+            convsData.value?.chats ||
+            convsData.value?.conversations ||
+            convsData.value?.data ||
+            [];
+          const totalUnread = Array.isArray(chats)
+            ? chats.reduce(
+                (sum, c) => sum + (Number(c?.unreadCount ?? c?.unread) || 0),
+                0,
+              )
+            : 0;
+          setMessagesCount(totalUnread);
+        }
+      } catch {
+        // silently ignore — badge just stays at previous value
+      }
+    };
+
+    fetchCounts();
+    const interval = setInterval(fetchCounts, 30_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const handleDrawerOpen = () => setOpen(true);
   const handleDrawerClose = () => setOpen(false);

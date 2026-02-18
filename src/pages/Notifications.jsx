@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Paper from "@mui/material/Paper";
@@ -19,44 +19,101 @@ import FilterListIcon from "@mui/icons-material/FilterList";
 import EmailIcon from "@mui/icons-material/Email";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import LocalOfferIcon from "@mui/icons-material/LocalOffer";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  getNotifications,
+  markAsRead,
+  deleteNotification,
+} from "../services/notificationService";
+import { connectSocket, getSocket } from "../socket/socketClient";
+
+const formatTimeAgo = (dateValue) => {
+  if (!dateValue) return "";
+  const date = new Date(dateValue);
+  const now = new Date();
+  const diff = Math.max(0, now - date);
+  const minutes = Math.floor(diff / (1000 * 60));
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (days > 0) return `${days}d ago`;
+  if (hours > 0) return `${hours}h ago`;
+  if (minutes > 0) return `${minutes}m ago`;
+  return "Just now";
+};
 
 export default function Notifications() {
+  const queryClient = useQueryClient();
   const [filter, setFilter] = useState("all");
-  const data = useMemo(
-    () => [
-      {
-        id: 1,
-        type: "system",
-        title: "System update",
-        body: "We will perform maintenance at 02:00.",
-        time: "2h ago"
-      },
-      {
-        id: 2,
-        type: "message",
-        title: "New message",
-        body: "You’ve received a message from John.",
-        time: "4h ago"
-      },
-      {
-        id: 3,
-        type: "warning",
-        title: "Payment failed",
-        body: "Your last payment could not be processed.",
-        time: "Yesterday"
-      },
-      {
-        id: 4,
-        type: "promo",
-        title: "Limited offer",
-        body: "Save 20% on sponsorships this week!",
-        time: "2 days ago"
-      }
-    ],
-    []
-  );
-  const filtered = data.filter((n) =>
-    filter === "all" ? true : n.type === filter
+  const [notifications, setNotifications] = useState([]);
+
+  const { data: notificationsResponse } = useQuery({
+    queryKey: ["admin-notifications"],
+    queryFn: () => getNotifications(),
+    retry: false,
+  });
+
+  useEffect(() => {
+    const items = notificationsResponse?.notifications || [];
+    setNotifications(
+      items.map((n) => ({
+        ...n,
+        id: n.notificationId || n.id,
+        body: n.message,
+        time: formatTimeAgo(n.createdAt),
+        isRead: Boolean(n.isRead),
+      }))
+    );
+  }, [notificationsResponse]);
+
+  // Connect socket and listen for incoming notifications
+  useEffect(() => {
+    connectSocket();
+    const socket = getSocket();
+    if (!socket) return;
+
+    const handleNewNotification = ({ notification: incoming }) => {
+      const normalized = {
+        ...incoming,
+        id: incoming.notificationId || incoming.id,
+        body: incoming.message,
+        time: "Just now",
+        isRead: false,
+      };
+      setNotifications((prev) => [normalized, ...prev]);
+      queryClient.invalidateQueries({ queryKey: ["admin-notifications"] });
+    };
+
+    socket.on("new_notification", handleNewNotification);
+
+    return () => {
+      socket.off("new_notification", handleNewNotification);
+    };
+  }, [queryClient]);
+
+  const markAsReadMutation = useMutation({
+    mutationFn: (id) => markAsRead(id),
+    onSuccess: (_, id) => {
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+      );
+    },
+    onError: (err) => console.error("Failed to mark as read:", err),
+  });
+
+  const deleteNotificationMutation = useMutation({
+    mutationFn: (id) => deleteNotification(id),
+    onSuccess: (_, id) => {
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    },
+    onError: (err) => console.error("Failed to delete notification:", err),
+  });
+
+  const filtered = useMemo(
+    () =>
+      notifications.filter((n) =>
+        filter === "all" ? true : n.type === filter
+      ),
+    [notifications, filter]
   );
 
   const typeChip = (t) => {
@@ -131,21 +188,34 @@ export default function Notifications() {
           {filtered.map((n, idx) => (
             <React.Fragment key={n.id}>
               <ListItem
+                sx={{ opacity: n.isRead ? 0.6 : 1 }}
                 secondaryAction={
                   <Stack direction="row" spacing={1}>
                     {typeChip(n.type)}
-                    <IconButton size="small" color="success">
-                      <CheckIcon />
-                    </IconButton>
-                    <IconButton size="small" color="error">
+                    {!n.isRead && (
+                      <IconButton
+                        size="small"
+                        color="success"
+                        onClick={() => markAsReadMutation.mutate(n.id)}
+                        disabled={markAsReadMutation.isPending}
+                      >
+                        <CheckIcon />
+                      </IconButton>
+                    )}
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => deleteNotificationMutation.mutate(n.id)}
+                      disabled={deleteNotificationMutation.isPending}
+                    >
                       <DeleteOutlineIcon />
                     </IconButton>
                   </Stack>
                 }
               >
                 <ListItemIcon>
-                  <Avatar sx={{ bgcolor: "primary.main" }}>
-                    {n.title.charAt(0)}
+                  <Avatar sx={{ bgcolor: n.isRead ? "grey.400" : "primary.main" }}>
+                    {n.title?.charAt(0) || "N"}
                   </Avatar>
                 </ListItemIcon>
                 <ListItemText
@@ -156,6 +226,14 @@ export default function Notifications() {
               {idx < filtered.length - 1 && <Divider component="li" />}
             </React.Fragment>
           ))}
+          {filtered.length === 0 && (
+            <ListItem>
+              <ListItemText
+                primary="No notifications"
+                secondary="You're all caught up"
+              />
+            </ListItem>
+          )}
         </List>
       </Paper>
     </Box>
