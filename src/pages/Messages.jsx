@@ -271,14 +271,31 @@ const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
 
   return rows.map((item, idx) => {
     // Determine the "other" participant based on who is logged in
-    const buyerId = pickFirst(item?.buyerId, item?.buyer?.userId, item?.buyer?.id);
-    const sellerId = pickFirst(item?.sellerId, item?.seller?.userId, item?.seller?.id);
+    const buyerId = pickFirst(
+      item?.buyerId,
+      item?.buyer?.userId,
+      item?.buyer?.id,
+    );
+    const sellerId = pickFirst(
+      item?.sellerId,
+      item?.seller?.userId,
+      item?.seller?.id,
+    );
     const user = (() => {
       if (currentUserId) {
-        if (String(currentUserId) === String(sellerId)) return item?.buyer || {};
-        if (String(currentUserId) === String(buyerId)) return item?.seller || {};
+        if (String(currentUserId) === String(sellerId))
+          return item?.buyer || {};
+        if (String(currentUserId) === String(buyerId))
+          return item?.seller || {};
       }
-      return item?.user || item?.otherUser || item?.participant || item?.seller || item?.buyer || {};
+      return (
+        item?.user ||
+        item?.otherUser ||
+        item?.participant ||
+        item?.seller ||
+        item?.buyer ||
+        {}
+      );
     })();
     const listing =
       item?.listing || item?.item || item?.product || item?.advert || {};
@@ -316,17 +333,22 @@ const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
       lastMessageObj?.sender,
     );
     const lastMessageRead = Boolean(
-      pickFirst(lastMessageObj?.isRead, lastMessageObj?.read, item?.lastMessageRead, false),
+      pickFirst(
+        lastMessageObj?.isRead,
+        lastMessageObj?.read,
+        item?.lastMessageRead,
+        false,
+      ),
     );
     const lastMessageIsMine = Boolean(
       (currentUserId &&
         lastMessageSenderId &&
         String(lastMessageSenderId) === String(currentUserId)) ||
-        (sellerId &&
-          lastMessageSenderId &&
-          String(lastMessageSenderId) === String(sellerId)) ||
-        lastMessageObj?.isMine === true ||
-        item?.lastMessageIsMine === true,
+      (sellerId &&
+        lastMessageSenderId &&
+        String(lastMessageSenderId) === String(sellerId)) ||
+      lastMessageObj?.isMine === true ||
+      item?.lastMessageIsMine === true,
     );
 
     return {
@@ -527,7 +549,8 @@ export default function Messages() {
   });
 
   const normalizedConversations = useMemo(
-    () => normalizeConversationsResponse(conversationsResponse, { currentUserId }),
+    () =>
+      normalizeConversationsResponse(conversationsResponse, { currentUserId }),
     [conversationsResponse, currentUserId],
   );
 
@@ -587,7 +610,11 @@ export default function Messages() {
     if (!socket) return;
     conversationsList.forEach((conv) => {
       const chatId = String(conv.id ?? "");
-      if (chatId && chatId !== "undefined" && !joinedRoomsRef.current.has(chatId)) {
+      if (
+        chatId &&
+        chatId !== "undefined" &&
+        !joinedRoomsRef.current.has(chatId)
+      ) {
         socket.emit("join_chat", conv.id);
         joinedRoomsRef.current.add(chatId);
       }
@@ -610,7 +637,10 @@ export default function Messages() {
       const isMine = normalized.senderId === "me";
 
       // Append to active messages only if this chat is open and sent by the other party
-      if (!isMine && String(incomingChatId) === String(selectedConversationId)) {
+      if (
+        !isMine &&
+        String(incomingChatId) === String(selectedConversationId)
+      ) {
         setMessages((prev) => [...prev, normalized]);
       }
 
@@ -729,7 +759,8 @@ export default function Messages() {
     const text = messageInput.trim();
     if (!text || !selectedConversationId || sendMessageMutation.isPending)
       return;
-    const receiverId = selectedConversation?.buyerId || selectedConversation?.user?.id;
+    const receiverId =
+      selectedConversation?.buyerId || selectedConversation?.user?.id;
     sendMessageMutation.mutate({
       conversationId: selectedConversationId,
       text,
