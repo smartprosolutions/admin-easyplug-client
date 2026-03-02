@@ -138,7 +138,7 @@ export default function AdvertisementDetails() {
   const sellerName = advert?.seller
     ? `${advert.seller.firstName || ""} ${advert.seller.lastName || ""}`.trim()
     : "-";
-  const sellerEmail = advert?.seller?.email || "-";
+  const sellerEmail = advert?.seller?.email || "";
 
   const formattedCatalogueItems = useMemo(() => {
     if (!Array.isArray(catalogueItems)) return [];
@@ -267,7 +267,7 @@ export default function AdvertisementDetails() {
               <InfoCard label="Type" value={advert.type} />
               <InfoCard label="Category" value={advert.category} />
               <InfoCard label="Seller" value={sellerName} />
-              <InfoCard label="Seller Email" value={sellerEmail} />
+              <InfoCard label="Seller Email" value={sellerEmail || "-"} />
               <InfoCard label="Created" value={formatDate(advert.createdAt)} />
               <InfoCard label="Updated" value={formatDate(advert.updatedAt)} />
             </Stack>
