@@ -9,11 +9,11 @@ export default function NotFound() {
     <Box
       sx={{
         minHeight: "100vh",
-        minWidth: "100vw",
+        width: "100%",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        p: 2
+        p: 2,
       }}
     >
       <Box
@@ -22,16 +22,17 @@ export default function NotFound() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          p: 2
+          p: 2,
         }}
       >
         <Box
           sx={{
             display: "flex",
-            gap: 6,
+            flexDirection: { xs: "column", md: "row" },
+            gap: { xs: 3, md: 6 },
             alignItems: "center",
             maxWidth: 1000,
-            width: "100%"
+            width: "100%",
           }}
         >
           <Box sx={{ flex: 1 }}>
@@ -55,7 +56,14 @@ export default function NotFound() {
             </Box>
           </Box>
 
-          <Box sx={{ width: 360, flexShrink: 0 }} aria-hidden>
+          <Box
+            sx={{
+              width: { xs: "100%", md: 360 },
+              maxWidth: 360,
+              flexShrink: 0,
+            }}
+            aria-hidden
+          >
             {/* Illustrative SVG (public domain style) */}
             <svg
               viewBox="0 0 600 400"
