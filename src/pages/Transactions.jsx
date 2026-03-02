@@ -11,9 +11,10 @@ import {
   Paper,
   IconButton,
   Tooltip,
-  Avatar
+  Avatar,
 } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import SearchIcon from "@mui/icons-material/Search";
 import DownloadIcon from "@mui/icons-material/Download";
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -36,7 +37,7 @@ const dummyTransactions = [
     amount: 1249.99,
     method: "Card",
     status: "completed",
-    date: "2025-01-25"
+    date: "2025-01-25",
   },
   {
     id: 2,
@@ -46,7 +47,7 @@ const dummyTransactions = [
     amount: 599.0,
     method: "Capitec Pay",
     status: "pending",
-    date: "2025-01-24"
+    date: "2025-01-24",
   },
   {
     id: 3,
@@ -56,7 +57,7 @@ const dummyTransactions = [
     amount: 2349.0,
     method: "EFT",
     status: "completed",
-    date: "2025-01-23"
+    date: "2025-01-23",
   },
   {
     id: 4,
@@ -66,7 +67,7 @@ const dummyTransactions = [
     amount: 450.0,
     method: "Card",
     status: "failed",
-    date: "2025-01-22"
+    date: "2025-01-22",
   },
   {
     id: 5,
@@ -76,7 +77,7 @@ const dummyTransactions = [
     amount: 875.5,
     method: "Capitec Pay",
     status: "refunded",
-    date: "2025-01-21"
+    date: "2025-01-21",
   },
   {
     id: 6,
@@ -86,11 +87,13 @@ const dummyTransactions = [
     amount: 1599.0,
     method: "Card",
     status: "completed",
-    date: "2025-01-20"
-  }
+    date: "2025-01-20",
+  },
 ];
 
 export default function Transactions() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [searchQuery, setSearchQuery] = useState("");
 
   // Filter transactions based on search
@@ -99,7 +102,7 @@ export default function Transactions() {
       (txn) =>
         txn.ref.toLowerCase().includes(searchQuery.toLowerCase()) ||
         txn.buyer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        txn.seller.toLowerCase().includes(searchQuery.toLowerCase())
+        txn.seller.toLowerCase().includes(searchQuery.toLowerCase()),
     );
   }, [searchQuery]);
 
@@ -132,7 +135,7 @@ export default function Transactions() {
       return date.toLocaleDateString("en-ZA", {
         year: "numeric",
         month: "short",
-        day: "numeric"
+        day: "numeric",
       });
     } catch {
       return "-";
@@ -163,7 +166,7 @@ export default function Transactions() {
               {params.value}
             </Typography>
           </Stack>
-        )
+        ),
       },
       {
         field: "buyer",
@@ -181,7 +184,7 @@ export default function Transactions() {
             </Avatar>
             <Typography fontSize={13}>{params.value}</Typography>
           </Stack>
-        )
+        ),
       },
       {
         field: "seller",
@@ -196,7 +199,7 @@ export default function Transactions() {
             </Avatar>
             <Typography fontSize={13}>{params.value}</Typography>
           </Stack>
-        )
+        ),
       },
       {
         field: "amount",
@@ -206,7 +209,7 @@ export default function Transactions() {
           <Typography fontSize={13} fontWeight={700} color="text.primary">
             {formatCurrency(params.value)}
           </Typography>
-        )
+        ),
       },
       {
         field: "method",
@@ -221,10 +224,10 @@ export default function Transactions() {
               bgcolor: alpha("#667eea", 0.1),
               color: "#667eea",
               fontWeight: 600,
-              "& .MuiChip-icon": { color: "#667eea" }
+              "& .MuiChip-icon": { color: "#667eea" },
             }}
           />
-        )
+        ),
       },
       {
         field: "status",
@@ -235,7 +238,7 @@ export default function Transactions() {
             completed: "success",
             pending: "warning",
             failed: "error",
-            refunded: "info"
+            refunded: "info",
           };
           return (
             <Chip
@@ -245,7 +248,7 @@ export default function Transactions() {
               sx={{ fontWeight: 600, textTransform: "capitalize" }}
             />
           );
-        }
+        },
       },
       {
         field: "date",
@@ -255,7 +258,7 @@ export default function Transactions() {
           <Typography fontSize={13} color="text.secondary">
             {formatDate(params.value)}
           </Typography>
-        )
+        ),
       },
       {
         field: "actions",
@@ -268,15 +271,20 @@ export default function Transactions() {
               <VisibilityIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-        )
-      }
+        ),
+      },
     ],
-    []
+    [],
   );
 
   return (
-    <Box sx={{ py: 3, px: { xs: 2, md: 3 } }}>
-      {/* Header */}
+    <Box
+      sx={{
+        width: "100%",
+        py: { xs: 2, md: 3 },
+        px: { xs: 1.5, sm: 2, md: 3 },
+      }}
+    >
       <Stack
         direction="row"
         alignItems="center"
@@ -293,7 +301,6 @@ export default function Transactions() {
         </Box>
       </Stack>
 
-      {/* Stats Cards */}
       <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mb: 3 }}>
         <Paper
           elevation={0}
@@ -302,7 +309,7 @@ export default function Transactions() {
             p: 2,
             borderRadius: 3,
             border: "1px solid #e0e0e0",
-            bgcolor: alpha("#4caf50", 0.04)
+            bgcolor: alpha("#4caf50", 0.04),
           }}
         >
           <Stack
@@ -325,6 +332,7 @@ export default function Transactions() {
             <TrendingUpIcon sx={{ fontSize: 32, color: "#4caf50" }} />
           </Stack>
         </Paper>
+
         <Paper
           elevation={0}
           sx={{
@@ -332,7 +340,7 @@ export default function Transactions() {
             p: 2,
             borderRadius: 3,
             border: "1px solid #e0e0e0",
-            bgcolor: alpha("#ff9800", 0.04)
+            bgcolor: alpha("#ff9800", 0.04),
           }}
         >
           <Stack
@@ -355,6 +363,7 @@ export default function Transactions() {
             <PaymentsIcon sx={{ fontSize: 32, color: "#ff9800" }} />
           </Stack>
         </Paper>
+
         <Paper
           elevation={0}
           sx={{
@@ -362,7 +371,7 @@ export default function Transactions() {
             p: 2,
             borderRadius: 3,
             border: "1px solid #e0e0e0",
-            bgcolor: alpha("#f44336", 0.04)
+            bgcolor: alpha("#f44336", 0.04),
           }}
         >
           <Stack
@@ -385,6 +394,7 @@ export default function Transactions() {
             <TrendingDownIcon sx={{ fontSize: 32, color: "#f44336" }} />
           </Stack>
         </Paper>
+
         <Paper
           elevation={0}
           sx={{
@@ -392,7 +402,7 @@ export default function Transactions() {
             p: 2,
             borderRadius: 3,
             border: "1px solid #e0e0e0",
-            bgcolor: alpha("#2196f3", 0.04)
+            bgcolor: alpha("#2196f3", 0.04),
           }}
         >
           <Stack
@@ -417,7 +427,6 @@ export default function Transactions() {
         </Paper>
       </Stack>
 
-      {/* Data Table */}
       <Paper
         elevation={0}
         sx={{ borderRadius: 3, border: "1px solid #e0e0e0" }}
@@ -427,7 +436,7 @@ export default function Transactions() {
             direction={{ xs: "column", sm: "row" }}
             spacing={2}
             sx={{ mb: 3 }}
-            alignItems="center"
+            alignItems={{ xs: "stretch", sm: "center" }}
           >
             <TextField
               value={searchQuery}
@@ -441,23 +450,135 @@ export default function Transactions() {
                     <SearchIcon sx={{ color: "text.secondary" }} />
                   </InputAdornment>
                 ),
-                sx: { borderRadius: 2, bgcolor: alpha("#667eea", 0.04) }
+                sx: { borderRadius: 2, bgcolor: alpha("#667eea", 0.04) },
               }}
             />
             <Button
               variant="outlined"
               startIcon={<DownloadIcon />}
-              sx={{ borderRadius: 2, minWidth: 120 }}
+              sx={{ borderRadius: 2, minWidth: { xs: "100%", sm: 120 } }}
             >
               Export
             </Button>
           </Stack>
-          <MetricsDataGrid
-            rows={filteredTransactions}
-            columns={columns}
-            autoHeight
-            pageSize={10}
-          />
+
+          {isMobile ? (
+            <Stack spacing={1.25}>
+              {filteredTransactions.map((txn) => {
+                const statusColor =
+                  txn.status === "completed"
+                    ? "success"
+                    : txn.status === "pending"
+                      ? "warning"
+                      : txn.status === "failed"
+                        ? "error"
+                        : "info";
+
+                return (
+                  <Paper
+                    key={txn.id}
+                    variant="outlined"
+                    sx={{ p: 1.5, borderRadius: 2 }}
+                  >
+                    <Stack spacing={1.1}>
+                      <Stack direction="row" spacing={1.2} alignItems="center">
+                        <ReceiptLongIcon
+                          sx={{ fontSize: 18, color: "#667eea" }}
+                        />
+                        <Typography fontSize={13} fontWeight={700} noWrap>
+                          {txn.ref}
+                        </Typography>
+                        <Box sx={{ flexGrow: 1 }} />
+                        <Typography fontSize={13} fontWeight={700}>
+                          {formatCurrency(txn.amount)}
+                        </Typography>
+                      </Stack>
+
+                      <Stack direction="row" spacing={1.25} alignItems="center">
+                        <Avatar
+                          sx={{
+                            width: 26,
+                            height: 26,
+                            bgcolor: "#00bcd4",
+                            fontSize: 11,
+                          }}
+                        >
+                          {txn.buyer
+                            ?.split(" ")
+                            .map((n) => n[0])
+                            .join("")}
+                        </Avatar>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography fontSize={12} noWrap>
+                            Buyer: {txn.buyer}
+                          </Typography>
+                          <Typography
+                            fontSize={12}
+                            color="text.secondary"
+                            noWrap
+                          >
+                            Seller: {txn.seller}
+                          </Typography>
+                        </Box>
+                      </Stack>
+
+                      <Stack
+                        direction="row"
+                        spacing={0.75}
+                        sx={{ flexWrap: "wrap", rowGap: 0.75 }}
+                      >
+                        <Chip
+                          icon={getMethodIcon(txn.method)}
+                          label={txn.method}
+                          size="small"
+                          sx={{
+                            bgcolor: alpha("#667eea", 0.1),
+                            color: "#667eea",
+                            fontWeight: 600,
+                            "& .MuiChip-icon": { color: "#667eea" },
+                          }}
+                        />
+                        <Chip
+                          color={statusColor}
+                          label={txn.status}
+                          size="small"
+                          sx={{ fontWeight: 600, textTransform: "capitalize" }}
+                        />
+                        <Chip
+                          size="small"
+                          label={formatDate(txn.date)}
+                          variant="outlined"
+                        />
+                      </Stack>
+
+                      <Stack direction="row" justifyContent="flex-end">
+                        <Tooltip title="View Details">
+                          <IconButton size="small" color="primary">
+                            <VisibilityIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </Stack>
+                  </Paper>
+                );
+              })}
+
+              {filteredTransactions.length === 0 && (
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                  <Typography color="text.secondary" fontSize={13}>
+                    No transactions found.
+                  </Typography>
+                </Paper>
+              )}
+            </Stack>
+          ) : (
+            <MetricsDataGrid
+              rows={filteredTransactions}
+              columns={columns}
+              autoHeight
+              pageSize={10}
+            />
+          )}
         </Box>
       </Paper>
     </Box>
