@@ -1,6 +1,8 @@
 import * as React from "react";
 import { DataGrid } from "@mui/x-data-grid";
 import Box from "@mui/material/Box";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 import CustomNoRowsGridOverlay from "./NoGridRowsOverlay";
 
 export default function MetricsDataGrid({
@@ -12,22 +14,29 @@ export default function MetricsDataGrid({
   sx,
   ...rest
 }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+
   const mergedSx = React.useMemo(() => {
     const base = {
-      minHeight,
+      minHeight: isMobile ? 280 : minHeight,
       "& .MuiDataGrid-virtualScroller": {
-        minHeight
+        minHeight: isMobile ? 280 : minHeight
       },
       "& .MuiDataGrid-overlay": {
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center"
+      },
+      "& .MuiDataGrid-footerContainer": {
+        flexWrap: "wrap",
+        rowGap: 0.5,
       }
     };
     if (!sx) return base;
     return Array.isArray(sx) ? [base, ...sx] : [base, sx];
-  }, [minHeight, sx]);
+  }, [isMobile, minHeight, sx]);
 
   return (
     <Box sx={{ width: "100%" }}>
