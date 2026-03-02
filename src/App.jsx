@@ -1,13 +1,17 @@
 import { CssBaseline, ThemeProvider } from "@mui/material";
 import * as React from "react";
 import Navigation from "./components/navigations/Navigation";
-import { Route, BrowserRouter as Router, Routes } from "react-router-dom";
+import {
+  Route,
+  BrowserRouter as Router,
+  Routes,
+  Navigate,
+} from "react-router-dom";
 import { lightTheme, darkTheme } from "./theme/theme";
 import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
 import Advertisements from "./pages/Advertisements";
 import AdvertisementDetails from "./pages/AdvertisementDetails";
-import Sellers from "./pages/Sellers";
 import Subscriptions from "./pages/Subscriptions";
 import SubscriptionModal from "./components/modals/SubscriptionModal";
 import InventoryModal from "./components/modals/InventoryModal";
@@ -28,6 +32,7 @@ import { useState } from "react";
 import GoogleOneTap from "./components/auth/GoogleOneTap";
 import ShareLocation from "./pages/ShareLocation";
 import ViewLocation from "./pages/ViewLocation";
+import { UnreadCountsProvider } from "./context/UnreadCountsContext";
 
 const App = () => {
   const [themeMode, setThemeMode] = useState(true); // true => light, false => dark
@@ -42,65 +47,70 @@ const App = () => {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Router>
-        <Routes>
+        <UnreadCountsProvider>
+          <Routes>
           {/* Standalone public route — no auth wrapper */}
           <Route path="/location/:token" element={<ViewLocation />} />
-          <Route
-            path="/login"
-            element={
-              <PublicRoute>
-                <LoginUser />
-              </PublicRoute>
-            }
-          />
-          <Route
-            path="/register"
-            element={
-              <PublicRoute>
-                <RegisterUser />
-              </PublicRoute>
-            }
-          />
-          <Route
-            path="/"
-            element={
-              <PrivateRoute>
-                <Navigation
-                  currentTheme={themeMode}
-                  setThemeMode={setThemeMode}
-                  theme={theme}
-                />
-              </PrivateRoute>
-            }
-          >
-            <Route index element={<Dashboard />} />
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="inventory" element={<Inventory />}>
-              <Route path="add" element={<InventoryModal />} />
-              <Route path=":id/edit" element={<InventoryModal />} />
-            </Route>
-            <Route path="advertisements" element={<Advertisements />}>
-              <Route path="add" element={<ListingAdvModal />} />
-              <Route path=":id/edit" element={<ListingAdvModal />} />
-            </Route>
             <Route
-              path="advertisements/:id"
-              element={<AdvertisementDetails />}
+              path="/login"
+              element={
+                <PublicRoute>
+                  <LoginUser />
+                </PublicRoute>
+              }
             />
-            <Route path="sellers" element={<Sellers />} />
-            <Route path="subscriptions" element={<Subscriptions />}>
-              <Route path="add" element={<SubscriptionModal />} />
-              <Route path=":id/edit" element={<SubscriptionModal />} />
-            </Route>
-            <Route path="transactions" element={<Transactions />} />
-            <Route path="messages" element={<Messages />} />
-            <Route path="profile" element={<Profile />} />
-            <Route path="userManagement" element={<UserManagement />} />
-            <Route path="notifications" element={<Notifications />} />
+            <Route
+              path="/register"
+              element={
+                <PublicRoute>
+                  <RegisterUser />
+                </PublicRoute>
+              }
+            />
+            <Route
+              path="/"
+              element={
+                <PrivateRoute>
+                  <Navigation
+                    currentTheme={themeMode}
+                    setThemeMode={setThemeMode}
+                    theme={theme}
+                  />
+                </PrivateRoute>
+              }
+            >
+              <Route index element={<Dashboard />} />
+              <Route path="dashboard" element={<Dashboard />} />
+              <Route path="inventory" element={<Inventory />}>
+                <Route path="add" element={<InventoryModal />} />
+                <Route path=":id/edit" element={<InventoryModal />} />
+              </Route>
+              <Route path="advertisements" element={<Advertisements />}>
+                <Route path="add" element={<ListingAdvModal />} />
+                <Route path=":id/edit" element={<ListingAdvModal />} />
+              </Route>
+              <Route
+                path="advertisements/:id"
+                element={<AdvertisementDetails />}
+              />
+              <Route path="subscriptions" element={<Subscriptions />}>
+                <Route path="add" element={<SubscriptionModal />} />
+                <Route path=":id/edit" element={<SubscriptionModal />} />
+              </Route>
+              <Route path="transactions" element={<Transactions />} />
+              <Route path="messages" element={<Messages />} />
+              <Route path="profile" element={<Profile />} />
+              <Route path="userManagement" element={<UserManagement />} />
+              <Route
+                path="sellers"
+                element={<Navigate to="/userManagement" replace />}
+              />
+              <Route path="notifications" element={<Notifications />} />
             <Route path="share-location" element={<ShareLocation />} />
-          </Route>
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+            </Route>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </UnreadCountsProvider>
         <RouteAwareOneTap />
       </Router>
     </ThemeProvider>
