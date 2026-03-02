@@ -1,5 +1,7 @@
 import { DataGrid } from "@mui/x-data-grid";
 import React from "react";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 
 const CustomDataGrid = ({
   rows,
@@ -12,17 +14,20 @@ const CustomDataGrid = ({
   loading = false,
   ...otherProps
 }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+
   return (
-    <div style={{ display: "flex", flexDirection: "column" }}>
+    <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
       <DataGrid
-        checkboxSelection
+        checkboxSelection={!isMobile}
         rows={rows}
         columns={columns}
         getRowClassName={(params) =>
           params.indexRelativeToCurrentPage % 2 === 0 ? "even" : "odd"
         }
         initialState={{
-          pagination: { paginationModel: { pageSize: 15 } }
+          pagination: { paginationModel: { pageSize: isMobile ? 10 : 15 } },
         }}
         paginationModel={paginationModel}
         onPaginationModelChange={onPaginationModelChange}
@@ -43,8 +48,16 @@ const CustomDataGrid = ({
             borderColor:
               theme.palette.mode === "dark"
                 ? theme.palette.grey[700]
-                : theme.palette.grey[200]
-          }
+                : theme.palette.grey[200],
+          },
+          "& .MuiDataGrid-footerContainer": {
+            flexWrap: "wrap",
+            rowGap: 0.5,
+          },
+          "& .MuiDataGrid-toolbarContainer": {
+            flexWrap: "wrap",
+            rowGap: 0.5,
+          },
         })}
         getRowHeight={() => "auto"}
         disableColumnResize
