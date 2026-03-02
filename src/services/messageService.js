@@ -64,6 +64,22 @@ export async function sendConversationMessage(conversationId, payload) {
   ]);
 }
 
+export async function getUnreadMessageCount() {
+  return requestWithFallback([
+    () => axiosClient.get("/chat-messages/unread/count"),
+    () => axiosClient.get("/messages/unread/count"),
+    () => axiosClient.get("/chat/unread/count"),
+  ]);
+}
+
+export async function markChatMessagesAsRead(chatId) {
+  return requestWithFallback([
+    () => axiosClient.post(`/chat-messages/chat/${chatId}/read`),
+    () => axiosClient.post(`/messages/conversations/${chatId}/read`),
+    () => axiosClient.post(`/chat/${chatId}/read`),
+  ]);
+}
+
 export async function markMessageAsRead(messageId) {
   const resp = await axiosClient.post(`/chat-messages/${messageId}/read`);
   return resp.data;
