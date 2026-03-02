@@ -57,16 +57,19 @@ import BlockIcon from "@mui/icons-material/Block";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ArchiveIcon from "@mui/icons-material/Archive";
+import { useNavigate } from "react-router-dom";
 import { gradientPrimary } from "../theme/theme";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getConversations,
   getConversationMessages,
   sendConversationMessage,
+  markChatMessagesAsRead,
 } from "../services/messageService";
 import { resolveListingImagePath } from "../utils/listingImages";
 import { useUserProfileQuery } from "../services/queries";
 import { connectSocket, getSocket } from "../socket/socketClient";
+import { useUnreadCounts } from "../context/UnreadCountsContext";
 
 // Dummy conversations data
 const conversations = [
@@ -259,6 +262,30 @@ const resolveAssetUrl = (raw) => {
   return `${base}/${raw}`;
 };
 
+const resolveProfilePictureUrl = (raw, ownerEmail) => {
+  if (!raw || typeof raw !== "string") return "";
+
+  const cleaned = raw.trim();
+  if (!cleaned) return "";
+  if (/^https?:\/\//i.test(cleaned)) return cleaned;
+
+  if (cleaned.includes("uploads/pictures/")) {
+    return resolveAssetUrl(cleaned.startsWith("/") ? cleaned : `/${cleaned}`);
+  }
+
+  if (cleaned.includes("/")) {
+    return resolveAssetUrl(cleaned);
+  }
+
+  if (ownerEmail) {
+    const encodedEmail = encodeURIComponent(ownerEmail);
+    const encodedFile = encodeURIComponent(cleaned);
+    return resolveAssetUrl(`/uploads/pictures/${encodedEmail}/${encodedFile}`);
+  }
+
+  return resolveAssetUrl(cleaned);
+};
+
 const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
   const source =
     payload?.chats ||
@@ -321,6 +348,13 @@ const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
       listing?.seller?.email ||
       user?.email ||
       "";
+    const userEmail =
+      user?.email ||
+      item?.seller?.email ||
+      item?.buyer?.email ||
+      item?.sellerEmail ||
+      item?.buyerEmail ||
+      "";
 
     const unreadRaw =
       pickFirst(item?.unread, item?.unreadCount, item?.unreadMessages, 0) || 0;
@@ -370,12 +404,25 @@ const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
           user?.email,
           "Unknown user",
         ),
-        avatar: resolveAssetUrl(
+        avatar:
+          resolveProfilePictureUrl(
+            pickFirst(
+              user?.avatar,
+              user?.avatarUrl,
+              user?.photo,
+              user?.photoUrl,
+              user?.profilePicture,
+              user?.profile_picture,
+              user?.profilePhoto,
+              user?.profileImage,
+              user?.picture,
+              user?.image,
+              user?.imageUrl,
+            ),
+            userEmail,
+          ) ||
+          resolveAssetUrl(
           pickFirst(
-            user?.avatar,
-            user?.photo,
-            user?.image,
-            user?.profilePicture,
             FALLBACK_AVATAR,
           ),
         ),
@@ -408,6 +455,17 @@ const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
       unread,
       type: pickFirst(item?.type, unread > 0 ? "buying" : "selling", "buying"),
       listing: {
+        id: pickFirst(
+          listing?.listingId,
+          listing?.listing_id,
+          listing?.id,
+          item?.listingId,
+          item?.listing_id,
+          item?.advertId,
+          item?.advert_id,
+          item?.productId,
+          item?.product_id,
+        ),
         title: pickFirst(listing?.title, listing?.name, "Listing"),
         price: formatCurrency(pickFirst(listing?.price, listing?.amount, "")),
         image: resolveListingImagePath(listingImageRaw, {
@@ -416,6 +474,12 @@ const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
             listing?.isAdvertisement ?? listing?.is_advertisement,
           ),
         }),
+        isAdvertisement: Boolean(
+          listing?.isAdvertisement ??
+            listing?.is_advertisement ??
+            item?.isAdvertisement ??
+            item?.is_advertisement,
+        ),
       },
     };
   });
@@ -474,10 +538,26 @@ const normalizeMessagesResponse = (
   });
 };
 
+const parseUpdatedReadCount = (payload) => {
+  const value = pickFirst(
+    payload?.updatedCount,
+    payload?.updated,
+    payload?.count,
+    payload?.data?.updatedCount,
+    payload?.data?.updated,
+    payload?.data?.count,
+    0,
+  );
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+};
+
 export default function Messages() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { decrementUnreadMessages, refetchUnreadMessages } = useUnreadCounts();
   const { data: profileData } = useUserProfileQuery({ retry: false });
   const [selectedConversationId, setSelectedConversationId] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -536,6 +616,31 @@ export default function Messages() {
         profileData?.data?.userId,
       ),
     [profileData],
+  );
+
+  const markChatAsRead = React.useCallback(
+    async (chatId) => {
+      if (!chatId) return;
+      try {
+        const response = await markChatMessagesAsRead(chatId);
+        const updatedCount = parseUpdatedReadCount(response);
+
+        if (updatedCount > 0) {
+          decrementUnreadMessages(updatedCount);
+        } else {
+          refetchUnreadMessages();
+        }
+
+        setConversationsList((prev) =>
+          prev.map((conv) =>
+            String(conv.id) === String(chatId) ? { ...conv, unread: 0 } : conv,
+          ),
+        );
+      } catch {
+        refetchUnreadMessages();
+      }
+    },
+    [decrementUnreadMessages, refetchUnreadMessages],
   );
 
   const {
@@ -642,6 +747,7 @@ export default function Messages() {
         String(incomingChatId) === String(selectedConversationId)
       ) {
         setMessages((prev) => [...prev, normalized]);
+        markChatAsRead(incomingChatId);
       }
 
       // Update conversation list in-place (last message preview + unread badge)
@@ -666,7 +772,12 @@ export default function Messages() {
 
     socket.on("new_message", handleNewMessage);
     return () => socket.off("new_message", handleNewMessage);
-  }, [currentUserId, selectedConversationId, selectedConversation?.sellerId]);
+  }, [
+    currentUserId,
+    selectedConversationId,
+    selectedConversation?.sellerId,
+    markChatAsRead,
+  ]);
 
   const sendMessageMutation = useMutation({
     mutationFn: ({ conversationId, text, receiverId }) =>
@@ -750,6 +861,11 @@ export default function Messages() {
   const handleSelectConversation = (conversation) => {
     setSelectedConversationId(conversation.id);
   };
+
+  useEffect(() => {
+    if (!selectedConversationId) return;
+    markChatAsRead(selectedConversationId);
+  }, [selectedConversationId, markChatAsRead]);
 
   const handleBackToList = () => {
     setSelectedConversationId(null);
@@ -1061,6 +1177,17 @@ export default function Messages() {
     return matchesSearch && matchesFilter;
   });
 
+  const selectedListingPath = useMemo(() => {
+    const listingId = selectedConversation?.listing?.id;
+    if (!listingId) return "";
+
+    if (selectedConversation?.listing?.isAdvertisement) {
+      return `/advertisements/${listingId}`;
+    }
+
+    return `/inventory/${listingId}/edit`;
+  }, [selectedConversation]);
+
   // Render conversation list
   const renderConversationList = () => (
     <Paper
@@ -1365,6 +1492,10 @@ export default function Messages() {
             )}
             {/* Product Image */}
             <Box
+              onClick={() => {
+                if (!selectedListingPath) return;
+                navigate(selectedListingPath);
+              }}
               sx={{
                 width: 50,
                 height: 50,
@@ -1372,6 +1503,7 @@ export default function Messages() {
                 overflow: "hidden",
                 border: "1px solid #e0e0e0",
                 flexShrink: 0,
+                cursor: selectedListingPath ? "pointer" : "default",
               }}
             >
               <img
@@ -1382,7 +1514,21 @@ export default function Messages() {
             </Box>
             <Stack flex={1} spacing={0.25}>
               {/* Product Title */}
-              <Typography fontWeight={600} fontSize={15}>
+              <Typography
+                fontWeight={600}
+                fontSize={15}
+                onClick={() => {
+                  if (!selectedListingPath) return;
+                  navigate(selectedListingPath);
+                }}
+                sx={{
+                  cursor: selectedListingPath ? "pointer" : "default",
+                  width: "fit-content",
+                  "&:hover": selectedListingPath
+                    ? { textDecoration: "underline" }
+                    : undefined,
+                }}
+              >
                 {selectedConversation.listing.title}
               </Typography>
               {/* Price */}
