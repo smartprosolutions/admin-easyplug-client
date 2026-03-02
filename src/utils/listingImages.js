@@ -10,9 +10,17 @@ const withBase = (rawPath) => {
   return `${API_BASE_URL}/${rawPath}`;
 };
 
-const resolveFolder = ({ isAdvertisement = false, variant } = {}) => {
-  if (variant === "catalogue") return "catalogue";
-  return isAdvertisement ? "advert" : "standard";
+const sanitizeImageRef = (raw = "") => {
+  const noQuery = String(raw).split("?")[0].split("#")[0].trim();
+  if (!noQuery) return "";
+
+  const uploadMatch = noQuery.match(
+    /uploads\/listings\/[^/]+\/images\/(?:catalogue|advert|standard)\/([^/]+)$/i,
+  );
+  if (uploadMatch?.[1]) return uploadMatch[1];
+
+  const parts = noQuery.split("/").filter(Boolean);
+  return parts[parts.length - 1] || "";
 };
 
 export const resolveListingImagePath = (raw, options = {}) => {
@@ -22,19 +30,24 @@ export const resolveListingImagePath = (raw, options = {}) => {
   const cleaned = raw.trim();
 
   if (cleaned.includes("uploads/listings/")) {
-    return withBase(cleaned.startsWith("/") ? cleaned : `/${cleaned}`);
-  }
-
-  if (cleaned.includes("/")) {
-    return withBase(cleaned);
+    const normalized = cleaned.replace(
+      /\/images\/(catalogue|advert|standard)\//i,
+      "/images/",
+    );
+    return withBase(normalized.startsWith("/") ? normalized : `/${normalized}`);
   }
 
   const sellerEmail = options?.sellerEmail;
   if (sellerEmail) {
-    const folder = resolveFolder(options);
+    const fileName = sanitizeImageRef(cleaned);
+    if (!fileName) return "";
     const encodedEmail = encodeURIComponent(sellerEmail);
-    const encodedFile = encodeURIComponent(cleaned);
-    return `${API_BASE_URL}/uploads/listings/${encodedEmail}/images/${folder}/${encodedFile}`;
+    const encodedFile = encodeURIComponent(fileName);
+    return `${API_BASE_URL}/uploads/listings/${encodedEmail}/images/${encodedFile}`;
+  }
+
+  if (cleaned.includes("/")) {
+    return withBase(cleaned);
   }
 
   return withBase(cleaned);
