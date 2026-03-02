@@ -1,5 +1,7 @@
 import * as React from "react";
 import Box from "@mui/material/Box";
+import AppBar from "@mui/material/AppBar";
+import Toolbar from "@mui/material/Toolbar";
 import CssBaseline from "@mui/material/CssBaseline";
 import List from "@mui/material/List";
 import IconButton from "@mui/material/IconButton";
@@ -9,6 +11,7 @@ import ListItem from "@mui/material/ListItem";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
+import Stack from "@mui/material/Stack";
 import { Avatar, Tooltip, styled, Typography } from "@mui/material";
 import LogoutIcon from "@mui/icons-material/Logout";
 import logo from "../../assets/images/Sample Logo 1 (4).png";
@@ -17,7 +20,6 @@ import NotificationsRoundedIcon from "@mui/icons-material/NotificationsRounded";
 import MarkunreadIcon from "@mui/icons-material/Markunread";
 import Inventory2RoundedIcon from "@mui/icons-material/Inventory2Rounded";
 import CampaignRoundedIcon from "@mui/icons-material/CampaignRounded";
-import StorefrontRoundedIcon from "@mui/icons-material/StorefrontRounded";
 import SubscriptionsRoundedIcon from "@mui/icons-material/SubscriptionsRounded";
 import ReceiptLongRoundedIcon from "@mui/icons-material/ReceiptLongRounded";
 import GroupRoundedIcon from "@mui/icons-material/GroupRounded";
@@ -25,13 +27,15 @@ import Badge from "@mui/material/Badge";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import Close from "@mui/icons-material/Close";
+import LoginIcon from "@mui/icons-material/Login";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { gradientPrimary } from "../../theme/theme";
 import ConfirmDialog from "../modals/ConfirmDialog";
 import { useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
-import { getUnreadCount } from "../../services/notificationService";
-import { getConversations } from "../../services/messageService";
+import { useState } from "react";
+import { useUnreadCounts } from "../../context/UnreadCountsContext";
 
 // AppBar removed; toolbar contents moved into the drawer
 
@@ -41,68 +45,77 @@ const openedMixin = (theme) => ({
   width: drawerWidth,
   transition: theme.transitions.create("width", {
     easing: theme.transitions.easing.sharp,
-    duration: theme.transitions.duration.enteringScreen
+    duration: theme.transitions.duration.enteringScreen,
   }),
   overflowX: "hidden",
   borderTopRightRadius: 16,
-  borderBottomRightRadius: 16
+  borderBottomRightRadius: 16,
 });
 
 const closedMixin = (theme) => ({
   transition: theme.transitions.create("width", {
     easing: theme.transitions.easing.sharp,
-    duration: theme.transitions.duration.leavingScreen
+    duration: theme.transitions.duration.leavingScreen,
   }),
   overflowX: "hidden",
   width: `calc(${theme.spacing(9)} + 1px)`,
   borderTopRightRadius: 16,
   borderBottomRightRadius: 16,
   [theme.breakpoints.up("sm")]: {
-    width: `calc(${theme.spacing(10)} + 1px)`
-  }
+    width: `calc(${theme.spacing(10)} + 1px)`,
+  },
 });
 
-const Drawer = styled(MuiDrawer, {
-  shouldForwardProp: (prop) => prop !== "open"
-})(({ theme, open }) => ({
+const Drawer = styled(MuiDrawer)(({ theme, open, variant }) => ({
   width: drawerWidth,
   flexShrink: 0,
   whiteSpace: "nowrap",
   boxSizing: "border-box",
-  ...(open && {
-    ...openedMixin(theme),
-    "& .MuiDrawer-paper": openedMixin(theme)
-  }),
-  ...(!open && {
-    ...closedMixin(theme),
-    "& .MuiDrawer-paper": closedMixin(theme)
-  })
+  ...(variant !== "temporary" &&
+    (open
+      ? {
+          ...openedMixin(theme),
+          "& .MuiDrawer-paper": openedMixin(theme),
+        }
+      : {
+          ...closedMixin(theme),
+          "& .MuiDrawer-paper": closedMixin(theme),
+        })),
 }));
 
 const Main = styled("main", {
-  shouldForwardProp: (prop) => prop !== "open"
+  shouldForwardProp: (prop) => prop !== "open",
 })(({ theme, open }) => ({
   flexGrow: 1,
   padding: theme.spacing(3),
   minHeight: "100vh",
-  // Make content width fill the remaining viewport width after the drawer
-  ...(open
-    ? {
-        width: `calc(100vw - ${drawerWidth}px)`,
-        minWidth: `calc(100vw - ${drawerWidth}px)`
-      }
-    : {
-        width: `calc(100vw - calc(${theme.spacing(9)} + 1px))`,
-        minWidth: `calc(100vw - calc(${theme.spacing(9)} + 1px))`,
-        [theme.breakpoints.up("sm")]: {
-          width: `calc(100vw - calc(${theme.spacing(10)} + 1px))`,
-          minWidth: `calc(100vw - calc(${theme.spacing(10)} + 1px))`
+  width: "100%",
+  minWidth: 0,
+  overflowX: "auto",
+  [theme.breakpoints.down("md")]: {
+    padding: theme.spacing(2),
+    width: "100%",
+    minWidth: 0,
+  },
+  [theme.breakpoints.up("md")]: {
+    ...(open
+      ? {
+          width: `calc(100vw - ${drawerWidth}px)`,
+          minWidth: `calc(100vw - ${drawerWidth}px)`,
         }
-      }),
+      : {
+          width: `calc(100vw - calc(${theme.spacing(9)} + 1px))`,
+          minWidth: `calc(100vw - calc(${theme.spacing(9)} + 1px))`,
+          [theme.breakpoints.up("lg")]: {
+            width: `calc(100vw - calc(${theme.spacing(10)} + 1px))`,
+            minWidth: `calc(100vw - calc(${theme.spacing(10)} + 1px))`,
+          },
+        }),
+  },
   transition: theme.transitions.create(["width"], {
     easing: theme.transitions.easing.sharp,
-    duration: theme.transitions.duration.leavingScreen
-  })
+    duration: theme.transitions.duration.leavingScreen,
+  }),
 }));
 
 const DrawerHeader = styled("div")(({ theme }) => ({
@@ -111,7 +124,7 @@ const DrawerHeader = styled("div")(({ theme }) => ({
   justifyContent: "flex-start",
   padding: theme.spacing(1),
   // necessary for content to be below app bar
-  ...theme.mixins.toolbar
+  ...theme.mixins.toolbar,
 }));
 
 const adminNav = [
@@ -120,13 +133,12 @@ const adminNav = [
   {
     title: "Advertisements",
     icon: CampaignRoundedIcon,
-    url: "/advertisements"
+    url: "/advertisements",
   },
-  { title: "Sellers", icon: StorefrontRoundedIcon, url: "/sellers" },
   {
     title: "Subscriptions",
     icon: SubscriptionsRoundedIcon,
-    url: "/subscriptions"
+    url: "/subscriptions",
   },
   { title: "Transactions", icon: ReceiptLongRoundedIcon, url: "/transactions" },
   { title: "User Management", icon: GroupRoundedIcon, url: "/userManagement" },
@@ -134,64 +146,18 @@ const adminNav = [
   {
     title: "Notifications",
     icon: NotificationsRoundedIcon,
-    url: "/notifications"
-  }
+    url: "/notifications",
+  },
 ];
 
 export default function Navigation({ currentTheme, setThemeMode }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const [open, setOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const [confirmOpen, setConfirmOpen] = useState(false);
-
-  const [notificationsCount, setNotificationsCount] = useState(0);
-  const [messagesCount, setMessagesCount] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const fetchCounts = async () => {
-      try {
-        const [notifData, convsData] = await Promise.allSettled([
-          getUnreadCount(),
-          getConversations(),
-        ]);
-
-        if (cancelled) return;
-
-        if (notifData.status === "fulfilled") {
-          setNotificationsCount(
-            notifData.value?.unreadCount ?? notifData.value?.count ?? 0,
-          );
-        }
-
-        if (convsData.status === "fulfilled") {
-          const chats =
-            convsData.value?.chats ||
-            convsData.value?.conversations ||
-            convsData.value?.data ||
-            [];
-          const totalUnread = Array.isArray(chats)
-            ? chats.reduce(
-                (sum, c) => sum + (Number(c?.unreadCount ?? c?.unread) || 0),
-                0,
-              )
-            : 0;
-          setMessagesCount(totalUnread);
-        }
-      } catch {
-        // silently ignore — badge just stays at previous value
-      }
-    };
-
-    fetchCounts();
-    const interval = setInterval(fetchCounts, 30_000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
+  const { messagesUnreadCount, notificationsUnreadCount } = useUnreadCounts();
 
   const handleDrawerOpen = () => setOpen(true);
   const handleDrawerClose = () => setOpen(false);
@@ -207,15 +173,30 @@ export default function Navigation({ currentTheme, setThemeMode }) {
   return (
     <Box
       sx={{
-        display: { md: "flex", xs: "block", sm: "block" },
-        backgroundColor: currentTheme ? "#FFFFFF" : undefined
+        display: "flex",
+        backgroundColor: currentTheme ? "#FFFFFF" : undefined,
       }}
       width="100%"
     >
       <CssBaseline />
 
       {menuToRender.length > 0 && (
-        <Drawer variant="permanent" open={open}>
+        <Drawer
+          variant={isMobile ? "temporary" : "permanent"}
+          open={open}
+          onClose={handleDrawerClose}
+          ModalProps={{ keepMounted: true }}
+          sx={
+            isMobile
+              ? {
+                  "& .MuiDrawer-paper": {
+                    width: drawerWidth,
+                    borderRadius: 0,
+                  },
+                }
+              : undefined
+          }
+        >
           <Box
             sx={{ display: "flex", flexDirection: "column", height: "100%" }}
           >
@@ -235,7 +216,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          bgcolor: "#fff"
+                          bgcolor: "#fff",
                         }}
                       >
                         <img
@@ -244,7 +225,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                           style={{
                             width: "100%",
                             height: "100%",
-                            objectFit: "cover"
+                            objectFit: "cover",
                           }}
                         />
                       </Box>
@@ -256,7 +237,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                           fontWeight: 700,
                           background: gradientPrimary,
                           WebkitBackgroundClip: "text",
-                          WebkitTextFillColor: "transparent"
+                          WebkitTextFillColor: "transparent",
                         }}
                       >
                         EasyPlug
@@ -265,7 +246,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                         variant="caption"
                         sx={{
                           color: "text.secondary",
-                          display: { xs: "none", md: "block" }
+                          display: { xs: "none", md: "block" },
                         }}
                       >
                         Connect Locally
@@ -313,6 +294,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                     <ListItemButton
                       component={Link}
                       to={listItem.url}
+                      onClick={isMobile ? handleDrawerClose : undefined}
                       centerRipple
                       sx={{
                         minHeight: 48,
@@ -340,8 +322,8 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                         "&:hover": {
                           bgcolor: isActive
                             ? undefined
-                            : (theme) => theme.palette.action.hover
-                        }
+                            : (theme) => theme.palette.action.hover,
+                        },
                       }}
                     >
                       <Tooltip
@@ -367,7 +349,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                             bgcolor: "transparent",
                             backgroundImage:
                               !open && isActive ? gradientPrimary : "none",
-                            transition: "transform 180ms ease"
+                            transition: "transform 180ms ease",
                           }}
                         >
                           {(!open && showNotificationBadge) ||
@@ -377,17 +359,17 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                               overlap="circular"
                               badgeContent={
                                 showNotificationBadge
-                                  ? notificationsCount
-                                  : messagesCount
+                                  ? notificationsUnreadCount
+                                  : messagesUnreadCount
                               }
                               invisible={
                                 !(showNotificationBadge
-                                  ? notificationsCount
-                                  : messagesCount)
+                                  ? notificationsUnreadCount
+                                  : messagesUnreadCount)
                               }
                               anchorOrigin={{
                                 vertical: "top",
-                                horizontal: "right"
+                                horizontal: "right",
                               }}
                               sx={{
                                 "& .MuiBadge-badge": {
@@ -396,8 +378,8 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                                   fontSize: 9,
                                   height: 16,
                                   minWidth: 16,
-                                  px: 0.5
-                                }
+                                  px: 0.5,
+                                },
                               }}
                             >
                               <IconComponent fontSize="medium" />
@@ -410,20 +392,29 @@ export default function Navigation({ currentTheme, setThemeMode }) {
 
                       <ListItemText
                         primary={
-                          showNotificationBadge && open ? (
+                          (showNotificationBadge || showMessageBadge) &&
+                          open ? (
                             <Box
                               sx={{
                                 display: "flex",
                                 alignItems: "center",
-                                gap: 0.75
+                                gap: 0.75,
                               }}
                             >
                               <span>{listItem.title}</span>
                               {open && (
                                 <Badge
                                   color="error"
-                                  badgeContent={notificationsCount}
-                                  invisible={!notificationsCount}
+                                  badgeContent={
+                                    showNotificationBadge
+                                      ? notificationsUnreadCount
+                                      : messagesUnreadCount
+                                  }
+                                  invisible={
+                                    !(showNotificationBadge
+                                      ? notificationsUnreadCount
+                                      : messagesUnreadCount)
+                                  }
                                   sx={{
                                     "& .MuiBadge-badge": {
                                       right: -6,
@@ -431,8 +422,8 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                                       fontSize: 9,
                                       height: 16,
                                       minWidth: 16,
-                                      px: 0.5
-                                    }
+                                      px: 0.5,
+                                    },
                                   }}
                                 />
                               )}
@@ -451,7 +442,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                                 : "#fff",
                           ml: open ? 0.5 : 0,
                           fontSize: 13,
-                          fontWeight: open && isActive ? 700 : 500
+                          fontWeight: open && isActive ? 700 : 500,
                         }}
                       />
                     </ListItemButton>
@@ -471,7 +462,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                 flexDirection: open ? "row" : "column",
                 alignItems: "center",
                 justifyContent: open ? "space-between" : "center",
-                gap: open ? 1 : 0.5
+                gap: open ? 1 : 0.5,
               }}
             >
               <Tooltip title="Set Theme">
@@ -521,6 +512,66 @@ export default function Navigation({ currentTheme, setThemeMode }) {
       )}
 
       <Main open={open}>
+        {isMobile && (
+          <AppBar
+            position="fixed"
+            color="inherit"
+            elevation={2}
+            sx={{
+              left: 0,
+              right: 0,
+              width: "100%",
+              zIndex: (theme) => theme.zIndex.appBar,
+              bgcolor: "background.paper",
+              borderBottom: "1px solid",
+              borderColor: "divider",
+            }}
+          >
+            <Toolbar
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                minHeight: 56,
+                px: 0.5,
+                width: "100%",
+              }}
+            >
+              <IconButton
+                aria-label="open navigation"
+                onClick={handleDrawerOpen}
+                size="medium"
+              >
+                <MenuIcon sx={{ color: "primary.main", fontSize: 26 }} />
+              </IconButton>
+
+              <Stack direction="row" spacing={0.5} alignItems="center">
+                <Tooltip title="Open profile">
+                  <IconButton
+                    component={Link}
+                    to="/profile"
+                    aria-label="Open profile"
+                    sx={{ p: 0, bgcolor: "primary.main" }}
+                    size="medium"
+                  >
+                    <Avatar sx={{ width: 32, height: 32, fontSize: 13 }}>
+                      T
+                    </Avatar>
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Sign out">
+                  <IconButton
+                    onClick={() => setConfirmOpen(true)}
+                    size="medium"
+                  >
+                    <LoginIcon sx={{ color: "error.main", fontSize: 24 }} />
+                  </IconButton>
+                </Tooltip>
+              </Stack>
+            </Toolbar>
+          </AppBar>
+        )}
+        {isMobile && <Toolbar sx={{ minHeight: 56, mb: 1 }} />}
         <Outlet />
       </Main>
     </Box>
