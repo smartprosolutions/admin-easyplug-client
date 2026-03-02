@@ -119,13 +119,13 @@ export default function Subscriptions() {
   }
 
   return (
-    <Box sx={{ py: 3, px: { xs: 2, md: 3 } }}>
+    <Box sx={{ py: { xs: 2, md: 3 }, px: { xs: 1.5, sm: 2, md: 3 } }}>
       {/* Header */}
       <Stack
-        direction="row"
-        alignItems="center"
+        direction={{ xs: "column", sm: "row" }}
+        alignItems={{ xs: "flex-start", sm: "center" }}
         justifyContent="space-between"
-        sx={{ mb: 1 }}
+        sx={{ mb: 1, gap: { xs: 0.5, sm: 0 } }}
       >
         <Box>
           <Typography variant="h5" fontWeight={700}>
@@ -142,7 +142,7 @@ export default function Subscriptions() {
         direction={{ xs: "column", sm: "row" }}
         spacing={2}
         sx={{ mt: 2, mb: 3, width: "100%" }}
-        alignItems="center"
+        alignItems={{ xs: "stretch", sm: "center" }}
       >
         <TextField
           value={query}
@@ -167,7 +167,7 @@ export default function Subscriptions() {
           sx={{
             backgroundImage: gradientPrimary,
             color: "#fff",
-            minWidth: 180,
+            minWidth: { xs: "100%", sm: 180 },
             whiteSpace: "nowrap",
             borderRadius: 2,
             px: 3,
@@ -189,13 +189,14 @@ export default function Subscriptions() {
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
-            minHeight: "60vh",
+            minHeight: { xs: "50vh", sm: "60vh" },
             mt: 4,
           }}
         >
           <Card
             sx={{
               maxWidth: 500,
+              width: "100%",
               textAlign: "center",
               background: (theme) =>
                 `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.03)} 0%, ${alpha(theme.palette.secondary.main, 0.03)} 100%)`,
@@ -588,7 +589,7 @@ export default function Subscriptions() {
 
                     {/* Actions */}
                     <Stack
-                      direction="row"
+                      direction={{ xs: "column", sm: "row" }}
                       spacing={1}
                       sx={{
                         mt: "auto",
@@ -602,6 +603,7 @@ export default function Subscriptions() {
                         startIcon={<VisibilityIcon sx={{ fontSize: 16 }} />}
                         sx={{
                           flex: 1,
+                          width: { xs: "100%", sm: "auto" },
                           borderRadius: 2,
                           textTransform: "none",
                           fontWeight: 600,
@@ -618,6 +620,7 @@ export default function Subscriptions() {
                         }
                         sx={{
                           flex: 1,
+                          width: { xs: "100%", sm: "auto" },
                           borderRadius: 2,
                           textTransform: "none",
                           fontWeight: 600,
@@ -644,7 +647,8 @@ export default function Subscriptions() {
                 display: "flex",
                 justifyContent: "center",
                 alignItems: "center",
-                gap: 2,
+                gap: { xs: 1, sm: 2 },
+                flexDirection: { xs: "column", sm: "row" },
                 mt: 4,
               }}
             >
@@ -652,7 +656,7 @@ export default function Subscriptions() {
                 variant="outlined"
                 disabled={currentPage <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                sx={{ borderRadius: 2 }}
+                sx={{ borderRadius: 2, width: { xs: "100%", sm: "auto" } }}
               >
                 Previous
               </Button>
@@ -667,6 +671,7 @@ export default function Subscriptions() {
                   backgroundImage: gradientPrimary,
                   color: "#fff",
                   borderRadius: 2,
+                  width: { xs: "100%", sm: "auto" },
                   "&:hover": { filter: "brightness(0.95)" },
                   "&:disabled": { backgroundImage: "none" },
                 }}
