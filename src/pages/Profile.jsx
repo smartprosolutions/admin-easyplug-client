@@ -29,7 +29,7 @@ function resolvePictureUrl(value, ownerEmail) {
   const emailSeg = ownerEmail ? `/${encodeURIComponent(ownerEmail)}` : "";
   return `${API_ORIGIN.replace(
     /\/$/,
-    ""
+    "",
   )}/uploads/pictures${emailSeg}/${v.replace(/^\//, "")}`;
 }
 import { Formik, Form } from "formik";
@@ -46,12 +46,15 @@ import {
   IconButton,
   Stack,
   Chip,
+  Tooltip,
+  CircularProgress,
   InputAdornment,
-  Link as MuiLink
+  Link as MuiLink,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import SaveIcon from "@mui/icons-material/Save";
 import CancelIcon from "@mui/icons-material/Cancel";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EmailIcon from "@mui/icons-material/Email";
 import PhoneIcon from "@mui/icons-material/LocalPhone";
 import BusinessIcon from "@mui/icons-material/Business";
@@ -73,17 +76,21 @@ import TextFieldWrapper from "../components/forms/TextFieldWrapper";
 import {
   getUserProfileInfo,
   updateUser,
-  uploadProfilePicture
+  uploadProfilePicture,
 } from "../services/authService";
 import {
   updateSellerInfo,
   updateSellerInfoMe,
-  uploadBusinessPicture
+  uploadBusinessPicture,
+  createCompanyAddress,
+  updateCompanyAddress,
+  deleteCompanyAddress,
 } from "../services/sellerInfoService";
 import ToastAlert from "../components/alerts/ToastAlert";
 import { gradientPrimary } from "../theme/theme";
 import { useUserProfileQuery } from "../services/queries";
 import ConfirmDialog from "../components/modals/ConfirmDialog";
+import LocationAutoComplete from "../components/form-components/LocationAutoComplete";
 import { useNavigate } from "react-router-dom";
 
 // Helpers to safely extract IDs from the profile payload
@@ -101,7 +108,81 @@ const gradientButtonSx = {
   background: gradientPrimary,
   color: "#fff",
   boxShadow: "none",
-  "&:hover": { background: gradientPrimary, filter: "brightness(0.95)" }
+  "&:hover": { background: gradientPrimary, filter: "brightness(0.95)" },
+};
+
+const normalizeCompanyAddress = (sellerInfo) => {
+  const rawAddress = sellerInfo?.address;
+
+  if (rawAddress && typeof rawAddress === "object") {
+    return {
+      id:
+        rawAddress?.id ||
+        rawAddress?._id ||
+        rawAddress?.addressId ||
+        sellerInfo?.addressId ||
+        "",
+      line1:
+        rawAddress?.line1 ||
+        rawAddress?.street ||
+        rawAddress?.streetAddress ||
+        rawAddress?.addressLine1 ||
+        "",
+      line2: rawAddress?.line2 || rawAddress?.addressLine2 || "",
+      city: rawAddress?.city || rawAddress?.town || "",
+      state: rawAddress?.state || rawAddress?.province || "",
+      postalCode:
+        rawAddress?.postalCode || rawAddress?.zipCode || rawAddress?.zip || "",
+      country: rawAddress?.country || "",
+      latitude: rawAddress?.latitude || "",
+      longitude: rawAddress?.longitude || "",
+      accuracy: rawAddress?.accuracy || "",
+      radius: rawAddress?.radius || "",
+      streetNumber: rawAddress?.streetNumber || "",
+      streetName: rawAddress?.streetName || rawAddress?.route || "",
+      suburb: rawAddress?.suburb || rawAddress?.sublocality || "",
+      province: rawAddress?.province || rawAddress?.state || "",
+      fullAddress: rawAddress?.fullAddress || "",
+    };
+  }
+
+  return {
+    id: sellerInfo?.addressId || "",
+    line1: typeof rawAddress === "string" ? rawAddress : "",
+    line2: "",
+    city: "",
+    state: "",
+    postalCode: "",
+    country: "",
+    latitude: "",
+    longitude: "",
+    accuracy: "",
+    radius: "",
+    streetNumber: "",
+    streetName: "",
+    suburb: "",
+    province: "",
+    fullAddress: "",
+  };
+};
+
+const formatAddressPreview = (address) => {
+  const parts = [
+    address?.line1,
+    address?.line2,
+    address?.city,
+    address?.state,
+    address?.postalCode,
+    address?.country,
+  ]
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+
+  if (parts.length > 0) return parts.join(", ");
+
+  const fallback =
+    typeof address?.fullAddress === "string" ? address.fullAddress.trim() : "";
+  return fallback || "No company address yet";
 };
 
 export default function Profile() {
@@ -110,7 +191,7 @@ export default function Profile() {
   const navigate = useNavigate();
 
   // Derive user/company view models from API response
-  const { user, company } = useMemo(() => {
+  const { user, company, companyAddress } = useMemo(() => {
     const u = meData?.user || {};
     const s = u?.sellerInfo || {};
     const fullName = `${u?.title ? u.title + " " : ""}${u?.firstName || ""} ${
@@ -134,7 +215,7 @@ export default function Profile() {
         "",
       joined: u?.createdAt || new Date().toISOString(),
       profilePicture: u?.profilePicture || u?.avatarUrl || "",
-      id: u?.id || u?._id
+      id: u?.id || u?._id,
     };
 
     const companyVM = {
@@ -152,17 +233,26 @@ export default function Profile() {
       status: s?.status || "",
       address: s?.address || "",
       taxNumber: s?.taxNumber || "",
-      sellerInfoId: s?.id || s?._id
+      sellerInfoId: s?.id || s?._id,
     };
 
-    return { user: userVM, company: companyVM };
+    const companyAddressVM = normalizeCompanyAddress(s);
+
+    return {
+      user: userVM,
+      company: companyVM,
+      companyAddress: companyAddressVM,
+    };
   }, [meData]);
   const [editingUser, setEditingUser] = useState(false);
   const [editingCompany, setEditingCompany] = useState(false);
+  const [editingCompanyAddress, setEditingCompanyAddress] = useState(false);
+  const [isAddressLocationLoading, setIsAddressLocationLoading] =
+    useState(false);
   const [toast, setToast] = useState({
     open: false,
     severity: "info",
-    message: ""
+    message: "",
   });
   const [confirmOpen, setConfirmOpen] = useState(false);
   // Mutations: update user, update company, upload pictures
@@ -177,7 +267,7 @@ export default function Profile() {
       if (!id) {
         const fresh = await queryClient.fetchQuery({
           queryKey: ["user", "me", "full"],
-          queryFn: getUserProfileInfo
+          queryFn: getUserProfileInfo,
         });
         id = getUserIdFromMe(fresh);
       }
@@ -193,10 +283,10 @@ export default function Profile() {
       setToast({
         open: true,
         severity: "error",
-        message: "Failed to update user"
+        message: "Failed to update user",
       });
     },
-    onSettled: () => setEditingUser(false)
+    onSettled: () => setEditingUser(false),
   });
 
   const updateCompanyMutation = useMutation({
@@ -212,7 +302,7 @@ export default function Profile() {
       if (!sid) {
         const fresh = await queryClient.fetchQuery({
           queryKey: ["user", "me", "full"],
-          queryFn: getUserProfileInfo
+          queryFn: getUserProfileInfo,
         });
         sid = getSellerInfoIdFromMe(fresh);
       }
@@ -229,10 +319,82 @@ export default function Profile() {
       setToast({
         open: true,
         severity: "error",
-        message: "Failed to update company"
+        message: "Failed to update company",
       });
     },
-    onSettled: () => setEditingCompany(false)
+    onSettled: () => setEditingCompany(false),
+  });
+
+  const createCompanyAddressMutation = useMutation({
+    mutationFn: async (payload) => {
+      const sid = company?.sellerInfoId || getSellerInfoIdFromMe(meData);
+      return createCompanyAddress(payload, sid);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["user", "me", "full"] });
+      setToast({
+        open: true,
+        severity: "success",
+        message: "Company address created",
+      });
+      setEditingCompanyAddress(false);
+    },
+    onError: (e) => {
+      console.error(e);
+      setToast({
+        open: true,
+        severity: "error",
+        message: "Failed to create company address",
+      });
+    },
+  });
+
+  const updateCompanyAddressMutation = useMutation({
+    mutationFn: async ({ id, payload }) => {
+      const sid = company?.sellerInfoId || getSellerInfoIdFromMe(meData);
+      return updateCompanyAddress(id, payload, sid);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["user", "me", "full"] });
+      setToast({
+        open: true,
+        severity: "success",
+        message: "Company address updated",
+      });
+      setEditingCompanyAddress(false);
+    },
+    onError: (e) => {
+      console.error(e);
+      setToast({
+        open: true,
+        severity: "error",
+        message: "Failed to update company address",
+      });
+    },
+  });
+
+  const deleteCompanyAddressMutation = useMutation({
+    mutationFn: async (addressId) => {
+      const sid = company?.sellerInfoId || getSellerInfoIdFromMe(meData);
+      return deleteCompanyAddress(addressId, sid);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["user", "me", "full"] });
+      setToast({
+        open: true,
+        severity: "success",
+        message: "Company address deleted",
+      });
+      setEditingCompanyAddress(false);
+    },
+    onError: (e) => {
+      console.error(e);
+      setToast({
+        open: true,
+        severity: "error",
+        message: "Failed to delete company address",
+      });
+    },
   });
 
   const uploadProfilePictureMutation = useMutation({
@@ -242,7 +404,7 @@ export default function Profile() {
       setToast({
         open: true,
         severity: "success",
-        message: "Profile picture updated"
+        message: "Profile picture updated",
       });
     },
     onError: (e) => {
@@ -250,9 +412,9 @@ export default function Profile() {
       setToast({
         open: true,
         severity: "error",
-        message: "Failed to update profile picture"
+        message: "Failed to update profile picture",
       });
-    }
+    },
   });
 
   const uploadBusinessPictureMutation = useMutation({
@@ -262,7 +424,7 @@ export default function Profile() {
       setToast({
         open: true,
         severity: "success",
-        message: "Business picture updated"
+        message: "Business picture updated",
       });
     },
     onError: (e) => {
@@ -270,10 +432,69 @@ export default function Profile() {
       setToast({
         open: true,
         severity: "error",
-        message: "Failed to update business picture"
+        message: "Failed to update business picture",
       });
-    }
+    },
   });
+
+  const hasCompanyAddress =
+    Boolean(companyAddress?.id) ||
+    Boolean(companyAddress?.line1) ||
+    Boolean(companyAddress?.fullAddress);
+
+  const isAddressMutationPending =
+    createCompanyAddressMutation.isPending ||
+    updateCompanyAddressMutation.isPending ||
+    deleteCompanyAddressMutation.isPending;
+
+  const toDecimalOrNull = (value) => {
+    if (value === undefined || value === null) return null;
+    const normalized = String(value).trim();
+    if (!normalized) return null;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const handleSaveCompanyAddress = (values) => {
+    const line1Text = String(values.line1 || "").trim();
+    const line1Parts = line1Text.split(/\s+/).filter(Boolean);
+    const inferredStreetNumber =
+      !values.streetNumber && line1Parts.length > 1 ? line1Parts[0] : "";
+    const inferredStreetName =
+      !values.streetName && line1Parts.length > 1
+        ? line1Parts.slice(1).join(" ")
+        : "";
+
+    const payload = {
+      latitude: toDecimalOrNull(values.latitude),
+      longitude: toDecimalOrNull(values.longitude),
+      accuracy: toDecimalOrNull(values.accuracy),
+      radius: toDecimalOrNull(values.radius),
+      streetNumber: values.streetNumber || inferredStreetNumber,
+      streetName: values.streetName || inferredStreetName,
+      suburb: values.suburb,
+      city: values.city,
+      province: values.province || values.state,
+      country: values.country,
+      postalCode: values.postalCode,
+      line1: values.line1,
+      line2: values.line2,
+      state: values.state,
+      fullAddress: values.fullAddress,
+    };
+
+    if (values.id) {
+      updateCompanyAddressMutation.mutate({ id: values.id, payload });
+      return;
+    }
+
+    createCompanyAddressMutation.mutate(payload);
+  };
+
+  const handleDeleteCompanyAddress = (addressId) => {
+    if (!addressId && !hasCompanyAddress) return;
+    deleteCompanyAddressMutation.mutate(addressId || companyAddress?.id);
+  };
 
   return (
     <Box
@@ -284,12 +505,12 @@ export default function Profile() {
           background: gradientPrimary,
           color: "#fff",
           py: { xs: 4, md: 8 },
-          px: { xs: 2, md: 6 }
+          px: { xs: 2, md: 6 },
         }}
       >
         <Container maxWidth="xl">
           <Grid container spacing={2} alignItems="center">
-            <Grid item size={{ xs: 12, md: 8 }}>
+            <Grid size={{ xs: 12, md: 8 }}>
               <Typography variant="h3" sx={{ fontWeight: 700 }}>
                 {user?.name || "Profile"}
               </Typography>
@@ -298,7 +519,7 @@ export default function Profile() {
                   " — member since " +
                   new Date(user?.joined).toLocaleString(undefined, {
                     month: "short",
-                    year: "numeric"
+                    year: "numeric",
                   })}
               </Typography>
               <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
@@ -310,11 +531,11 @@ export default function Profile() {
                 <Chip icon={<PhoneIcon />} label={user?.phone || "-"} />
               </Stack>
             </Grid>
-            <Grid item size={{ xs: 12, md: 4 }}>
+            <Grid size={{ xs: 12, md: 4 }}>
               <Box
                 sx={{
                   display: "flex",
-                  justifyContent: { xs: "flex-start", md: "flex-end" }
+                  justifyContent: { xs: "flex-start", md: "flex-end" },
                 }}
               >
                 <Box sx={{ position: "relative", width: 120, height: 120 }}>
@@ -324,7 +545,7 @@ export default function Profile() {
                       width: 120,
                       height: 120,
                       bgcolor: "secondary.main",
-                      fontSize: 36
+                      fontSize: 36,
                     }}
                   >
                     {user?.avatarInitials || ""}
@@ -340,7 +561,7 @@ export default function Profile() {
                       p: 1,
                       borderRadius: "50%",
                       background: "rgba(0,0,0,0.6)",
-                      color: "#fff"
+                      color: "#fff",
                     }}
                   >
                     <PhotoCameraIcon fontSize="small" />
@@ -355,7 +576,7 @@ export default function Profile() {
                           setToast({
                             open: true,
                             severity: "warning",
-                            message: "Please select a valid image"
+                            message: "Please select a valid image",
                           });
                           return;
                         }
@@ -379,7 +600,7 @@ export default function Profile() {
           onClose={() => setToast((t) => ({ ...t, open: false }))}
         />
         <Grid container spacing={3}>
-          <Grid item size={{ xs: 12, md: 3 }}>
+          <Grid size={{ xs: 12, md: 3 }}>
             <Paper sx={{ p: 2, borderRadius: 2 }} elevation={3}>
               <Typography variant="subtitle2" color="text.secondary">
                 Account
@@ -413,13 +634,13 @@ export default function Profile() {
             </Paper>
           </Grid>
 
-          <Grid item size={{ xs: 12, md: 6 }}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <Paper sx={{ p: 3, borderRadius: 2 }} elevation={3}>
               <Box
                 sx={{
                   display: "flex",
                   justifyContent: "space-between",
-                  alignItems: "center"
+                  alignItems: "center",
                 }}
               >
                 <Typography variant="h6">User Details</Typography>
@@ -436,8 +657,8 @@ export default function Profile() {
                         ...gradientButtonSx,
                         "&:hover": {
                           background: gradientPrimary,
-                          filter: "brightness(0.9)"
-                        }
+                          filter: "brightness(0.9)",
+                        },
                       }}
                     >
                       <SaveIcon />
@@ -464,7 +685,7 @@ export default function Profile() {
                 {({ submitForm, resetForm }) => (
                   <Form>
                     <Grid container spacing={2} sx={{ mt: 1 }}>
-                      <Grid item size={{ xs: 12, sm: 6 }}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
                         <Typography
                           variant="caption"
                           color="text.secondary"
@@ -481,7 +702,7 @@ export default function Profile() {
                                 <InputAdornment position="start">
                                   <PersonIcon fontSize="small" />
                                 </InputAdornment>
-                              )
+                              ),
                             }}
                           />
                         ) : (
@@ -497,7 +718,7 @@ export default function Profile() {
                           </Stack>
                         )}
                       </Grid>
-                      <Grid item size={{ xs: 12, sm: 6 }}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
                         <Typography
                           variant="caption"
                           color="text.secondary"
@@ -515,7 +736,7 @@ export default function Profile() {
                                 <InputAdornment position="start">
                                   <WorkOutlineIcon fontSize="small" />
                                 </InputAdornment>
-                              )
+                              ),
                             }}
                           />
                         ) : (
@@ -531,7 +752,7 @@ export default function Profile() {
                           </Stack>
                         )}
                       </Grid>
-                      <Grid item size={{ xs: 12, sm: 6 }}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
                         <Typography
                           variant="caption"
                           color="text.secondary"
@@ -549,7 +770,7 @@ export default function Profile() {
                                 <InputAdornment position="start">
                                   <EmailIcon fontSize="small" />
                                 </InputAdornment>
-                              )
+                              ),
                             }}
                           />
                         ) : (
@@ -565,7 +786,7 @@ export default function Profile() {
                           </Stack>
                         )}
                       </Grid>
-                      <Grid item size={{ xs: 12, sm: 6 }}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
                         <Typography
                           variant="caption"
                           color="text.secondary"
@@ -582,7 +803,7 @@ export default function Profile() {
                                 <InputAdornment position="start">
                                   <PhoneIcon fontSize="small" />
                                 </InputAdornment>
-                              )
+                              ),
                             }}
                           />
                         ) : (
@@ -598,7 +819,7 @@ export default function Profile() {
                           </Stack>
                         )}
                       </Grid>
-                      <Grid item size={{ xs: 12 }}>
+                      <Grid size={{ xs: 12 }}>
                         <Typography
                           variant="caption"
                           color="text.secondary"
@@ -616,7 +837,7 @@ export default function Profile() {
                                 <InputAdornment position="start">
                                   <NumbersIcon fontSize="small" />
                                 </InputAdornment>
-                              )
+                              ),
                             }}
                           />
                         ) : (
@@ -633,7 +854,7 @@ export default function Profile() {
                         )}
                       </Grid>
                       {editingUser && (
-                        <Grid item size={{ xs: 12 }}>
+                        <Grid size={{ xs: 12 }}>
                           <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
                             <Button
                               variant="contained"
@@ -667,7 +888,7 @@ export default function Profile() {
                 sx={{
                   display: "flex",
                   justifyContent: "space-between",
-                  alignItems: "center"
+                  alignItems: "center",
                 }}
               >
                 <Stack direction="row" spacing={1.5} alignItems="center">
@@ -675,13 +896,13 @@ export default function Profile() {
                     <Avatar
                       src={resolvePictureUrl(
                         company?.businessPicture,
-                        user?.email || company?.businessEmail
+                        user?.email || company?.businessEmail,
                       )}
                       sx={{
                         width: 48,
                         height: 48,
                         bgcolor: "primary.main",
-                        fontSize: 18
+                        fontSize: 18,
                       }}
                     >
                       {(company.businessName || "").charAt(0).toUpperCase()}
@@ -697,7 +918,7 @@ export default function Profile() {
                         p: 0.5,
                         borderRadius: "50%",
                         background: "rgba(0,0,0,0.6)",
-                        color: "#fff"
+                        color: "#fff",
                       }}
                     >
                       <PhotoCameraIcon fontSize="small" />
@@ -712,7 +933,7 @@ export default function Profile() {
                             setToast({
                               open: true,
                               severity: "warning",
-                              message: "Please select a valid image"
+                              message: "Please select a valid image",
                             });
                             return;
                           }
@@ -741,8 +962,8 @@ export default function Profile() {
                         height: 32,
                         "&:hover": {
                           background: gradientPrimary,
-                          filter: "brightness(0.9)"
-                        }
+                          filter: "brightness(0.9)",
+                        },
                       }}
                     >
                       <SaveIcon />
@@ -782,7 +1003,7 @@ export default function Profile() {
                     instagramURL: v.instagramURL,
                     twitterURL: v.twitterURL,
                     linkedInURL: v.linkedInURL,
-                    taxNumber: v.taxNumber
+                    taxNumber: v.taxNumber,
                   };
                   updateCompanyMutation.mutate(payload);
                 }}
@@ -790,7 +1011,7 @@ export default function Profile() {
                 {({ submitForm, resetForm, values }) => (
                   <Form>
                     <Grid container spacing={2} sx={{ mt: 1 }}>
-                      <Grid item size={{ xs: 12, sm: 6 }}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
                         <Typography
                           variant="caption"
                           color="text.secondary"
@@ -807,7 +1028,7 @@ export default function Profile() {
                                 <InputAdornment position="start">
                                   <BusinessIcon fontSize="small" />
                                 </InputAdornment>
-                              )
+                              ),
                             }}
                           />
                         ) : (
@@ -823,7 +1044,7 @@ export default function Profile() {
                           </Stack>
                         )}
                       </Grid>
-                      <Grid item size={{ xs: 12, sm: 6 }}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
                         <Typography
                           variant="caption"
                           color="text.secondary"
@@ -840,7 +1061,7 @@ export default function Profile() {
                                 <InputAdornment position="start">
                                   <EmailIcon fontSize="small" />
                                 </InputAdornment>
-                              )
+                              ),
                             }}
                           />
                         ) : (
@@ -856,7 +1077,7 @@ export default function Profile() {
                           </Stack>
                         )}
                       </Grid>
-                      <Grid item size={{ xs: 12 }}>
+                      <Grid size={{ xs: 12 }}>
                         <Typography
                           variant="caption"
                           color="text.secondary"
@@ -873,7 +1094,7 @@ export default function Profile() {
                                 <InputAdornment position="start">
                                   <NumbersIcon fontSize="small" />
                                 </InputAdornment>
-                              )
+                              ),
                             }}
                           />
                         ) : (
@@ -889,35 +1110,13 @@ export default function Profile() {
                           </Stack>
                         )}
                       </Grid>
-                      {/* Address: remove label & icon when editing */}
-                      <Grid item size={{ xs: 12 }}>
-                        {editingCompany ? (
-                          <Typography variant="body1">
-                            {values.address}
-                          </Typography>
-                        ) : (
-                          <>
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              sx={{ mb: 0.5, display: "block" }}
-                            >
-                              Address
-                            </Typography>
-                            <Stack
-                              direction="row"
-                              spacing={1}
-                              alignItems="center"
-                            >
-                              <LocationOnIcon fontSize="small" />
-                              <Typography variant="body1">
-                                {values.address}
-                              </Typography>
-                            </Stack>
-                          </>
-                        )}
+                      <Grid size={{ xs: 12 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Address is managed in the Company Address section
+                          below.
+                        </Typography>
                       </Grid>
-                      <Grid item size={{ xs: 12, sm: 6 }}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
                         <Typography
                           variant="caption"
                           color="text.secondary"
@@ -934,7 +1133,7 @@ export default function Profile() {
                                 <InputAdornment position="start">
                                   <LanguageIcon fontSize="small" />
                                 </InputAdornment>
-                              )
+                              ),
                             }}
                           />
                         ) : (
@@ -956,7 +1155,7 @@ export default function Profile() {
                           </Stack>
                         )}
                       </Grid>
-                      <Grid item size={{ xs: 12, sm: 6 }}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
                         <Typography
                           variant="caption"
                           color="text.secondary"
@@ -973,7 +1172,7 @@ export default function Profile() {
                                 <InputAdornment position="start">
                                   <ReceiptLongIcon fontSize="small" />
                                 </InputAdornment>
-                              )
+                              ),
                             }}
                           />
                         ) : (
@@ -989,7 +1188,7 @@ export default function Profile() {
                           </Stack>
                         )}
                       </Grid>
-                      <Grid item size={{ xs: 12, sm: 6 }}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
                         <Typography
                           variant="caption"
                           color="text.secondary"
@@ -1007,7 +1206,7 @@ export default function Profile() {
                                 <InputAdornment position="start">
                                   <InfoOutlinedIcon fontSize="small" />
                                 </InputAdornment>
-                              )
+                              ),
                             }}
                           />
                         ) : (
@@ -1023,7 +1222,7 @@ export default function Profile() {
                           </Stack>
                         )}
                       </Grid>
-                      <Grid item size={{ xs: 12, sm: 6 }}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
                         <Typography
                           variant="caption"
                           color="text.secondary"
@@ -1040,7 +1239,7 @@ export default function Profile() {
                                 <InputAdornment position="start">
                                   <VerifiedIcon fontSize="small" />
                                 </InputAdornment>
-                              )
+                              ),
                             }}
                           />
                         ) : (
@@ -1059,13 +1258,13 @@ export default function Profile() {
                           </Stack>
                         )}
                       </Grid>
-                      <Grid item size={{ xs: 12 }}>
+                      <Grid size={{ xs: 12 }}>
                         <Typography variant="caption" color="text.secondary">
                           Social Profiles
                         </Typography>
                         {editingCompany ? (
                           <Grid container spacing={1} sx={{ mt: 1 }}>
-                            <Grid item size={{ xs: 12, sm: 6 }}>
+                            <Grid size={{ xs: 12, sm: 6 }}>
                               <TextFieldWrapper
                                 name="facebookURL"
                                 label="Facebook"
@@ -1074,11 +1273,11 @@ export default function Profile() {
                                     <InputAdornment position="start">
                                       <FacebookIcon fontSize="small" />
                                     </InputAdornment>
-                                  )
+                                  ),
                                 }}
                               />
                             </Grid>
-                            <Grid item size={{ xs: 12, sm: 6 }}>
+                            <Grid size={{ xs: 12, sm: 6 }}>
                               <TextFieldWrapper
                                 name="twitterURL"
                                 label="Twitter"
@@ -1087,11 +1286,11 @@ export default function Profile() {
                                     <InputAdornment position="start">
                                       <TwitterIcon fontSize="small" />
                                     </InputAdornment>
-                                  )
+                                  ),
                                 }}
                               />
                             </Grid>
-                            <Grid item size={{ xs: 12, sm: 6 }}>
+                            <Grid size={{ xs: 12, sm: 6 }}>
                               <TextFieldWrapper
                                 name="instagramURL"
                                 label="Instagram"
@@ -1100,11 +1299,11 @@ export default function Profile() {
                                     <InputAdornment position="start">
                                       <InstagramIcon fontSize="small" />
                                     </InputAdornment>
-                                  )
+                                  ),
                                 }}
                               />
                             </Grid>
-                            <Grid item size={{ xs: 12, sm: 6 }}>
+                            <Grid size={{ xs: 12, sm: 6 }}>
                               <TextFieldWrapper
                                 name="linkedInURL"
                                 label="LinkedIn"
@@ -1113,7 +1312,7 @@ export default function Profile() {
                                     <InputAdornment position="start">
                                       <LinkedInIcon fontSize="small" />
                                     </InputAdornment>
-                                  )
+                                  ),
                                 }}
                               />
                             </Grid>
@@ -1161,7 +1360,7 @@ export default function Profile() {
                         )}
                       </Grid>
                       {editingCompany && (
-                        <Grid item size={{ xs: 12 }}>
+                        <Grid size={{ xs: 12 }}>
                           <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
                             <Button
                               variant="contained"
@@ -1189,9 +1388,269 @@ export default function Profile() {
                 )}
               </Formik>
             </Paper>
+
+            <Paper sx={{ p: 3, borderRadius: 2, mt: 3 }} elevation={3}>
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <LocationOnIcon color="primary" />
+                  <Typography variant="h6">Company Address</Typography>
+                </Stack>
+
+                {!editingCompanyAddress ? (
+                  <Tooltip
+                    title={hasCompanyAddress ? "Edit Address" : "Add Address"}
+                  >
+                    <IconButton
+                      size="small"
+                      onClick={() => setEditingCompanyAddress(true)}
+                    >
+                      <EditIcon />
+                    </IconButton>
+                  </Tooltip>
+                ) : null}
+              </Box>
+
+              <Formik
+                initialValues={companyAddress}
+                enableReinitialize
+                onSubmit={(values) => {
+                  handleSaveCompanyAddress(values);
+                }}
+              >
+                {({ values, submitForm, resetForm, setFieldValue }) => (
+                  <Form>
+                    <Grid container spacing={2} sx={{ mt: 1 }}>
+                      {!editingCompanyAddress ? (
+                        <Grid size={{ xs: 12 }}>
+                          <Typography variant="body1">
+                            {formatAddressPreview(values)}
+                          </Typography>
+                        </Grid>
+                      ) : (
+                        <>
+                          <Grid size={{ xs: 12 }}>
+                            <LocationAutoComplete
+                              defaultAddressValues={{
+                                latitude: values.latitude || "",
+                                longitude: values.longitude || "",
+                                accuracy: values.accuracy || "",
+                                radius: values.radius || "",
+                                streetNumber: values.streetNumber || "",
+                                streetName: values.streetName || "",
+                                suburb: values.suburb || "",
+                                city: values.city || "",
+                                province: values.province || values.state || "",
+                                country: values.country || "",
+                                postalCode: values.postalCode || "",
+                              }}
+                              setAddressInfor={(addressInfo) => {
+                                const hasField = (field) =>
+                                  Object.prototype.hasOwnProperty.call(
+                                    addressInfo,
+                                    field,
+                                  );
+                                const normalize = (value) =>
+                                  value === undefined || value === null
+                                    ? ""
+                                    : String(value);
+                                const setIfChanged = (field, nextValue) => {
+                                  const next = normalize(nextValue);
+                                  const current = normalize(values[field]);
+                                  if (current !== next) {
+                                    setFieldValue(field, next, false);
+                                  }
+                                };
+
+                                const streetNumber =
+                                  addressInfo.streetNumber || "";
+                                const streetName = addressInfo.streetName || "";
+                                const line1 =
+                                  `${streetNumber} ${streetName}`.trim();
+                                const city =
+                                  addressInfo.city || addressInfo.suburb || "";
+                                const province = addressInfo.province || "";
+                                const state = province;
+                                const country = addressInfo.country || "";
+                                const postalCode = addressInfo.postalCode || "";
+
+                                if (hasField("latitude")) {
+                                  setIfChanged(
+                                    "latitude",
+                                    addressInfo.latitude,
+                                  );
+                                }
+                                if (hasField("longitude")) {
+                                  setIfChanged(
+                                    "longitude",
+                                    addressInfo.longitude,
+                                  );
+                                }
+                                if (hasField("accuracy")) {
+                                  setIfChanged(
+                                    "accuracy",
+                                    addressInfo.accuracy,
+                                  );
+                                }
+                                if (hasField("radius")) {
+                                  setIfChanged("radius", addressInfo.radius);
+                                }
+                                if (hasField("streetNumber")) {
+                                  setIfChanged("streetNumber", streetNumber);
+                                }
+                                if (hasField("streetName")) {
+                                  setIfChanged("streetName", streetName);
+                                }
+                                if (hasField("suburb")) {
+                                  setIfChanged(
+                                    "suburb",
+                                    addressInfo.suburb || "",
+                                  );
+                                }
+                                if (hasField("province")) {
+                                  setIfChanged("province", province);
+                                }
+
+                                if (line1) setIfChanged("line1", line1);
+                                if (city) setIfChanged("city", city);
+                                if (state) setIfChanged("state", state);
+                                if (country) setIfChanged("country", country);
+                                if (postalCode)
+                                  setIfChanged("postalCode", postalCode);
+
+                                const fullAddress = [
+                                  line1,
+                                  addressInfo.suburb || "",
+                                  city,
+                                  state,
+                                  country,
+                                  postalCode,
+                                ]
+                                  .map((part) => String(part || "").trim())
+                                  .filter(Boolean)
+                                  .join(", ");
+
+                                if (fullAddress) {
+                                  setIfChanged("fullAddress", fullAddress);
+                                }
+                              }}
+                              onCurrentLocationLoadingChange={
+                                setIsAddressLocationLoading
+                              }
+                            />
+                            {isAddressLocationLoading ? (
+                              <Stack
+                                direction="row"
+                                spacing={1}
+                                alignItems="center"
+                                sx={{ mt: 0.75 }}
+                              >
+                                <CircularProgress size={16} />
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  Loading current location...
+                                </Typography>
+                              </Stack>
+                            ) : null}
+                          </Grid>
+
+                          <Grid size={{ xs: 12, sm: 6 }}>
+                            <TextFieldWrapper
+                              name="line1"
+                              label="Address Line 1"
+                              InputProps={{
+                                startAdornment: (
+                                  <InputAdornment position="start">
+                                    <LocationOnIcon fontSize="small" />
+                                  </InputAdornment>
+                                ),
+                              }}
+                            />
+                          </Grid>
+                          <Grid size={{ xs: 12, sm: 6 }}>
+                            <TextFieldWrapper
+                              name="line2"
+                              label="Address Line 2"
+                            />
+                          </Grid>
+                          <Grid size={{ xs: 12, sm: 4 }}>
+                            <TextFieldWrapper name="city" label="City" />
+                          </Grid>
+                          <Grid size={{ xs: 12, sm: 4 }}>
+                            <TextFieldWrapper
+                              name="state"
+                              label="State / Province"
+                            />
+                          </Grid>
+                          <Grid size={{ xs: 12, sm: 4 }}>
+                            <TextFieldWrapper
+                              name="postalCode"
+                              label="Postal Code"
+                            />
+                          </Grid>
+                          <Grid size={{ xs: 12, sm: 6 }}>
+                            <TextFieldWrapper name="country" label="Country" />
+                          </Grid>
+                          <Grid size={{ xs: 12, sm: 6 }}>
+                            <TextFieldWrapper
+                              name="fullAddress"
+                              label="Full Address (optional)"
+                            />
+                          </Grid>
+                          <Grid size={{ xs: 12 }}>
+                            <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                              <Button
+                                variant="contained"
+                                startIcon={<SaveIcon />}
+                                onClick={submitForm}
+                                disabled={isAddressMutationPending}
+                                sx={gradientButtonSx}
+                              >
+                                Save Address
+                              </Button>
+                              <Button
+                                variant="outlined"
+                                startIcon={<CancelIcon />}
+                                onClick={() => {
+                                  resetForm();
+                                  setEditingCompanyAddress(false);
+                                }}
+                                disabled={isAddressMutationPending}
+                              >
+                                Cancel
+                              </Button>
+                              {hasCompanyAddress && (
+                                <Button
+                                  color="error"
+                                  variant="outlined"
+                                  startIcon={<DeleteOutlineIcon />}
+                                  onClick={() =>
+                                    handleDeleteCompanyAddress(values.id)
+                                  }
+                                  disabled={isAddressMutationPending}
+                                >
+                                  Delete Address
+                                </Button>
+                              )}
+                            </Stack>
+                          </Grid>
+                        </>
+                      )}
+                    </Grid>
+                  </Form>
+                )}
+              </Formik>
+            </Paper>
           </Grid>
 
-          <Grid item size={{ xs: 12, md: 3 }}>
+          <Grid size={{ xs: 12, md: 3 }}>
             <Paper sx={{ p: 2, borderRadius: 2 }} elevation={3}>
               <Typography variant="subtitle2" color="text.secondary">
                 Quick Actions
