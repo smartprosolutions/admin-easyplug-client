@@ -19,6 +19,8 @@ import FilterListIcon from "@mui/icons-material/FilterList";
 import EmailIcon from "@mui/icons-material/Email";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import LocalOfferIcon from "@mui/icons-material/LocalOffer";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getNotifications,
@@ -26,6 +28,7 @@ import {
   deleteNotification,
 } from "../services/notificationService";
 import { connectSocket, getSocket } from "../socket/socketClient";
+import { useUnreadCounts } from "../context/UnreadCountsContext";
 
 const formatTimeAgo = (dateValue) => {
   if (!dateValue) return "";
@@ -42,7 +45,11 @@ const formatTimeAgo = (dateValue) => {
 };
 
 export default function Notifications() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const queryClient = useQueryClient();
+  const { decrementUnreadNotifications, refetchUnreadNotifications } =
+    useUnreadCounts();
   const [filter, setFilter] = useState("all");
   const [notifications, setNotifications] = useState([]);
 
@@ -61,7 +68,7 @@ export default function Notifications() {
         body: n.message,
         time: formatTimeAgo(n.createdAt),
         isRead: Boolean(n.isRead),
-      }))
+      })),
     );
   }, [notificationsResponse]);
 
@@ -93,27 +100,41 @@ export default function Notifications() {
   const markAsReadMutation = useMutation({
     mutationFn: (id) => markAsRead(id),
     onSuccess: (_, id) => {
+      const target = notifications.find((n) => n.id === id);
       setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)),
       );
+      if (target && !target.isRead) {
+        decrementUnreadNotifications(1);
+      }
     },
-    onError: (err) => console.error("Failed to mark as read:", err),
+    onError: (err) => {
+      refetchUnreadNotifications();
+      console.error("Failed to mark as read:", err);
+    },
   });
 
   const deleteNotificationMutation = useMutation({
     mutationFn: (id) => deleteNotification(id),
     onSuccess: (_, id) => {
+      const target = notifications.find((n) => n.id === id);
       setNotifications((prev) => prev.filter((n) => n.id !== id));
+      if (target && !target.isRead) {
+        decrementUnreadNotifications(1);
+      }
     },
-    onError: (err) => console.error("Failed to delete notification:", err),
+    onError: (err) => {
+      refetchUnreadNotifications();
+      console.error("Failed to delete notification:", err);
+    },
   });
 
   const filtered = useMemo(
     () =>
       notifications.filter((n) =>
-        filter === "all" ? true : n.type === filter
+        filter === "all" ? true : n.type === filter,
       ),
-    [notifications, filter]
+    [notifications, filter],
   );
 
   const typeChip = (t) => {
@@ -162,25 +183,46 @@ export default function Notifications() {
   };
 
   return (
-    <Box sx={{ p: 2 }}>
+    <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
       <Stack
-        direction="row"
+        direction={{ xs: "column", sm: "row" }}
         justifyContent="space-between"
-        alignItems="center"
+        alignItems={{ xs: "stretch", sm: "center" }}
         sx={{ mb: 2 }}
       >
         <Typography variant="h5">Notifications</Typography>
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
           <Button
             startIcon={<FilterListIcon />}
             onClick={() => setFilter("all")}
+            size={isMobile ? "small" : "medium"}
           >
             All
           </Button>
-          <Button onClick={() => setFilter("system")}>System</Button>
-          <Button onClick={() => setFilter("message")}>Messages</Button>
-          <Button onClick={() => setFilter("warning")}>Warnings</Button>
-          <Button onClick={() => setFilter("promo")}>Promos</Button>
+          <Button
+            onClick={() => setFilter("system")}
+            size={isMobile ? "small" : "medium"}
+          >
+            System
+          </Button>
+          <Button
+            onClick={() => setFilter("message")}
+            size={isMobile ? "small" : "medium"}
+          >
+            Messages
+          </Button>
+          <Button
+            onClick={() => setFilter("warning")}
+            size={isMobile ? "small" : "medium"}
+          >
+            Warnings
+          </Button>
+          <Button
+            onClick={() => setFilter("promo")}
+            size={isMobile ? "small" : "medium"}
+          >
+            Promos
+          </Button>
         </Stack>
       </Stack>
       <Paper sx={{ p: 2 }} elevation={3}>
@@ -188,9 +230,31 @@ export default function Notifications() {
           {filtered.map((n, idx) => (
             <React.Fragment key={n.id}>
               <ListItem
-                sx={{ opacity: n.isRead ? 0.6 : 1 }}
-                secondaryAction={
-                  <Stack direction="row" spacing={1}>
+                sx={{
+                  opacity: n.isRead ? 0.6 : 1,
+                  alignItems: "flex-start",
+                  gap: 1,
+                  px: { xs: 0.5, sm: 2 },
+                }}
+              >
+                <ListItemIcon>
+                  <Avatar
+                    sx={{ bgcolor: n.isRead ? "grey.400" : "primary.main" }}
+                  >
+                    {n.title?.charAt(0) || "N"}
+                  </Avatar>
+                </ListItemIcon>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <ListItemText
+                    primary={n.title}
+                    secondary={`${n.body} • ${n.time}`}
+                    sx={{ my: 0 }}
+                  />
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    sx={{ mt: 1, flexWrap: "wrap", rowGap: 1 }}
+                  >
                     {typeChip(n.type)}
                     {!n.isRead && (
                       <IconButton
@@ -211,17 +275,7 @@ export default function Notifications() {
                       <DeleteOutlineIcon />
                     </IconButton>
                   </Stack>
-                }
-              >
-                <ListItemIcon>
-                  <Avatar sx={{ bgcolor: n.isRead ? "grey.400" : "primary.main" }}>
-                    {n.title?.charAt(0) || "N"}
-                  </Avatar>
-                </ListItemIcon>
-                <ListItemText
-                  primary={n.title}
-                  secondary={`${n.body} • ${n.time}`}
-                />
+                </Box>
               </ListItem>
               {idx < filtered.length - 1 && <Divider component="li" />}
             </React.Fragment>
