@@ -19,7 +19,7 @@ export default function GoogleOneTap({ clientId }) {
           client_id: clientId,
           callback: () => {},
           itp_support: true,
-          use_fedcm_for_prompt: false
+          use_fedcm_for_prompt: true,
         });
         initializedRef.current = true;
         // Prompt on initial load if not on /login
@@ -31,13 +31,7 @@ export default function GoogleOneTap({ clientId }) {
             /* no-op */
           }
           try {
-            window.google.accounts.id.prompt((notification) => {
-              const nd = notification.getNotDisplayedReason?.();
-              const sk = notification.getSkippedReason?.();
-              if (nd || sk) {
-                // suppressed; do nothing
-              }
-            });
+            window.google.accounts.id.prompt();
             lastPromptPathRef.current = path;
           } catch {
             /* no-op */
@@ -75,13 +69,7 @@ export default function GoogleOneTap({ clientId }) {
     if (lastPromptPathRef.current === path) return;
     try { window.google?.accounts?.id?.cancel?.(); } catch { /* no-op */ }
     try {
-      window.google?.accounts?.id?.prompt?.((notification) => {
-        const nd = notification.getNotDisplayedReason?.();
-        const sk = notification.getSkippedReason?.();
-        if (nd || sk) {
-          // suppressed; do nothing
-        }
-      });
+      window.google?.accounts?.id?.prompt?.();
       lastPromptPathRef.current = path;
     } catch { /* no-op */ }
   }, [location.pathname]);
