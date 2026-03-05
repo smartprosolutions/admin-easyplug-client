@@ -8,7 +8,6 @@ import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
 import Checkbox from "@mui/material/Checkbox";
 import FormControlLabel from "@mui/material/FormControlLabel";
-import Divider from "@mui/material/Divider";
 import { gradientPrimary } from "../../theme/theme";
 import logo from "../../assets/images/Sample Logo 1 (3).png";
 import { Formik, Form } from "formik";
@@ -16,7 +15,7 @@ import * as Yup from "yup";
 import TextFieldWrapper from "../../components/forms/TextFieldWrapper";
 import React from "react";
 import { useMutation } from "@tanstack/react-query";
-import { login as loginRequest, googleLogin } from "../../services/authService";
+import { login as loginRequest } from "../../services/authService";
 import { useNavigate } from "react-router-dom";
 import ToastAlert from "../../components/alerts/ToastAlert";
 import InputAdornment from "@mui/material/InputAdornment";
@@ -50,27 +49,6 @@ export default function LoginUser() {
     }
   });
 
-  const googleMutation = useMutation({
-    mutationFn: ({ credential }) => googleLogin({ credential }),
-    onSuccess: (data) => {
-      if (data?.accessToken || data?.token) {
-        const token = data.accessToken || data.token;
-        localStorage.setItem("access_token", token);
-      }
-      setAuthToast({
-        open: true,
-        severity: "success",
-        message: "Signed in with Google"
-      });
-      setTimeout(() => navigate("/dashboard"), 700);
-    },
-    onError: (err) => {
-      console.error("Google login failed", err);
-      const msg =
-        err?.response?.data?.message || err?.message || "Google login failed";
-      setAuthToast({ open: true, severity: "error", message: msg });
-    }
-  });
 
   const [authToast, setAuthToast] = React.useState({
     open: false,
@@ -99,53 +77,6 @@ export default function LoginUser() {
 
   const handleToastClose = () => setAuthToast((s) => ({ ...s, open: false }));
 
-  const handleGoogleSignIn = () => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
-    if (!clientId) {
-      console.warn("Missing VITE_GOOGLE_CLIENT_ID env var.");
-      return;
-    }
-    const src = "https://accounts.google.com/gsi/client";
-    const initAndPrompt = () => {
-      if (!window.google?.accounts?.id) return;
-      try {
-        if (!window.__oneTapInitialized) {
-          window.google.accounts.id.initialize({
-            client_id: clientId,
-            callback: (response) => {
-              // response contains credential (JWT) that should be sent to backend
-              const credential = response?.credential;
-              if (credential) {
-                googleMutation.mutate({ credential });
-              }
-            }
-          });
-          window.__oneTapInitialized = true;
-        }
-        try {
-          window.google.accounts.id.cancel();
-        } catch {
-          /* no-op */
-        }
-        window.google.accounts.id.prompt();
-      } catch {
-        /* no-op */
-      }
-    };
-    let script = document.querySelector(`script[src="${src}"]`);
-    if (!script) {
-      script = document.createElement("script");
-      script.src = src;
-      script.async = true;
-      script.defer = true;
-      script.onload = initAndPrompt;
-      document.head.appendChild(script);
-    } else if (window.google?.accounts?.id) {
-      initAndPrompt();
-    } else {
-      script.addEventListener("load", initAndPrompt, { once: true });
-    }
-  };
   return (
     <Box
       sx={{
@@ -246,7 +177,9 @@ export default function LoginUser() {
                       }
                       label="Remember me"
                     />
-                    <Button size="small">Forgot password?</Button>
+                    <Button size="small" onClick={() => navigate("/forgot-password")}>
+                      Forgot password?
+                    </Button>
                   </Stack>
                   <Button
                     type="submit"
@@ -279,29 +212,6 @@ export default function LoginUser() {
               </Form>
             )}
           </Formik>
-
-          <Divider>
-            <Typography variant="caption" color="text.secondary">
-              or continue with
-            </Typography>
-          </Divider>
-
-          <Stack direction="row" spacing={1}>
-            <Button
-              fullWidth
-              variant="outlined"
-              onClick={handleGoogleSignIn}
-              startIcon={
-                <img
-                  alt="Google"
-                  src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-                  style={{ width: 18, height: 18 }}
-                />
-              }
-            >
-              Continue with Google
-            </Button>
-          </Stack>
 
           <Typography variant="body2" color="text.secondary" textAlign="center">
             Don’t have an account?{" "}

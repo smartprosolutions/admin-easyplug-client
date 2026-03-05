@@ -24,12 +24,11 @@ import Profile from "./pages/Profile";
 import Messages from "./pages/Messages";
 import LoginUser from "./pages/auth/LoginUser";
 import RegisterUser from "./pages/auth/RegisterUser";
+import ForgotPassword from "./pages/auth/ForgotPassword";
+import ResetPassword from "./pages/auth/ResetPassword";
 import PublicRoute from "./components/route/PublicRoute";
 import PrivateRoute from "./components/route/PrivateRoute";
 import { useState } from "react";
-// Removed custom prompts; we'll use Google One Tap inline
-// no-op
-import GoogleOneTap from "./components/auth/GoogleOneTap";
 import ShareLocation from "./pages/ShareLocation";
 import ViewLocation from "./pages/ViewLocation";
 import { UnreadCountsProvider } from "./context/UnreadCountsContext";
@@ -38,11 +37,6 @@ const App = () => {
   const [themeMode, setThemeMode] = useState(true); // true => light, false => dark
   const theme = themeMode ? lightTheme : darkTheme;
 
-  function RouteAwareOneTap() {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
-    if (!clientId) return null;
-    return <GoogleOneTap clientId={clientId} />;
-  }
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -64,6 +58,30 @@ const App = () => {
               element={
                 <PublicRoute>
                   <RegisterUser />
+                </PublicRoute>
+              }
+            />
+            <Route
+              path="/forgot-password"
+              element={
+                <PublicRoute>
+                  <ForgotPassword />
+                </PublicRoute>
+              }
+            />
+            <Route
+              path="/reset-password"
+              element={
+                <PublicRoute>
+                  <ResetPassword />
+                </PublicRoute>
+              }
+            />
+            <Route
+              path="/reset-password/:token"
+              element={
+                <PublicRoute>
+                  <ResetPassword />
                 </PublicRoute>
               }
             />
@@ -111,7 +129,6 @@ const App = () => {
             <Route path="*" element={<NotFound />} />
           </Routes>
         </UnreadCountsProvider>
-        <RouteAwareOneTap />
       </Router>
     </ThemeProvider>
   );
