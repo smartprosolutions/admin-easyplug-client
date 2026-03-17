@@ -32,6 +32,8 @@ import { useState } from "react";
 import ShareLocation from "./pages/ShareLocation";
 import ViewLocation from "./pages/ViewLocation";
 import { UnreadCountsProvider } from "./context/UnreadCountsContext";
+import ShareLocation from "./pages/ShareLocation";
+import ViewLocation from "./pages/ViewLocation";
 
 const App = () => {
   const [themeMode, setThemeMode] = useState(true); // true => light, false => dark
@@ -45,7 +47,9 @@ const App = () => {
           <Routes>
           {/* Standalone public route — no auth wrapper */}
           <Route path="/location/:token" element={<ViewLocation />} />
-            <Route
+            {/* Standalone public route — no auth wrapper */}
+          <Route path="/location/:token" element={<ViewLocation />} />
+          <Route
               path="/login"
               element={
                 <PublicRoute>
@@ -125,7 +129,8 @@ const App = () => {
               />
               <Route path="notifications" element={<Notifications />} />
             <Route path="share-location" element={<ShareLocation />} />
-            </Route>
+              <Route path="share-location" element={<ShareLocation />} />
+          </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
         </UnreadCountsProvider>
