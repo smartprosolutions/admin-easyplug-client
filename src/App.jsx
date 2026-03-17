@@ -26,6 +26,8 @@ import { useState } from "react";
 // Removed custom prompts; we'll use Google One Tap inline
 // no-op
 import GoogleOneTap from "./components/auth/GoogleOneTap";
+import ShareLocation from "./pages/ShareLocation";
+import ViewLocation from "./pages/ViewLocation";
 
 const App = () => {
   const [themeMode, setThemeMode] = useState(true); // true => light, false => dark
@@ -41,6 +43,8 @@ const App = () => {
       <CssBaseline />
       <Router>
         <Routes>
+          {/* Standalone public route — no auth wrapper */}
+          <Route path="/location/:token" element={<ViewLocation />} />
           <Route
             path="/login"
             element={
@@ -93,6 +97,7 @@ const App = () => {
             <Route path="profile" element={<Profile />} />
             <Route path="userManagement" element={<UserManagement />} />
             <Route path="notifications" element={<Notifications />} />
+            <Route path="share-location" element={<ShareLocation />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
