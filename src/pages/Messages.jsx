@@ -863,6 +863,8 @@ export default function Messages() {
   const cameraInputRef = useRef(null);
   const photoInputRef = useRef(null);
   const documentInputRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const messageEndRef = useRef(null);
 
   // Snackbar state
   const [snackbar, setSnackbar] = useState({
@@ -887,6 +889,17 @@ export default function Messages() {
       }
     };
   }, [pendingAttachmentPreviewUrl]);
+
+  const scrollToLatestMessage = React.useCallback((behavior = "smooth") => {
+    if (messageEndRef.current) {
+      messageEndRef.current.scrollIntoView({ behavior, block: "end" });
+      return;
+    }
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop =
+        messagesContainerRef.current.scrollHeight;
+    }
+  }, []);
 
   const currentUserId = useMemo(
     () => {
@@ -972,6 +985,18 @@ export default function Messages() {
     enabled: Boolean(selectedConversationId),
     retry: false,
   });
+
+  useEffect(() => {
+    if (!selectedConversationId || isLoadingMessages) return;
+    const behavior = messages.length <= 1 ? "auto" : "smooth";
+    const timer = setTimeout(() => scrollToLatestMessage(behavior), 0);
+    return () => clearTimeout(timer);
+  }, [
+    messages.length,
+    selectedConversationId,
+    isLoadingMessages,
+    scrollToLatestMessage,
+  ]);
 
   const normalizedMessages = useMemo(
     () =>
@@ -2209,6 +2234,7 @@ export default function Messages() {
 
           {/* Messages */}
           <Box
+            ref={messagesContainerRef}
             sx={{
               flex: 1,
               overflow: "auto",
@@ -2887,6 +2913,7 @@ export default function Messages() {
                 </Box>
               ))
             )}
+            <Box ref={messageEndRef} sx={{ height: 1 }} />
           </Box>
 
           {/* Message Input */}
