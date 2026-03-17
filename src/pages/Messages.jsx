@@ -57,6 +57,7 @@ import BlockIcon from "@mui/icons-material/Block";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ArchiveIcon from "@mui/icons-material/Archive";
+import ReplyIcon from "@mui/icons-material/Reply";
 import { useNavigate } from "react-router-dom";
 import { gradientPrimary } from "../theme/theme";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -65,6 +66,7 @@ import {
   getConversationMessages,
   sendConversationMessage,
   markChatMessagesAsRead,
+  sendConversationAttachment,
 } from "../services/messageService";
 import { resolveListingImagePath } from "../utils/listingImages";
 import { useUserProfileQuery } from "../services/queries";
@@ -233,6 +235,27 @@ const FALLBACK_LISTING_IMAGE = "https://via.placeholder.com/100";
 const pickFirst = (...values) =>
   values.find((value) => value !== undefined && value !== null && value !== "");
 
+const getUserIdFromAccessToken = () => {
+  try {
+    const token = localStorage.getItem("access_token");
+    if (!token) return null;
+    const parts = String(token).split(".");
+    if (parts.length < 2) return null;
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = `${base64}${"=".repeat((4 - (base64.length % 4)) % 4)}`;
+    const payload = JSON.parse(atob(padded));
+    return (
+      payload?.userId ||
+      payload?.id ||
+      payload?.sub ||
+      payload?.user?.userId ||
+      null
+    );
+  } catch {
+    return null;
+  }
+};
+
 const formatCurrency = (value) => {
   if (value === undefined || value === null || value === "") return "";
   if (typeof value === "number") return `R ${value.toLocaleString()}`;
@@ -242,11 +265,28 @@ const formatCurrency = (value) => {
     : String(value);
 };
 
+const formatFileSize = (bytes) => {
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(size >= 100 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+};
+
 const formatMessageTime = (value) => {
   if (!value) return "Just now";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 };
 
 const resolveAssetUrl = (raw) => {
@@ -260,6 +300,23 @@ const resolveAssetUrl = (raw) => {
 
   if (raw.startsWith("/")) return `${base}${raw}`;
   return `${base}/${raw}`;
+};
+
+const resolveChatStoragePath = (file, typeLabel = "") => {
+  const mime = String(file?.type || "").toLowerCase();
+  const label = String(typeLabel || "").toLowerCase();
+  const extension = String(file?.name || "")
+    .split(".")
+    .pop()
+    ?.toLowerCase();
+  const imageLike =
+    mime.startsWith("image/") ||
+    label.includes("photo") ||
+    label.includes("camera") ||
+    ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "avif"].includes(
+      extension || "",
+    );
+  return imageLike ? "uploads/chats_pictures" : "uploads/chats_documents";
 };
 
 const resolveProfilePictureUrl = (raw, ownerEmail) => {
@@ -396,6 +453,13 @@ const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
       sellerId,
       buyerId,
       user: {
+        id: pickFirst(
+          user?.userId,
+          user?.id,
+          item?.otherUserId,
+          item?.participantId,
+          String(currentUserId) === String(sellerId) ? buyerId : sellerId,
+        ),
         name: pickFirst(
           user?.name,
           user?.fullName,
@@ -487,7 +551,7 @@ const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
 
 const normalizeMessagesResponse = (
   payload,
-  { currentUserId, sellerId } = {},
+  { currentUserId, sellerId, otherUserId } = {},
 ) => {
   const source =
     payload?.messages || payload?.items || payload?.data || payload;
@@ -500,26 +564,184 @@ const normalizeMessagesResponse = (
       item?.sender?.id,
       item?.sender,
     );
-    const mineByUserId =
-      currentUserId &&
+    const receiverIdentifier = pickFirst(
+      item?.receiverId,
+      item?.receiver?.userId,
+      item?.receiver?.id,
+      item?.receiver,
+    );
+    const actorId = currentUserId || sellerId || null;
+    const mineByActor =
+      actorId &&
       senderIdentifier &&
-      String(senderIdentifier) === String(currentUserId);
-    const mineBySellerId =
-      sellerId &&
-      senderIdentifier &&
-      String(senderIdentifier) === String(sellerId);
+      String(senderIdentifier) === String(actorId);
+    const incomingByActor =
+      actorId &&
+      receiverIdentifier &&
+      String(receiverIdentifier) === String(actorId);
+    const mineByOtherParticipantFallback = Boolean(
+      !mineByActor &&
+        !incomingByActor &&
+        otherUserId &&
+        senderIdentifier &&
+        String(senderIdentifier) !== String(otherUserId),
+    );
     const mine =
-      mineByUserId ||
-      mineBySellerId ||
+      mineByActor ||
+      mineByOtherParticipantFallback ||
       item?.senderId === "me" ||
       item?.sender === "me" ||
       item?.isMine === true ||
       item?.isFromMe === true;
-    const location = item?.location;
+    const location = item?.location
+      ? item.location
+      : item?.locationLat !== undefined &&
+          item?.locationLat !== null &&
+          item?.locationLat !== "" &&
+          item?.locationLng !== undefined &&
+          item?.locationLng !== null &&
+          item?.locationLng !== ""
+        ? {
+            lat: item?.locationLat,
+            lng: item?.locationLng,
+            name: item?.locationName || "",
+          }
+        : null;
     const hasLocation =
       location &&
+      location?.lat !== undefined &&
+      location?.lat !== null &&
+      location?.lat !== "" &&
+      location?.lng !== undefined &&
+      location?.lng !== null &&
+      location?.lng !== "" &&
       Number.isFinite(Number(location?.lat)) &&
       Number.isFinite(Number(location?.lng));
+    const attachmentRaw = item?.attachment || item?.file || null;
+    const fileUrlRaw =
+      item?.fileUrl ||
+      item?.path ||
+      item?.filePath ||
+      item?.imaages?.[0] ||
+      item?.images?.[0] ||
+      attachmentRaw?.url ||
+      attachmentRaw?.fileUrl ||
+      attachmentRaw?.path ||
+      attachmentRaw?.filePath ||
+      "";
+    const attachment = fileUrlRaw
+      ? {
+          type: item?.messageType || attachmentRaw?.type || "File",
+          name:
+            item?.fileName ||
+            attachmentRaw?.name ||
+            String(fileUrlRaw).split("/").pop() ||
+            "Attachment",
+          size: item?.fileSize || attachmentRaw?.size || 0,
+          mimeType: item?.mimeType || attachmentRaw?.mimeType || "",
+          url: resolveAssetUrl(fileUrlRaw),
+        }
+      : undefined;
+
+    const replyRaw = pickFirst(
+      item?.replyTo,
+      item?.reply_to,
+      item?.repliedTo,
+      item?.replied_to,
+      item?.quotedMessage,
+      item?.quoted_message,
+      item?.reply,
+      item?.parentMessage,
+      item?.parent_message,
+      null,
+    );
+    const replyObject =
+      replyRaw && typeof replyRaw === "object" ? replyRaw : null;
+    const replyMessageId = replyObject
+      ? pickFirst(
+          replyObject?.messageId,
+          replyObject?.message_id,
+          replyObject?.id,
+          replyObject?._id,
+          replyObject?.parentId,
+          replyObject?.parent_id,
+          replyObject?.replyToId,
+          replyObject?.reply_to_id,
+          replyObject?.repliedToId,
+          replyObject?.quotedMessageId,
+          null,
+        )
+      : pickFirst(
+          item?.replyToId,
+          item?.reply_to_id,
+          item?.repliedToId,
+          item?.replied_to_id,
+          item?.quotedMessageId,
+          item?.quoted_message_id,
+          item?.parentMessageId,
+          item?.parent_message_id,
+          replyRaw,
+        );
+
+    const replyText =
+      pickFirst(
+        replyObject?.text,
+        replyObject?.message,
+        replyObject?.content,
+        replyObject?.body,
+        item?.replyText,
+        item?.reply_text,
+        item?.replyMessage,
+        item?.reply_message,
+        item?.replyContent,
+        item?.reply_content,
+        item?.quotedText,
+        item?.quoted_text,
+        "",
+      ) ||
+      (() => {
+        if (!replyMessageId) return "";
+        const target = rows.find((row) =>
+          [row?.id, row?._id, row?.messageId].some(
+            (candidate) =>
+              candidate !== undefined &&
+              candidate !== null &&
+              String(candidate) === String(replyMessageId),
+          ),
+        );
+        return (
+          pickFirst(target?.text, target?.message, target?.content, target?.body, "") ||
+          ""
+        );
+      })();
+
+    const replySenderIdentifier = pickFirst(
+      replyObject?.senderId,
+      replyObject?.sender_id,
+      replyObject?.sender?.userId,
+      replyObject?.sender?.id,
+      replyObject?.sender,
+      item?.replySenderId,
+      item?.reply_sender_id,
+      item?.replySender,
+      item?.reply_sender,
+      item?.quotedSenderId,
+      item?.quoted_sender_id,
+      null,
+    );
+    const replyMineByActor =
+      actorId &&
+      replySenderIdentifier &&
+      String(replySenderIdentifier) === String(actorId);
+    const normalizedReplySenderId =
+      replySenderIdentifier === "me" || replyMineByActor ? "me" : "other";
+    const replyTo = replyMessageId || replyText
+      ? {
+          messageId: replyMessageId,
+          text: replyText,
+          senderId: normalizedReplySenderId,
+        }
+      : undefined;
 
     return {
       id: pickFirst(item?.id, item?._id, item?.messageId, idx + 1),
@@ -531,9 +753,53 @@ const normalizeMessagesResponse = (
         pickFirst(item?.createdAt, item?.timestamp, item?.time),
       ),
       read: Boolean(pickFirst(item?.read, item?.isRead, mine)),
+      attachment,
       location: hasLocation
         ? { lat: Number(location.lat), lng: Number(location.lng) }
         : undefined,
+      replyTo,
+    };
+  });
+};
+
+const hydrateRepliesFromPrevious = (nextMessages, previousMessages = []) => {
+  if (!Array.isArray(nextMessages) || nextMessages.length === 0) return [];
+  if (!Array.isArray(previousMessages) || previousMessages.length === 0) {
+    return nextMessages;
+  }
+
+  const replyCandidates = previousMessages.filter(
+    (item) => (item?.replyTo?.messageId || item?.replyTo?.text) && item?.text,
+  );
+
+  if (replyCandidates.length === 0) return nextMessages;
+
+  return nextMessages.map((msg) => {
+    if (msg?.replyTo?.messageId || msg?.replyTo?.text) return msg;
+
+    let candidateIndex = replyCandidates.findIndex(
+      (candidate) =>
+        String(candidate?.senderId) === String(msg?.senderId) &&
+        String(candidate?.text || "").trim() ===
+          String(msg?.text || "").trim() &&
+        Boolean(candidate?.replyTo?.messageId || candidate?.replyTo?.text),
+    );
+
+    if (candidateIndex < 0) {
+      candidateIndex = replyCandidates.findIndex(
+        (candidate) =>
+          String(candidate?.text || "").trim() ===
+            String(msg?.text || "").trim() &&
+          Boolean(candidate?.replyTo?.messageId || candidate?.replyTo?.text),
+      );
+    }
+
+    if (candidateIndex < 0) return msg;
+
+    const [candidate] = replyCandidates.splice(candidateIndex, 1);
+    return {
+      ...msg,
+      replyTo: candidate.replyTo,
     };
   });
 };
@@ -578,6 +844,9 @@ export default function Messages() {
   const [deleteChatDialogOpen, setDeleteChatDialogOpen] = useState(false);
   const [locationDialogOpen, setLocationDialogOpen] = useState(false);
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
+  const [attachmentComposeOpen, setAttachmentComposeOpen] = useState(false);
+  const [pendingAttachment, setPendingAttachment] = useState(null);
+  const [attachmentCaption, setAttachmentCaption] = useState("");
   const [reportReason, setReportReason] = useState("");
   const [userLocation, setUserLocation] = useState(null);
   const [locationLoading, setLocationLoading] = useState(false);
@@ -588,11 +857,14 @@ export default function Messages() {
   const [selectedLocationName, setSelectedLocationName] = useState("");
   const [mapViewOpen, setMapViewOpen] = useState(false);
   const [viewingLocation, setViewingLocation] = useState(null);
+  const [replyTo, setReplyTo] = useState(null);
 
   // File input refs
   const cameraInputRef = useRef(null);
   const photoInputRef = useRef(null);
   const documentInputRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const messageEndRef = useRef(null);
 
   // Snackbar state
   const [snackbar, setSnackbar] = useState({
@@ -605,16 +877,47 @@ export default function Messages() {
     setSnackbar({ open: true, message, severity });
   };
 
+  const pendingAttachmentPreviewUrl = useMemo(() => {
+    if (!pendingAttachment?.file) return "";
+    return URL.createObjectURL(pendingAttachment.file);
+  }, [pendingAttachment?.file]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingAttachmentPreviewUrl) {
+        URL.revokeObjectURL(pendingAttachmentPreviewUrl);
+      }
+    };
+  }, [pendingAttachmentPreviewUrl]);
+
+  const scrollToLatestMessage = React.useCallback((behavior = "smooth") => {
+    if (messageEndRef.current) {
+      messageEndRef.current.scrollIntoView({ behavior, block: "end" });
+      return;
+    }
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop =
+        messagesContainerRef.current.scrollHeight;
+    }
+  }, []);
+
   const currentUserId = useMemo(
-    () =>
-      pickFirst(
+    () => {
+      const fromProfile = pickFirst(
         profileData?.user?.userId,
         profileData?.user?.id,
+        profileData?.data?.user?.userId,
+        profileData?.data?.user?.id,
+        profileData?.data?.seller?.userId,
+        profileData?.data?.seller?.id,
+        profileData?.seller?.userId,
+        profileData?.seller?.id,
         profileData?.userId,
         profileData?.id,
-        profileData?.data?.user?.userId,
         profileData?.data?.userId,
-      ),
+      );
+      return fromProfile || getUserIdFromAccessToken();
+    },
     [profileData],
   );
 
@@ -683,18 +986,36 @@ export default function Messages() {
     retry: false,
   });
 
+  useEffect(() => {
+    if (!selectedConversationId || isLoadingMessages) return;
+    const behavior = messages.length <= 1 ? "auto" : "smooth";
+    const timer = setTimeout(() => scrollToLatestMessage(behavior), 0);
+    return () => clearTimeout(timer);
+  }, [
+    messages.length,
+    selectedConversationId,
+    isLoadingMessages,
+    scrollToLatestMessage,
+  ]);
+
   const normalizedMessages = useMemo(
     () =>
       normalizeMessagesResponse(messagesResponse, {
         currentUserId,
         sellerId: selectedConversation?.sellerId,
+        otherUserId: selectedConversation?.user?.id,
       }),
-    [messagesResponse, currentUserId, selectedConversation?.sellerId],
+    [
+      messagesResponse,
+      currentUserId,
+      selectedConversation?.sellerId,
+      selectedConversation?.user?.id,
+    ],
   );
 
   useEffect(() => {
     if (selectedConversationId) {
-      setMessages(normalizedMessages);
+      setMessages((prev) => hydrateRepliesFromPrevious(normalizedMessages, prev));
       return;
     }
     setMessages([]);
@@ -736,7 +1057,11 @@ export default function Messages() {
       const incomingChatId = incoming?.chatId;
       const [normalized] = normalizeMessagesResponse(
         { messages: [incoming] },
-        { currentUserId, sellerId: selectedConversation?.sellerId },
+        {
+          currentUserId,
+          sellerId: selectedConversation?.sellerId,
+          otherUserId: selectedConversation?.user?.id,
+        },
       );
       if (!normalized) return;
       const isMine = normalized.senderId === "me";
@@ -776,19 +1101,37 @@ export default function Messages() {
     currentUserId,
     selectedConversationId,
     selectedConversation?.sellerId,
+    selectedConversation?.user?.id,
     markChatAsRead,
   ]);
 
   const sendMessageMutation = useMutation({
-    mutationFn: ({ conversationId, text, receiverId }) =>
+    mutationFn: ({ conversationId, text, receiverId, replyTo: replyData }) =>
       sendConversationMessage(conversationId, {
         text,
         message: text,
         content: text,
         receiverId,
+        ...(replyData
+          ? {
+              replyTo: replyData,
+              reply_to: replyData,
+              repliedTo: replyData,
+              quotedMessage: replyData,
+              replyToId: replyData?.messageId,
+              reply_to_id: replyData?.messageId,
+              repliedToId: replyData?.messageId,
+              quotedMessageId: replyData?.messageId,
+              parentMessageId: replyData?.messageId,
+              parent_message_id: replyData?.messageId,
+              replyText: replyData?.text,
+              reply_text: replyData?.text,
+              replySenderId: replyData?.senderId,
+              reply_sender_id: replyData?.senderId,
+            }
+          : {}),
       }),
     onSuccess: async () => {
-      setMessageInput("");
       await queryClient.invalidateQueries({
         queryKey: ["messages", "conversation", selectedConversationId],
       });
@@ -876,11 +1219,37 @@ export default function Messages() {
     if (!text || !selectedConversationId || sendMessageMutation.isPending)
       return;
     const receiverId =
-      selectedConversation?.buyerId || selectedConversation?.user?.id;
+      selectedConversation?.user?.id ||
+      (String(currentUserId) === String(selectedConversation?.sellerId)
+        ? selectedConversation?.buyerId
+        : selectedConversation?.sellerId) ||
+      selectedConversation?.buyerId;
+    const replyData = replyTo
+      ? {
+          messageId: replyTo.id,
+          text: replyTo.text || "",
+          senderId: replyTo.senderId,
+        }
+      : null;
+
+    // Optimistically add message with reply data
+    const optimisticMessage = {
+      id: `${Date.now()}-${Math.random()}`,
+      senderId: "me",
+      text,
+      time: "Just now",
+      read: false,
+      ...(replyData ? { replyTo: replyData } : {}),
+    };
+    setMessages((prev) => [...prev, optimisticMessage]);
+    setMessageInput("");
+    setReplyTo(null);
+
     sendMessageMutation.mutate({
       conversationId: selectedConversationId,
       text,
       receiverId,
+      replyTo: replyData,
     });
   };
 
@@ -1001,28 +1370,123 @@ export default function Messages() {
     }
   };
 
+  const handleSaveAttachment = async (attachment) => {
+    const attachmentUrl = attachment?.url;
+    if (!attachmentUrl) {
+      showSnackbar("No attachment URL available", "error");
+      return;
+    }
+    const fallbackName =
+      attachment?.name ||
+      String(attachmentUrl).split("?")[0].split("#")[0].split("/").pop() ||
+      "attachment";
+    try {
+      const response = await fetch(attachmentUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = fallbackName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(blobUrl);
+      showSnackbar("File saved to your device");
+    } catch (error) {
+      const link = document.createElement("a");
+      link.href = attachmentUrl;
+      link.download = fallbackName;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      showSnackbar("Save started");
+    }
+  };
+
+  const handleOpenAttachment = (attachment) => {
+    const attachmentUrl = attachment?.url;
+    if (!attachmentUrl) return;
+    window.open(attachmentUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const resetAttachmentComposer = () => {
+    setAttachmentComposeOpen(false);
+    setPendingAttachment(null);
+    setAttachmentCaption("");
+  };
+
+  const handleSendPendingAttachment = async () => {
+    if (!pendingAttachment?.file || !pendingAttachment?.type) return;
+    const { file, type } = pendingAttachment;
+    const captionText = attachmentCaption.trim();
+    try {
+      const attachmentMessage = captionText || `📎 ${type} attachment`;
+      const conversationId = selectedConversationId;
+      const receiverId =
+        selectedConversation?.buyerId || selectedConversation?.user?.id;
+      if (!conversationId || !receiverId) {
+        showSnackbar("Select a conversation first", "warning");
+        resetAttachmentComposer();
+        return;
+      }
+      const storagePath = resolveChatStoragePath(file, type);
+      try {
+        const response = await sendConversationAttachment(conversationId, {
+          file,
+          receiverId,
+          message: attachmentMessage,
+          storagePath,
+        });
+        const fileUrl = response?.fileUrl || "";
+        const localPreviewUrl = URL.createObjectURL(file);
+        const newMessage = {
+          id: `${Date.now()}-${Math.random()}`,
+          senderId: "me",
+          text: attachmentMessage,
+          time: "Just now",
+          read: false,
+          attachment: {
+            type,
+            name: file.name,
+            size: file.size,
+            mimeType: file.type || "",
+            url: resolveAssetUrl(fileUrl) || localPreviewUrl,
+          },
+        };
+        setMessages((prev) => [...prev, newMessage]);
+        showSnackbar(`${type} attached successfully`);
+        setMessageInput("");
+        resetAttachmentComposer();
+        await queryClient.invalidateQueries({
+          queryKey: ["messages", "conversation", selectedConversationId],
+        });
+        await queryClient.invalidateQueries({
+          queryKey: ["messages", "conversations"],
+        });
+      } catch (error) {
+        showSnackbar(
+          error?.response?.data?.message ||
+            error?.message ||
+            `Failed to attach ${type.toLowerCase()}`,
+          "error",
+        );
+      }
+    } catch (error) {
+      showSnackbar("Failed to send attachment", "error");
+    }
+  };
+
   const handleFileSelected = (event, type) => {
     const files = event.target.files;
     if (files && files.length > 0) {
       const file = files[0];
-      // Create a message with the file
-      const newMessage = {
-        id: `${Date.now()}-${Math.random()}`,
-        senderId: "me",
-        text: `📎 ${type}: ${file.name}`,
-        time: "Just now",
-        read: false,
-        attachment: {
-          type: type,
-          name: file.name,
-          size: file.size,
-          url: URL.createObjectURL(file),
-        },
-      };
-      setMessages((prev) => [...prev, newMessage]);
-      showSnackbar(`${type} attached successfully`);
+      setPendingAttachment({ file, type });
+      setAttachmentCaption(messageInput.trim());
+      setAttachmentComposeOpen(true);
     }
-    // Reset input
     event.target.value = "";
   };
 
@@ -1072,25 +1536,64 @@ export default function Messages() {
     }
   };
 
-  const handleSendLocation = () => {
-    if (userLocation) {
+  const handleSendLocation = async () => {
+    if (!userLocation) return;
+    const conversationId = selectedConversationId;
+    const receiverId =
+      selectedConversation?.user?.id ||
+      (String(currentUserId) === String(selectedConversation?.sellerId)
+        ? selectedConversation?.buyerId
+        : selectedConversation?.sellerId) ||
+      selectedConversation?.buyerId;
+    if (!conversationId || !receiverId) {
+      showSnackbar("Select a conversation first", "warning");
+      return;
+    }
+    const locationText = selectedLocationName
+      ? `📍 ${selectedLocationName}`
+      : "📍 Location shared";
+    try {
+      await sendConversationMessage(conversationId, {
+        text: locationText,
+        message: locationText,
+        content: locationText,
+        receiverId,
+        messageType: "location",
+        location: { lat: userLocation.lat, lng: userLocation.lng, name: selectedLocationName || "" },
+        latitude: userLocation.lat,
+        longitude: userLocation.lng,
+        locationLat: userLocation.lat,
+        locationLng: userLocation.lng,
+        locationName: selectedLocationName || "",
+      });
       const newMessage = {
         id: `${Date.now()}-${Math.random()}`,
         senderId: "me",
-        text: selectedLocationName
-          ? `📍 ${selectedLocationName}`
-          : `📍 Location shared`,
+        text: locationText,
         time: "Just now",
         read: false,
         location: userLocation,
       };
       setMessages((prev) => [...prev, newMessage]);
+      await queryClient.invalidateQueries({
+        queryKey: ["messages", "conversation", selectedConversationId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["messages", "conversations"],
+      });
       setLocationDialogOpen(false);
       setUserLocation(null);
       setLocationSearch("");
       setLocationSearchResults([]);
       setSelectedLocationName("");
       showSnackbar("Location sent successfully");
+    } catch (error) {
+      showSnackbar(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Failed to send location",
+        "error",
+      );
     }
   };
 
@@ -1266,7 +1769,23 @@ export default function Messages() {
       </Box>
 
       {/* Conversation List */}
-      <List sx={{ flex: 1, overflow: "auto", p: 0 }}>
+      <List sx={{
+            flex: 1,
+            overflow: "auto",
+            p: 0,
+            "&::-webkit-scrollbar": { width: 6 },
+            "&::-webkit-scrollbar-track": {
+              bgcolor: alpha("#667eea", 0.05),
+              borderRadius: 3,
+            },
+            "&::-webkit-scrollbar-thumb": {
+              bgcolor: alpha("#667eea", 0.25),
+              borderRadius: 3,
+              "&:hover": { bgcolor: alpha("#667eea", 0.4) },
+            },
+            scrollbarWidth: "thin",
+            scrollbarColor: `${alpha("#667eea", 0.25)} ${alpha("#667eea", 0.05)}`,
+          }}>
         {isLoadingConversations ? (
           <Box sx={{ p: 3 }}>
             <Typography fontSize={13} color="text.secondary">
@@ -1478,11 +1997,12 @@ export default function Messages() {
           {/* Chat Header - Product focused */}
           <Box
             sx={{
-              p: 2,
+              px: 1.5,
+              py: 1,
               borderBottom: "1px solid #e0e0e0",
               display: "flex",
               alignItems: "center",
-              gap: 2,
+              gap: 1,
             }}
           >
             {isMobile && (
@@ -1497,8 +2017,8 @@ export default function Messages() {
                 navigate(selectedListingPath);
               }}
               sx={{
-                width: 50,
-                height: 50,
+                width: 42,
+                height: 42,
                 borderRadius: 1.5,
                 overflow: "hidden",
                 border: "1px solid #e0e0e0",
@@ -1512,37 +2032,96 @@ export default function Messages() {
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
               />
             </Box>
-            <Stack flex={1} spacing={0.25}>
-              {/* Product Title */}
-              <Typography
-                fontWeight={600}
-                fontSize={15}
-                onClick={() => {
-                  if (!selectedListingPath) return;
-                  navigate(selectedListingPath);
-                }}
-                sx={{
-                  cursor: selectedListingPath ? "pointer" : "default",
-                  width: "fit-content",
-                  "&:hover": selectedListingPath
-                    ? { textDecoration: "underline" }
-                    : undefined,
-                }}
+            <Stack
+              flex={1}
+              direction="row"
+              alignItems="center"
+              justifyContent="space-between"
+              spacing={1.5}
+              minWidth={0}
+            >
+              <Stack spacing={0.25} minWidth={0}>
+                <Typography
+                  fontWeight={600}
+                  fontSize={15}
+                  onClick={() => {
+                    if (!selectedListingPath) return;
+                    navigate(selectedListingPath);
+                  }}
+                  sx={{
+                    cursor: selectedListingPath ? "pointer" : "default",
+                    width: "fit-content",
+                    maxWidth: { xs: 140, md: 260 },
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    "&:hover": selectedListingPath
+                      ? { textDecoration: "underline" }
+                      : undefined,
+                  }}
+                >
+                  {selectedConversation.listing.title}
+                </Typography>
+                <Typography fontSize={14} fontWeight={600} color="#667eea">
+                  {selectedConversation.listing.price}
+                </Typography>
+              </Stack>
+
+              <Stack
+                direction="row"
+                alignItems="center"
+                spacing={1}
+                sx={{ display: { xs: "none", sm: "flex" }, minWidth: 0 }}
               >
-                {selectedConversation.listing.title}
-              </Typography>
-              {/* Price */}
-              <Typography fontSize={14} fontWeight={600} color="#667eea">
-                {selectedConversation.listing.price}
-              </Typography>
+                <Badge
+                  overlap="circular"
+                  anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                  badgeContent={
+                    selectedConversation.user.online ? (
+                      <Box
+                        sx={{
+                          width: 9,
+                          height: 9,
+                          borderRadius: "50%",
+                          bgcolor: "#4caf50",
+                          border: "2px solid white",
+                        }}
+                      />
+                    ) : null
+                  }
+                >
+                  <Avatar
+                    src={selectedConversation.user.avatar}
+                    sx={{ width: 32, height: 32 }}
+                  />
+                </Badge>
+                <Stack spacing={0} minWidth={0}>
+                  <Stack direction="row" alignItems="center" spacing={0.5}>
+                    <Typography
+                      fontWeight={500}
+                      fontSize={13}
+                      noWrap
+                      sx={{ maxWidth: 160 }}
+                    >
+                      {selectedConversation.user.name}
+                    </Typography>
+                    {selectedConversation.user.verified && (
+                      <VerifiedIcon sx={{ fontSize: 14, color: "#667eea" }} />
+                    )}
+                  </Stack>
+                  <Typography fontSize={11} color="text.secondary" noWrap>
+                    {selectedConversation.user.online ? "Online" : "Last seen recently"}
+                  </Typography>
+                </Stack>
+              </Stack>
             </Stack>
             <Stack direction="row" spacing={0.5}>
               <IconButton
                 sx={{
                   color: "#667eea",
                   bgcolor: alpha("#667eea", 0.1),
-                  width: 38,
-                  height: 38,
+                  width: 34,
+                  height: 34,
                   transition: "all 0.2s ease",
                   "&:hover": {
                     bgcolor: alpha("#667eea", 0.2),
@@ -1550,14 +2129,14 @@ export default function Messages() {
                   },
                 }}
               >
-                <SearchIcon sx={{ fontSize: 20 }} />
+                <SearchIcon sx={{ fontSize: 18 }} />
               </IconButton>
               <IconButton
                 sx={{
                   color: "#667eea",
                   bgcolor: alpha("#667eea", 0.1),
-                  width: 38,
-                  height: 38,
+                  width: 34,
+                  height: 34,
                   transition: "all 0.2s ease",
                   "&:hover": {
                     bgcolor: alpha("#667eea", 0.2),
@@ -1565,14 +2144,14 @@ export default function Messages() {
                   },
                 }}
               >
-                <PhoneIcon sx={{ fontSize: 20 }} />
+                <PhoneIcon sx={{ fontSize: 18 }} />
               </IconButton>
               <IconButton
                 sx={{
                   color: "#667eea",
                   bgcolor: alpha("#667eea", 0.1),
-                  width: 38,
-                  height: 38,
+                  width: 34,
+                  height: 34,
                   transition: "all 0.2s ease",
                   "&:hover": {
                     bgcolor: alpha("#667eea", 0.2),
@@ -1580,19 +2159,19 @@ export default function Messages() {
                   },
                 }}
               >
-                <VideocamIcon sx={{ fontSize: 20 }} />
+                <VideocamIcon sx={{ fontSize: 18 }} />
               </IconButton>
               <IconButton
                 onClick={(e) => setChatMenuAnchor(e.currentTarget)}
                 sx={{
                   color: "#666",
-                  width: 38,
-                  height: 38,
+                  width: 34,
+                  height: 34,
                   transition: "all 0.2s ease",
                   "&:hover": { bgcolor: alpha("#000", 0.05) },
                 }}
               >
-                <MoreVertIcon sx={{ fontSize: 20 }} />
+                <MoreVertIcon sx={{ fontSize: 18 }} />
               </IconButton>
 
               {/* Chat Options Menu */}
@@ -1653,83 +2232,9 @@ export default function Messages() {
             </Stack>
           </Box>
 
-          {/* Seller/Buyer Info Bar */}
-          <Box
-            sx={{
-              px: 2,
-              py: 1.5,
-              bgcolor: alpha("#667eea", 0.05),
-              borderBottom: "1px solid #e0e0e0",
-              display: "flex",
-              alignItems: "center",
-              gap: 1.5,
-            }}
-          >
-            <Badge
-              overlap="circular"
-              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-              badgeContent={
-                selectedConversation.user.online ? (
-                  <Box
-                    sx={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: "50%",
-                      bgcolor: "#4caf50",
-                      border: "2px solid white",
-                    }}
-                  />
-                ) : null
-              }
-            >
-              <Avatar
-                src={selectedConversation.user.avatar}
-                sx={{ width: 36, height: 36 }}
-              />
-            </Badge>
-            <Stack flex={1}>
-              <Stack direction="row" alignItems="center" spacing={0.5}>
-                <Typography fontWeight={500} fontSize={13}>
-                  {selectedConversation.user.name}
-                </Typography>
-                {selectedConversation.user.verified && (
-                  <VerifiedIcon sx={{ fontSize: 14, color: "#667eea" }} />
-                )}
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 0.25,
-                    bgcolor: alpha("#ffc107", 0.15),
-                    px: 0.75,
-                    py: 0.25,
-                    borderRadius: 1,
-                    ml: 0.5,
-                  }}
-                >
-                  <StarIcon sx={{ fontSize: 14, color: "#ffc107" }} />
-                  <Typography
-                    fontSize={12}
-                    fontWeight={600}
-                    color="text.primary"
-                  >
-                    {selectedConversation.user.rating}
-                  </Typography>
-                  <Typography fontSize={11} color="text.secondary">
-                    ({selectedConversation.user.reviews})
-                  </Typography>
-                </Box>
-              </Stack>
-              <Typography fontSize={11} color="text.secondary">
-                {selectedConversation.user.online
-                  ? "Online"
-                  : "Last seen recently"}
-              </Typography>
-            </Stack>
-          </Box>
-
           {/* Messages */}
           <Box
+            ref={messagesContainerRef}
             sx={{
               flex: 1,
               overflow: "auto",
@@ -1738,6 +2243,18 @@ export default function Messages() {
               flexDirection: "column",
               gap: 1.5,
               bgcolor: "#fafafa",
+              "&::-webkit-scrollbar": { width: 6 },
+              "&::-webkit-scrollbar-track": {
+                bgcolor: alpha("#667eea", 0.05),
+                borderRadius: 3,
+              },
+              "&::-webkit-scrollbar-thumb": {
+                bgcolor: alpha("#667eea", 0.2),
+                borderRadius: 3,
+                "&:hover": { bgcolor: alpha("#667eea", 0.35) },
+              },
+              scrollbarWidth: "thin",
+              scrollbarColor: `${alpha("#667eea", 0.2)} ${alpha("#667eea", 0.05)}`,
             }}
           >
             {isLoadingMessages ? (
@@ -1756,12 +2273,40 @@ export default function Messages() {
               messages.map((message) => (
                 <Box
                   key={message.id}
+                  id={`msg-${message.id}`}
                   sx={{
                     display: "flex",
                     justifyContent:
                       message.senderId === "me" ? "flex-end" : "flex-start",
+                    position: "relative",
+                    "&:hover .reply-btn": { opacity: 1 },
                   }}
                 >
+                  {/* Reply Button */}
+                  {message.senderId === "me" && (
+                    <IconButton
+                      className="reply-btn"
+                      size="small"
+                      onClick={() => setReplyTo(message)}
+                      sx={{
+                        opacity: 0,
+                        transition: "opacity 0.2s ease",
+                        alignSelf: "center",
+                        mr: 0.5,
+                        color: alpha("#667eea", 0.6),
+                        "&:hover": { color: "#667eea", bgcolor: alpha("#667eea", 0.08) },
+                      }}
+                    >
+                      <ReplyIcon sx={{ fontSize: 18 }} />
+                    </IconButton>
+                  )}
+                  <Box
+                    sx={{
+                      maxWidth: { xs: "92%", md: "84%", lg: "80%" },
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
+                  >
                   {message.location ? (
                     // Location Message with Map Preview
                     <Box
@@ -1773,7 +2318,6 @@ export default function Messages() {
                         setMapViewOpen(true);
                       }}
                       sx={{
-                        maxWidth: "70%",
                         borderRadius: 2,
                         overflow: "hidden",
                         cursor: "pointer",
@@ -1916,11 +2460,330 @@ export default function Messages() {
                         </Stack>
                       </Box>
                     </Box>
+                  ) : message.attachment ? (
+                    (() => {
+                      const attachment = message.attachment;
+                      const attachmentName = attachment?.name || "Attachment";
+                      const attachmentUrl = attachment?.url || "";
+                      const typeLabel = String(
+                        attachment?.type || "",
+                      ).toLowerCase();
+                      const mime = String(attachment?.mimeType || "").toLowerCase();
+                      const inferredExt =
+                        String(attachmentName || attachmentUrl)
+                          .split("?")[0]
+                          .split("#")[0]
+                          .split(".")
+                          .pop()
+                          ?.toLowerCase() || "";
+                      const imageExtensions = [
+                        "jpg",
+                        "jpeg",
+                        "png",
+                        "gif",
+                        "webp",
+                        "bmp",
+                        "svg",
+                        "avif",
+                      ];
+                      const videoExtensions = [
+                        "mp4",
+                        "mov",
+                        "avi",
+                        "mkv",
+                        "webm",
+                        "m4v",
+                        "3gp",
+                      ];
+                      const isImage =
+                        mime.startsWith("image/") ||
+                        typeLabel.includes("photo") ||
+                        typeLabel.includes("image") ||
+                        imageExtensions.includes(inferredExt);
+                      const isVideo =
+                        mime.startsWith("video/") ||
+                        typeLabel.includes("video") ||
+                        typeLabel.includes("media") ||
+                        videoExtensions.includes(inferredExt);
+                      const isPdf = mime.includes("pdf") || inferredExt === "pdf";
+                      const sizeText = formatFileSize(attachment?.size);
+                      const fileMeta = `${isPdf ? "PDF" : inferredExt.toUpperCase() || "FILE"}${
+                        sizeText ? ` • ${sizeText}` : ""
+                      }`;
+                      const caption = String(message?.text || "").trim();
+                      const showCaption =
+                        Boolean(caption) && !caption.startsWith("📎 ");
+
+                      return (
+                        <Box
+                          onClick={() => handleOpenAttachment(attachment)}
+                          sx={{
+                            width: "min(300px, 70vw)",
+                            borderRadius: 3,
+                            overflow: "hidden",
+                            bgcolor: message.senderId === "me" ? "#1a1f2d" : "#12161f",
+                            color: "white",
+                            cursor: attachmentUrl ? "pointer" : "default",
+                            boxShadow:
+                              message.senderId === "me"
+                                ? "0 6px 18px rgba(15, 23, 42, 0.45)"
+                                : "0 4px 14px rgba(0,0,0,0.2)",
+                          }}
+                        >
+                          {isImage && attachmentUrl ? (
+                            <Box sx={{ position: "relative" }}>
+                              <Box
+                                component="img"
+                                src={attachmentUrl}
+                                alt={attachmentName}
+                                sx={{
+                                  width: "100%",
+                                  maxHeight: 210,
+                                  objectFit: "cover",
+                                  display: "block",
+                                }}
+                              />
+                              <Box
+                                sx={{
+                                  position: "absolute",
+                                  top: 10,
+                                  left: 10,
+                                  px: 1,
+                                  py: 0.3,
+                                  borderRadius: 1,
+                                  bgcolor: "rgba(0,0,0,0.6)",
+                                  color: "white",
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  letterSpacing: 0.4,
+                                  lineHeight: 1.2,
+                                }}
+                              >
+                                IMAGE
+                              </Box>
+                            </Box>
+                          ) : isVideo && attachmentUrl ? (
+                            <Box
+                              sx={{
+                                height: 160,
+                                bgcolor: "#0f172a",
+                                position: "relative",
+                                overflow: "hidden",
+                              }}
+                            >
+                              <Box
+                                component="video"
+                                src={attachmentUrl}
+                                preload="metadata"
+                                muted
+                                playsInline
+                                sx={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "cover",
+                                  opacity: 0.85,
+                                  pointerEvents: "none",
+                                }}
+                              />
+                              <Box
+                                sx={{
+                                  position: "absolute",
+                                  inset: 0,
+                                  background:
+                                    "linear-gradient(transparent 40%, rgba(0,0,0,0.55))",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                <Box
+                                  sx={{
+                                    width: 56,
+                                    height: 56,
+                                    borderRadius: "50%",
+                                    bgcolor: "rgba(0,0,0,0.48)",
+                                    border: "1px solid rgba(255,255,255,0.25)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
+                                >
+                                  <VideocamIcon sx={{ color: "white", fontSize: 28 }} />
+                                </Box>
+                              </Box>
+                            </Box>
+                          ) : isPdf && attachmentUrl ? (
+                            <Box
+                              sx={{
+                                height: 140,
+                                bgcolor: "#eceff1",
+                                overflow: "hidden",
+                                position: "relative",
+                              }}
+                            >
+                              <Box
+                                component="iframe"
+                                title="Document Preview"
+                                src={`${attachmentUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+                                scrolling="no"
+                                sx={{
+                                  position: "absolute",
+                                  top: -18,
+                                  left: -18,
+                                  width: "calc(100% + 36px)",
+                                  height: "calc(100% + 36px)",
+                                  border: 0,
+                                  overflow: "hidden",
+                                  pointerEvents: "none",
+                                }}
+                              />
+                            </Box>
+                          ) : (
+                            <Box
+                              sx={{
+                                height: 120,
+                                bgcolor: "#e8eaed",
+                                position: "relative",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              <DescriptionIcon sx={{ fontSize: 40, color: "#64748b" }} />
+                              <Box
+                                sx={{
+                                  position: "absolute",
+                                  top: 10,
+                                  left: 10,
+                                  px: 1,
+                                  py: 0.3,
+                                  borderRadius: 1,
+                                  bgcolor: "rgba(0,0,0,0.6)",
+                                  color: "white",
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  letterSpacing: 0.4,
+                                  lineHeight: 1.2,
+                                }}
+                              >
+                                DOC
+                              </Box>
+                            </Box>
+                          )}
+
+                          {!isImage && !isVideo && (
+                            <Box sx={{ px: 1.2, py: 1, bgcolor: "rgba(0,0,0,0.2)" }}>
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <Box
+                                  sx={{
+                                    width: 28,
+                                    height: 28,
+                                    borderRadius: 1,
+                                    bgcolor: "#e53935",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
+                                >
+                                  <Typography fontSize={9} fontWeight={800} color="white">
+                                    {isPdf ? "PDF" : "DOC"}
+                                  </Typography>
+                                </Box>
+                                <Box sx={{ minWidth: 0, flex: 1 }}>
+                                  <Typography
+                                    fontSize={14}
+                                    fontWeight={600}
+                                    noWrap
+                                    color="rgba(255,255,255,0.95)"
+                                  >
+                                    {attachmentName}
+                                  </Typography>
+                                  <Typography fontSize={11} color="rgba(255,255,255,0.72)">
+                                    {fileMeta}
+                                  </Typography>
+                                </Box>
+                              </Stack>
+                            </Box>
+                          )}
+
+                          {showCaption && (
+                            <Box sx={{ px: 1.2, py: 0.9, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+                              <Typography fontSize={13} color="rgba(255,255,255,0.92)">
+                                {caption}
+                              </Typography>
+                            </Box>
+                          )}
+
+
+                          <Box sx={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+                            <Stack
+                              direction="row"
+                              alignItems="center"
+                              justifyContent="space-between"
+                              spacing={1}
+                              sx={{ px: 1.2, py: 0.7 }}
+                            >
+                              <Stack direction="row" spacing={0.5}>
+                                {attachmentUrl && (
+                                  <>
+                                    <Button
+                                      size="small"
+                                      component="a"
+                                      href={attachmentUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      sx={{
+                                        textTransform: "none",
+                                        color: "#25D366",
+                                        fontSize: 12,
+                                        fontWeight: 700,
+                                        minWidth: "auto",
+                                      }}
+                                    >
+                                      Open
+                                    </Button>
+                                    <Button
+                                      size="small"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSaveAttachment(attachment);
+                                      }}
+                                      sx={{
+                                        textTransform: "none",
+                                        color: "#25D366",
+                                        fontSize: 12,
+                                        fontWeight: 700,
+                                        minWidth: "auto",
+                                      }}
+                                    >
+                                      Save as...
+                                    </Button>
+                                  </>
+                                )}
+                              </Stack>
+                              <Stack direction="row" alignItems="center" spacing={0.4}>
+                                <Typography fontSize={10} color="rgba(255,255,255,0.65)">
+                                  {message.time}
+                                </Typography>
+                                {message.senderId === "me" && (
+                                  <DoneAllIcon
+                                    sx={{
+                                      fontSize: 14,
+                                      color: message.read ? "#4caf50" : "rgba(255,255,255,0.6)",
+                                    }}
+                                  />
+                                )}
+                              </Stack>
+                            </Stack>
+                          </Box>
+                        </Box>
+                      );
+                    })()
                   ) : (
                     // Regular Message
                     <Box
                       sx={{
-                        maxWidth: "70%",
                         p: 1.5,
                         borderRadius: 2,
                         bgcolor:
@@ -1931,9 +2794,73 @@ export default function Messages() {
                           message.senderId === "me"
                             ? "0 2px 8px rgba(102, 126, 234, 0.3)"
                             : "0 1px 3px rgba(0,0,0,0.1)",
+                        overflow: "hidden",
                       }}
                     >
-                      <Typography fontSize={14}>{message.text}</Typography>
+                      {/* Reply Quote Inside Bubble */}
+                      {message.replyTo?.text && (
+                        <Box
+                          onClick={() => {
+                            if (!message.replyTo?.messageId) return;
+                            const el = document.getElementById(`msg-${message.replyTo.messageId}`);
+                            if (el) {
+                              el.scrollIntoView({ behavior: "smooth", block: "center" });
+                              el.style.transition = "background-color 0.3s ease";
+                              el.style.backgroundColor = message.senderId === "me"
+                                ? "rgba(102, 126, 234, 0.15)"
+                                : "rgba(102, 126, 234, 0.1)";
+                              setTimeout(() => { el.style.backgroundColor = ""; }, 1500);
+                            }
+                          }}
+                          sx={{
+                            mb: 1,
+                            px: 1.2,
+                            py: 0.6,
+                            borderRadius: 1,
+                            borderLeft: "3px solid",
+                            borderColor: message.senderId === "me"
+                              ? "rgba(255,255,255,0.5)"
+                              : "#667eea",
+                            bgcolor: message.senderId === "me"
+                              ? "rgba(255,255,255,0.15)"
+                              : alpha("#667eea", 0.08),
+                            cursor: message.replyTo?.messageId ? "pointer" : "default",
+                            transition: "background-color 0.2s ease",
+                            "&:hover": {
+                              bgcolor: message.senderId === "me"
+                                ? "rgba(255,255,255,0.22)"
+                                : alpha("#667eea", 0.14),
+                            },
+                          }}
+                        >
+                          <Typography
+                            fontSize={11}
+                            fontWeight={600}
+                            color={message.senderId === "me" ? "rgba(255,255,255,0.85)" : "#667eea"}
+                          >
+                            {message.replyTo.senderId === "me" ? "You" : selectedConversation?.user?.name || "User"}
+                          </Typography>
+                          <Typography
+                            fontSize={12}
+                            noWrap
+                            color={message.senderId === "me" ? "rgba(255,255,255,0.6)" : "text.secondary"}
+                          >
+                            {message.replyTo.text || "Attachment"}
+                          </Typography>
+                        </Box>
+                      )}
+                      <Box
+                        sx={{
+                          wordBreak: "break-word",
+                          overflowWrap: "break-word",
+                          whiteSpace: "pre-wrap",
+                          minWidth: 0,
+                        }}
+                      >
+                        <Typography fontSize={14}>
+                          {message.text}
+                        </Typography>
+                      </Box>
                       <Stack
                         direction="row"
                         alignItems="center"
@@ -1964,15 +2891,63 @@ export default function Messages() {
                       </Stack>
                     </Box>
                   )}
+                  </Box>
+                  {/* Reply Button for received messages */}
+                  {message.senderId !== "me" && (
+                    <IconButton
+                      className="reply-btn"
+                      size="small"
+                      onClick={() => setReplyTo(message)}
+                      sx={{
+                        opacity: 0,
+                        transition: "opacity 0.2s ease",
+                        alignSelf: "center",
+                        ml: 0.5,
+                        color: alpha("#667eea", 0.6),
+                        "&:hover": { color: "#667eea", bgcolor: alpha("#667eea", 0.08) },
+                      }}
+                    >
+                      <ReplyIcon sx={{ fontSize: 18, transform: "scaleX(-1)" }} />
+                    </IconButton>
+                  )}
                 </Box>
               ))
             )}
+            <Box ref={messageEndRef} sx={{ height: 1 }} />
           </Box>
 
           {/* Message Input */}
-          <Box sx={{ p: 2, bgcolor: "white", borderTop: "1px solid #e0e0e0" }}>
+          <Box sx={{ px: 1.5, py: 1, bgcolor: "white", borderTop: "1px solid #e0e0e0" }}>
+            {/* Reply Preview Banner */}
+            {replyTo && (
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  mb: 1.5,
+                  p: 1,
+                  pl: 1.5,
+                  borderRadius: 2,
+                  bgcolor: alpha("#667eea", 0.06),
+                  borderLeft: "3px solid #667eea",
+                }}
+              >
+                <ReplyIcon sx={{ fontSize: 18, color: "#667eea", mr: 1, transform: "scaleX(-1)" }} />
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography fontSize={12} fontWeight={600} color="#667eea">
+                    Replying to {replyTo.senderId === "me" ? "yourself" : selectedConversation?.user?.name || "User"}
+                  </Typography>
+                  <Typography fontSize={12} color="text.secondary" noWrap>
+                    {replyTo.text || (replyTo.attachment ? "Attachment" : replyTo.location ? "Location" : "Message")}
+                  </Typography>
+                </Box>
+                <IconButton size="small" onClick={() => setReplyTo(null)} sx={{ color: "text.secondary" }}>
+                  <CloseIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              </Box>
+            )}
             {/* Quick Actions */}
-            <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
+            <Stack direction="row" spacing={0.75} sx={{ mb: 1 }}>
               {[
                 "Yes, it's available.",
                 "The price is fixed, but it's in excellent condition.",
@@ -1984,7 +2959,7 @@ export default function Messages() {
                   size="small"
                   onClick={() => setMessageInput(quickMsg)}
                   sx={{
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: 500,
                     bgcolor: alpha("#667eea", 0.08),
                     color: "#667eea",
@@ -2027,8 +3002,8 @@ export default function Messages() {
                 sx={{
                   color: "white",
                   background: gradientPrimary,
-                  width: 40,
-                  height: 40,
+                  width: 36,
+                  height: 36,
                   transition: "all 0.2s ease",
                   "&:hover": {
                     background: gradientPrimary,
@@ -2037,7 +3012,7 @@ export default function Messages() {
                   },
                 }}
               >
-                <AddIcon sx={{ fontSize: 24 }} />
+                <AddIcon sx={{ fontSize: 20 }} />
               </IconButton>
 
               {/* Attachment Menu */}
@@ -2117,8 +3092,8 @@ export default function Messages() {
                 onClick={handleSendMessage}
                 disabled={!messageInput.trim() || sendMessageMutation.isPending}
                 sx={{
-                  width: 44,
-                  height: 44,
+                  width: 38,
+                  height: 38,
                   background: messageInput.trim()
                     ? gradientPrimary
                     : alpha("#667eea", 0.1),
@@ -2140,7 +3115,7 @@ export default function Messages() {
                   },
                 }}
               >
-                <SendIcon sx={{ fontSize: 22 }} />
+                <SendIcon sx={{ fontSize: 20 }} />
               </IconButton>
             </Box>
           </Box>
@@ -2184,12 +3159,24 @@ export default function Messages() {
 
   return (
     <Box
-      sx={{ bgcolor: "#fafafa", minHeight: "100vh", pt: 2, pb: 2 }}
-      // mt={isMobile ? 10 : 12.5}
+      sx={{
+        bgcolor: "#fafafa",
+        height: "100vh",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        m: { xs: -2, md: -3 },
+        p: { xs: 1, md: 2 },
+        width: { xs: "calc(100% + 32px)", md: "calc(100% + 48px)" },
+      }}
     >
       <Container
         maxWidth="xl"
-        sx={{ height: "calc(100vh - 180px)", px: isMobile ? 0 : undefined }}
+        sx={{
+          flex: 1,
+          overflow: "hidden",
+          px: isMobile ? 0 : undefined,
+        }}
       >
         {isMobile ? (
           selectedConversation ? (
@@ -2206,6 +3193,329 @@ export default function Messages() {
           </Box>
         )}
       </Container>
+
+      {/* Location Dialog */}
+      <Dialog
+        open={locationDialogOpen}
+        onClose={() => {
+          setLocationDialogOpen(false);
+          setUserLocation(null);
+          setLocationError(null);
+          setLocationSearch("");
+          setLocationSearchResults([]);
+          setSelectedLocationName("");
+        }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}
+      >
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <LocationOnIcon sx={{ color: "#4caf50" }} />
+            <Typography fontWeight={600}>Share Location</Typography>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          {/* Location Search */}
+          <Box sx={{ mb: 2 }}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Search for a location..."
+              value={locationSearch}
+              onChange={(e) => setLocationSearch(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleLocationSearch();
+                }
+              }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon sx={{ color: "#9e9e9e", fontSize: 20 }} />
+                  </InputAdornment>
+                ),
+                endAdornment: locationSearch && (
+                  <InputAdornment position="end">
+                    <Button
+                      size="small"
+                      onClick={handleLocationSearch}
+                      disabled={locationSearching}
+                      sx={{
+                        minWidth: "auto",
+                        px: 1.5,
+                        borderRadius: 2,
+                        bgcolor: "#4caf50",
+                        color: "white",
+                        "&:hover": { bgcolor: "#43a047" },
+                      }}
+                    >
+                      {locationSearching ? "..." : "Search"}
+                    </Button>
+                  </InputAdornment>
+                ),
+                sx: {
+                  borderRadius: 2,
+                  bgcolor: alpha("#4caf50", 0.05),
+                  "& fieldset": { borderColor: alpha("#4caf50", 0.2) },
+                  "&:hover fieldset": { borderColor: "#4caf50" },
+                  "&.Mui-focused fieldset": { borderColor: "#4caf50" },
+                },
+              }}
+            />
+          </Box>
+
+          {/* Search Results */}
+          {locationSearchResults.length > 0 && (
+            <Box sx={{ mb: 2 }}>
+              <Typography fontSize={12} color="text.secondary" mb={1}>
+                Search Results
+              </Typography>
+              <List sx={{
+                  maxHeight: 200,
+                  overflow: "auto",
+                  p: 0,
+                  "&::-webkit-scrollbar": { width: 5 },
+                  "&::-webkit-scrollbar-track": {
+                    bgcolor: alpha("#667eea", 0.05),
+                    borderRadius: 3,
+                  },
+                  "&::-webkit-scrollbar-thumb": {
+                    bgcolor: alpha("#667eea", 0.25),
+                    borderRadius: 3,
+                    "&:hover": { bgcolor: alpha("#667eea", 0.4) },
+                  },
+                  scrollbarWidth: "thin",
+                  scrollbarColor: `${alpha("#667eea", 0.25)} ${alpha("#667eea", 0.05)}`,
+                }}>
+                {locationSearchResults.map((location, index) => (
+                  <ListItem
+                    key={index}
+                    button
+                    onClick={() => handleSelectSearchedLocation(location)}
+                    sx={{
+                      borderRadius: 2,
+                      mb: 0.5,
+                      border: "1px solid #e0e0e0",
+                      transition: "all 0.2s ease",
+                      "&:hover": {
+                        bgcolor: alpha("#4caf50", 0.1),
+                        borderColor: "#4caf50",
+                      },
+                    }}
+                  >
+                    <ListItemIcon sx={{ minWidth: 40 }}>
+                      <LocationOnIcon sx={{ color: "#4caf50" }} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={location.name.split(",")[0]}
+                      secondary={location.name.split(",").slice(1, 3).join(",")}
+                      primaryTypographyProps={{ fontSize: 14, fontWeight: 500 }}
+                      secondaryTypographyProps={{ fontSize: 12 }}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </Box>
+          )}
+
+          {/* Divider with OR */}
+          {!userLocation && !locationLoading && !locationError && (
+            <Box sx={{ display: "flex", alignItems: "center", my: 2 }}>
+              <Box sx={{ flex: 1, height: "1px", bgcolor: "#e0e0e0" }} />
+              <Typography sx={{ px: 2, color: "text.secondary", fontSize: 12 }}>
+                OR
+              </Typography>
+              <Box sx={{ flex: 1, height: "1px", bgcolor: "#e0e0e0" }} />
+            </Box>
+          )}
+
+          {/* Current Location Button */}
+          {!userLocation && !locationLoading && !locationError && (
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={handleGetLocation}
+              startIcon={<LocationOnIcon />}
+              sx={{
+                borderRadius: 2,
+                borderColor: "#4caf50",
+                color: "#4caf50",
+                py: 1.5,
+                mb: 2,
+                "&:hover": {
+                  borderColor: "#43a047",
+                  bgcolor: alpha("#4caf50", 0.05),
+                },
+              }}
+            >
+              Use Current Location
+            </Button>
+          )}
+
+          {locationLoading ? (
+            <Box sx={{ textAlign: "center", py: 4 }}>
+              <Box
+                sx={{
+                  width: 40,
+                  height: 40,
+                  border: "3px solid #e0e0e0",
+                  borderTopColor: "#4caf50",
+                  borderRadius: "50%",
+                  animation: "spin 1s linear infinite",
+                  mx: "auto",
+                  mb: 2,
+                  "@keyframes spin": {
+                    "0%": { transform: "rotate(0deg)" },
+                    "100%": { transform: "rotate(360deg)" },
+                  },
+                }}
+              />
+              <Typography color="text.secondary">
+                Getting your location...
+              </Typography>
+            </Box>
+          ) : locationError ? (
+            <Box sx={{ textAlign: "center", py: 3 }}>
+              <Box
+                sx={{
+                  width: 60,
+                  height: 60,
+                  borderRadius: "50%",
+                  bgcolor: alpha("#f44336", 0.1),
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  mx: "auto",
+                  mb: 2,
+                }}
+              >
+                <LocationOnIcon sx={{ fontSize: 32, color: "#f44336" }} />
+              </Box>
+              <Typography fontWeight={500} mb={1}>
+                Location Access Required
+              </Typography>
+              <Typography fontSize={14} color="text.secondary" mb={3}>
+                {locationError}
+              </Typography>
+              <Stack spacing={1}>
+                <Button
+                  variant="contained"
+                  onClick={() => {
+                    setLocationError(null);
+                    handleGetLocation();
+                  }}
+                  sx={{
+                    borderRadius: 2,
+                    bgcolor: "#4caf50",
+                    "&:hover": { bgcolor: "#43a047" },
+                  }}
+                >
+                  Try Again
+                </Button>
+                <Typography fontSize={12} color="text.secondary">
+                  Make sure location is enabled in your browser settings
+                </Typography>
+              </Stack>
+            </Box>
+          ) : userLocation ? (
+            <Box>
+              <Box
+                sx={{
+                  width: "100%",
+                  height: 200,
+                  borderRadius: 2,
+                  overflow: "hidden",
+                  mb: 2,
+                  bgcolor: "#e8f5e9",
+                }}
+              >
+                <img
+                  src={`https://maps.googleapis.com/maps/api/staticmap?center=${userLocation.lat},${userLocation.lng}&zoom=15&size=600x200&markers=color:green%7C${userLocation.lat},${userLocation.lng}&key=YOUR_API_KEY`}
+                  alt="Location preview"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  onError={(e) => {
+                    e.target.style.display = "none";
+                    e.target.nextSibling.style.display = "flex";
+                  }}
+                />
+                <Box
+                  sx={{
+                    display: "none",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    height: "100%",
+                    bgcolor: alpha("#4caf50", 0.1),
+                  }}
+                >
+                  <Stack alignItems="center" spacing={1}>
+                    <LocationOnIcon sx={{ fontSize: 48, color: "#4caf50" }} />
+                    <Typography fontSize={14} color="text.secondary">
+                      Location ready to share
+                    </Typography>
+                  </Stack>
+                </Box>
+              </Box>
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Box
+                  sx={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 2,
+                    bgcolor: alpha("#4caf50", 0.1),
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <LocationOnIcon sx={{ color: "#4caf50" }} />
+                </Box>
+                <Box>
+                  <Typography fontSize={14} fontWeight={500}>
+                    Current Location
+                  </Typography>
+                  <Typography fontSize={12} color="text.secondary">
+                    {userLocation.lat.toFixed(6)}, {userLocation.lng.toFixed(6)}
+                  </Typography>
+                </Box>
+              </Stack>
+            </Box>
+          ) : (
+            <Typography color="text.secondary">
+              Unable to get location
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 1 }}>
+          <Button
+            onClick={() => {
+              setLocationDialogOpen(false);
+              setUserLocation(null);
+              setLocationError(null);
+              setLocationSearch("");
+              setLocationSearchResults([]);
+              setSelectedLocationName("");
+            }}
+            sx={{ borderRadius: 2 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            disabled={!userLocation || locationLoading}
+            onClick={handleSendLocation}
+            startIcon={<SendIcon />}
+            sx={{
+              borderRadius: 2,
+              bgcolor: "#4caf50",
+              "&:hover": { bgcolor: "#43a047" },
+            }}
+          >
+            Send Location
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Profile Dialog */}
       <Dialog
@@ -2541,6 +3851,109 @@ export default function Messages() {
         style={{ display: "none" }}
         onChange={(e) => handleFileSelected(e, "Document")}
       />
+
+      <Dialog
+        open={attachmentComposeOpen}
+        onClose={resetAttachmentComposer}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography fontWeight={600}>Add caption</Typography>
+          <Typography fontSize={12} color="text.secondary" mt={0.5}>
+            {pendingAttachment?.file?.name || "Attachment"}
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          {pendingAttachmentPreviewUrl && (
+            (() => {
+              const fileType = String(pendingAttachment?.file?.type || "").toLowerCase();
+              const ext =
+                String(pendingAttachment?.file?.name || "")
+                  .split(".")
+                  .pop()
+                  ?.toLowerCase() || "";
+              const isPendingImage =
+                fileType.startsWith("image/") ||
+                ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "avif"].includes(
+                  ext,
+                );
+              const isPendingVideo =
+                fileType.startsWith("video/") ||
+                ["mp4", "mov", "avi", "mkv", "webm", "m4v", "3gp"].includes(ext);
+
+              return (
+            <Box
+              sx={{
+                mb: 2,
+                borderRadius: 2,
+                overflow: "hidden",
+                bgcolor: "#f5f5f5",
+                border: "1px solid #e0e0e0",
+              }}
+            >
+              {isPendingImage ? (
+                <Box
+                  component="img"
+                  src={pendingAttachmentPreviewUrl}
+                  alt={pendingAttachment?.file?.name || "Attachment preview"}
+                  sx={{ width: "100%", maxHeight: 220, objectFit: "cover", display: "block" }}
+                />
+              ) : isPendingVideo ? (
+                <Box
+                  component="video"
+                  src={pendingAttachmentPreviewUrl}
+                  controls
+                  muted
+                  sx={{ width: "100%", maxHeight: 220, display: "block", bgcolor: "black" }}
+                />
+              ) : (
+                <Box
+                  sx={{
+                    height: 120,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#64748b",
+                  }}
+                >
+                  <DescriptionIcon sx={{ mr: 1 }} />
+                  <Typography fontSize={13}>Document selected</Typography>
+                </Box>
+              )}
+            </Box>
+              );
+            })()
+          )}
+          <TextField
+            fullWidth
+            multiline
+            minRows={3}
+            maxRows={6}
+            autoFocus
+            placeholder="Write a caption..."
+            value={attachmentCaption}
+            onChange={(e) => setAttachmentCaption(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={resetAttachmentComposer} sx={{ borderRadius: 2 }}>
+            Discard
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSendPendingAttachment}
+            sx={{
+              borderRadius: 2,
+              background: gradientPrimary,
+              "&:hover": { background: gradientPrimary, opacity: 0.9 },
+            }}
+          >
+            Send
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Map View Dialog */}
       <Dialog

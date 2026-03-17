@@ -6,13 +6,6 @@ export async function login({ email, password }) {
   return resp.data;
 }
 
-export async function googleLogin({ credential }) {
-  // Adjust endpoint path if your backend uses a different route
-  // The backend should accept the Google credential (JWT) and return a token/user
-  const resp = await axiosClient.post("/auth/login/google", { credential });
-  return resp.data;
-}
-
 export async function register(formData) {
   // Adjust endpoint path if your backend uses a different route
   const resp = await axiosClient.post("/auth/register", formData);
@@ -42,6 +35,18 @@ export async function registerSeller(formData, onProgress) {
 export async function sendVerificationCode({ email }) {
   // Adjust endpoint path as needed
   const resp = await axiosClient.post("/auth/send-code", { email });
+  return resp.data;
+}
+
+export async function requestPasswordReset({ email }) {
+  const resp = await axiosClient.post("/auth/forgot-password", { email });
+  return resp.data;
+}
+
+export async function resetPassword({ token, password, email }) {
+  const payload = { token, password };
+  if (email) payload.email = email;
+  const resp = await axiosClient.post("/auth/reset-password", payload);
   return resp.data;
 }
 

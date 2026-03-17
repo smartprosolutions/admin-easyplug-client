@@ -64,6 +64,74 @@ export async function sendConversationMessage(conversationId, payload) {
   ]);
 }
 
+const extractAttachmentUrl = (payload) =>
+  payload?.url ||
+  payload?.fileUrl ||
+  payload?.path ||
+  payload?.filePath ||
+  payload?.attachment?.url ||
+  payload?.attachment?.fileUrl ||
+  payload?.message?.url ||
+  payload?.message?.fileUrl ||
+  payload?.message?.attachment?.url ||
+  payload?.message?.attachment?.fileUrl ||
+  payload?.data?.url ||
+  payload?.data?.fileUrl ||
+  payload?.data?.path ||
+  payload?.data?.filePath ||
+  payload?.data?.message?.url ||
+  payload?.data?.message?.fileUrl ||
+  payload?.data?.message?.attachment?.url ||
+  payload?.data?.message?.attachment?.fileUrl ||
+  "";
+
+export async function sendConversationAttachment(
+  conversationId,
+  { file, receiverId, message = "", storagePath = "" },
+) {
+  const fieldCandidates = ["attachment", "file", "document", "media", "image"];
+  let lastError;
+
+  for (const field of fieldCandidates) {
+    const formData = new FormData();
+    formData.append("chatId", String(conversationId));
+    if (receiverId) formData.append("receiverId", String(receiverId));
+    formData.append("message", message || file?.name || "Attachment");
+    formData.append("messageType", "attachment");
+    if (storagePath) {
+      formData.append("storagePath", storagePath);
+      formData.append("uploadPath", storagePath);
+      formData.append("folder", storagePath);
+    }
+    formData.append(field, file);
+
+    try {
+      const data = await requestWithFallback([
+        () => axiosClient.post("/chat-messages", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        }),
+        () =>
+          axiosClient.post(
+            `/messages/conversations/${conversationId}/messages`,
+            formData,
+            { headers: { "Content-Type": "multipart/form-data" } },
+          ),
+      ]);
+      const url = extractAttachmentUrl(data);
+      return { data, fileUrl: url };
+    } catch (error) {
+      lastError = error;
+      const status = error?.response?.status;
+      if (status === 404 || status === 405 || status === 415 || status === 422) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw lastError || new Error("Unable to send attachment.");
+}
+
 export async function getUnreadMessageCount() {
   return requestWithFallback([
     () => axiosClient.get("/chat-messages/unread/count"),
