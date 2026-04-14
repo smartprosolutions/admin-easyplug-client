@@ -8,7 +8,6 @@ import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
 import Checkbox from "@mui/material/Checkbox";
 import FormControlLabel from "@mui/material/FormControlLabel";
-import Divider from "@mui/material/Divider";
 import { gradientPrimary } from "../../theme/theme";
 import logo from "../../assets/images/Sample Logo 1 (3).png";
 import { Formik, Form } from "formik";
@@ -16,7 +15,7 @@ import * as Yup from "yup";
 import TextFieldWrapper from "../../components/forms/TextFieldWrapper";
 import React from "react";
 import { useMutation } from "@tanstack/react-query";
-import { login as loginRequest, googleLogin } from "../../services/authService";
+import { login as loginRequest } from "../../services/authService";
 import { useNavigate } from "react-router-dom";
 import ToastAlert from "../../components/alerts/ToastAlert";
 import InputAdornment from "@mui/material/InputAdornment";
@@ -50,27 +49,6 @@ export default function LoginUser() {
     }
   });
 
-  const googleMutation = useMutation({
-    mutationFn: ({ credential }) => googleLogin({ credential }),
-    onSuccess: (data) => {
-      if (data?.accessToken || data?.token) {
-        const token = data.accessToken || data.token;
-        localStorage.setItem("access_token", token);
-      }
-      setAuthToast({
-        open: true,
-        severity: "success",
-        message: "Signed in with Google"
-      });
-      setTimeout(() => navigate("/dashboard"), 700);
-    },
-    onError: (err) => {
-      console.error("Google login failed", err);
-      const msg =
-        err?.response?.data?.message || err?.message || "Google login failed";
-      setAuthToast({ open: true, severity: "error", message: msg });
-    }
-  });
 
   const [authToast, setAuthToast] = React.useState({
     open: false,
@@ -99,53 +77,6 @@ export default function LoginUser() {
 
   const handleToastClose = () => setAuthToast((s) => ({ ...s, open: false }));
 
-  const handleGoogleSignIn = () => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
-    if (!clientId) {
-      console.warn("Missing VITE_GOOGLE_CLIENT_ID env var.");
-      return;
-    }
-    const src = "https://accounts.google.com/gsi/client";
-    const initAndPrompt = () => {
-      if (!window.google?.accounts?.id) return;
-      try {
-        if (!window.__oneTapInitialized) {
-          window.google.accounts.id.initialize({
-            client_id: clientId,
-            callback: (response) => {
-              // response contains credential (JWT) that should be sent to backend
-              const credential = response?.credential;
-              if (credential) {
-                googleMutation.mutate({ credential });
-              }
-            }
-          });
-          window.__oneTapInitialized = true;
-        }
-        try {
-          window.google.accounts.id.cancel();
-        } catch {
-          /* no-op */
-        }
-        window.google.accounts.id.prompt();
-      } catch {
-        /* no-op */
-      }
-    };
-    let script = document.querySelector(`script[src="${src}"]`);
-    if (!script) {
-      script = document.createElement("script");
-      script.src = src;
-      script.async = true;
-      script.defer = true;
-      script.onload = initAndPrompt;
-      document.head.appendChild(script);
-    } else if (window.google?.accounts?.id) {
-      initAndPrompt();
-    } else {
-      script.addEventListener("load", initAndPrompt, { once: true });
-    }
-  };
   return (
     <Box
       sx={{
@@ -154,22 +85,46 @@ export default function LoginUser() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        bgcolor: (theme) =>
-          theme.palette.mode === "light" ? "#f7f7f7" : "#0f1115",
+        background: (theme) =>
+          theme.palette.mode === "light"
+            ? "radial-gradient(circle at top, rgba(102,126,234,0.16), rgba(247,247,247,1) 45%)"
+            : "radial-gradient(circle at top, rgba(102,126,234,0.18), rgba(15,17,21,1) 45%)",
         p: 2
       }}
     >
       <Paper
-        elevation={3}
-        sx={{ maxWidth: 500, width: "100%", borderRadius: 3 }}
+        elevation={0}
+        sx={{
+          maxWidth: 500,
+          width: "100%",
+          borderRadius: 4,
+          border: "1px solid",
+          borderColor: "divider",
+          boxShadow: (theme) =>
+            theme.palette.mode === "light"
+              ? "0 18px 48px rgba(15, 23, 42, 0.14)"
+              : "0 18px 48px rgba(0, 0, 0, 0.5)",
+          backdropFilter: "blur(6px)",
+          backgroundColor: "background.paper"
+        }}
       >
-        <Stack spacing={3} sx={{ p: 4 }}>
+        <Stack spacing={3} sx={{ p: { xs: 3, sm: 4 } }}>
           <Stack alignItems="center" justifyContent="center">
-            <Avatar src={logo} alt="Logo" sx={{ width: 150, height: 150 }} />
+            <Avatar
+              src={logo}
+              alt="Logo"
+              sx={{
+                width: { xs: 110, sm: 140 },
+                height: { xs: 110, sm: 140 },
+                border: "1px solid",
+                borderColor: "divider",
+                bgcolor: "background.paper"
+              }}
+            />
           </Stack>
           <Typography
             variant="h5"
-            sx={{ fontWeight: 700, textAlign: "center" }}
+            sx={{ fontWeight: 800, textAlign: "center", letterSpacing: 0.2 }}
           >
             Welcome back
           </Typography>
@@ -222,7 +177,9 @@ export default function LoginUser() {
                       }
                       label="Remember me"
                     />
-                    <Button size="small">Forgot password?</Button>
+                    <Button size="small" onClick={() => navigate("/forgot-password")}>
+                      Forgot password?
+                    </Button>
                   </Stack>
                   <Button
                     type="submit"
@@ -255,29 +212,6 @@ export default function LoginUser() {
               </Form>
             )}
           </Formik>
-
-          <Divider>
-            <Typography variant="caption" color="text.secondary">
-              or continue with
-            </Typography>
-          </Divider>
-
-          <Stack direction="row" spacing={1}>
-            <Button
-              fullWidth
-              variant="outlined"
-              onClick={handleGoogleSignIn}
-              startIcon={
-                <img
-                  alt="Google"
-                  src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-                  style={{ width: 18, height: 18 }}
-                />
-              }
-            >
-              Continue with Google
-            </Button>
-          </Stack>
 
           <Typography variant="body2" color="text.secondary" textAlign="center">
             Don’t have an account?{" "}

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Paper from "@mui/material/Paper";
@@ -19,44 +19,122 @@ import FilterListIcon from "@mui/icons-material/FilterList";
 import EmailIcon from "@mui/icons-material/Email";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import LocalOfferIcon from "@mui/icons-material/LocalOffer";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  getNotifications,
+  markAsRead,
+  deleteNotification,
+} from "../services/notificationService";
+import { connectSocket, getSocket } from "../socket/socketClient";
+import { useUnreadCounts } from "../context/UnreadCountsContext";
+
+const formatTimeAgo = (dateValue) => {
+  if (!dateValue) return "";
+  const date = new Date(dateValue);
+  const now = new Date();
+  const diff = Math.max(0, now - date);
+  const minutes = Math.floor(diff / (1000 * 60));
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (days > 0) return `${days}d ago`;
+  if (hours > 0) return `${hours}h ago`;
+  if (minutes > 0) return `${minutes}m ago`;
+  return "Just now";
+};
 
 export default function Notifications() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const queryClient = useQueryClient();
+  const { decrementUnreadNotifications, refetchUnreadNotifications } =
+    useUnreadCounts();
   const [filter, setFilter] = useState("all");
-  const data = useMemo(
-    () => [
-      {
-        id: 1,
-        type: "system",
-        title: "System update",
-        body: "We will perform maintenance at 02:00.",
-        time: "2h ago"
-      },
-      {
-        id: 2,
-        type: "message",
-        title: "New message",
-        body: "You’ve received a message from John.",
-        time: "4h ago"
-      },
-      {
-        id: 3,
-        type: "warning",
-        title: "Payment failed",
-        body: "Your last payment could not be processed.",
-        time: "Yesterday"
-      },
-      {
-        id: 4,
-        type: "promo",
-        title: "Limited offer",
-        body: "Save 20% on sponsorships this week!",
-        time: "2 days ago"
+  const [notifications, setNotifications] = useState([]);
+
+  const { data: notificationsResponse } = useQuery({
+    queryKey: ["admin-notifications"],
+    queryFn: () => getNotifications(),
+    retry: false,
+  });
+
+  useEffect(() => {
+    const items = notificationsResponse?.notifications || [];
+    setNotifications(
+      items.map((n) => ({
+        ...n,
+        id: n.notificationId || n.id,
+        body: n.message,
+        time: formatTimeAgo(n.createdAt),
+        isRead: Boolean(n.isRead),
+      })),
+    );
+  }, [notificationsResponse]);
+
+  // Connect socket and listen for incoming notifications
+  useEffect(() => {
+    connectSocket();
+    const socket = getSocket();
+    if (!socket) return;
+
+    const handleNewNotification = ({ notification: incoming }) => {
+      const normalized = {
+        ...incoming,
+        id: incoming.notificationId || incoming.id,
+        body: incoming.message,
+        time: "Just now",
+        isRead: false,
+      };
+      setNotifications((prev) => [normalized, ...prev]);
+      queryClient.invalidateQueries({ queryKey: ["admin-notifications"] });
+    };
+
+    socket.on("new_notification", handleNewNotification);
+
+    return () => {
+      socket.off("new_notification", handleNewNotification);
+    };
+  }, [queryClient]);
+
+  const markAsReadMutation = useMutation({
+    mutationFn: (id) => markAsRead(id),
+    onSuccess: (_, id) => {
+      const target = notifications.find((n) => n.id === id);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)),
+      );
+      if (target && !target.isRead) {
+        decrementUnreadNotifications(1);
       }
-    ],
-    []
-  );
-  const filtered = data.filter((n) =>
-    filter === "all" ? true : n.type === filter
+    },
+    onError: (err) => {
+      refetchUnreadNotifications();
+      console.error("Failed to mark as read:", err);
+    },
+  });
+
+  const deleteNotificationMutation = useMutation({
+    mutationFn: (id) => deleteNotification(id),
+    onSuccess: (_, id) => {
+      const target = notifications.find((n) => n.id === id);
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+      if (target && !target.isRead) {
+        decrementUnreadNotifications(1);
+      }
+    },
+    onError: (err) => {
+      refetchUnreadNotifications();
+      console.error("Failed to delete notification:", err);
+    },
+  });
+
+  const filtered = useMemo(
+    () =>
+      notifications.filter((n) =>
+        filter === "all" ? true : n.type === filter,
+      ),
+    [notifications, filter],
   );
 
   const typeChip = (t) => {
@@ -105,25 +183,46 @@ export default function Notifications() {
   };
 
   return (
-    <Box sx={{ p: 2 }}>
+    <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
       <Stack
-        direction="row"
+        direction={{ xs: "column", sm: "row" }}
         justifyContent="space-between"
-        alignItems="center"
+        alignItems={{ xs: "stretch", sm: "center" }}
         sx={{ mb: 2 }}
       >
         <Typography variant="h5">Notifications</Typography>
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
           <Button
             startIcon={<FilterListIcon />}
             onClick={() => setFilter("all")}
+            size={isMobile ? "small" : "medium"}
           >
             All
           </Button>
-          <Button onClick={() => setFilter("system")}>System</Button>
-          <Button onClick={() => setFilter("message")}>Messages</Button>
-          <Button onClick={() => setFilter("warning")}>Warnings</Button>
-          <Button onClick={() => setFilter("promo")}>Promos</Button>
+          <Button
+            onClick={() => setFilter("system")}
+            size={isMobile ? "small" : "medium"}
+          >
+            System
+          </Button>
+          <Button
+            onClick={() => setFilter("message")}
+            size={isMobile ? "small" : "medium"}
+          >
+            Messages
+          </Button>
+          <Button
+            onClick={() => setFilter("warning")}
+            size={isMobile ? "small" : "medium"}
+          >
+            Warnings
+          </Button>
+          <Button
+            onClick={() => setFilter("promo")}
+            size={isMobile ? "small" : "medium"}
+          >
+            Promos
+          </Button>
         </Stack>
       </Stack>
       <Paper sx={{ p: 2 }} elevation={3}>
@@ -131,31 +230,64 @@ export default function Notifications() {
           {filtered.map((n, idx) => (
             <React.Fragment key={n.id}>
               <ListItem
-                secondaryAction={
-                  <Stack direction="row" spacing={1}>
+                sx={{
+                  opacity: n.isRead ? 0.6 : 1,
+                  alignItems: "flex-start",
+                  gap: 1,
+                  px: { xs: 0.5, sm: 2 },
+                }}
+              >
+                <ListItemIcon>
+                  <Avatar
+                    sx={{ bgcolor: n.isRead ? "grey.400" : "primary.main" }}
+                  >
+                    {n.title?.charAt(0) || "N"}
+                  </Avatar>
+                </ListItemIcon>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <ListItemText
+                    primary={n.title}
+                    secondary={`${n.body} • ${n.time}`}
+                    sx={{ my: 0 }}
+                  />
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    sx={{ mt: 1, flexWrap: "wrap", rowGap: 1 }}
+                  >
                     {typeChip(n.type)}
-                    <IconButton size="small" color="success">
-                      <CheckIcon />
-                    </IconButton>
-                    <IconButton size="small" color="error">
+                    {!n.isRead && (
+                      <IconButton
+                        size="small"
+                        color="success"
+                        onClick={() => markAsReadMutation.mutate(n.id)}
+                        disabled={markAsReadMutation.isPending}
+                      >
+                        <CheckIcon />
+                      </IconButton>
+                    )}
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => deleteNotificationMutation.mutate(n.id)}
+                      disabled={deleteNotificationMutation.isPending}
+                    >
                       <DeleteOutlineIcon />
                     </IconButton>
                   </Stack>
-                }
-              >
-                <ListItemIcon>
-                  <Avatar sx={{ bgcolor: "primary.main" }}>
-                    {n.title.charAt(0)}
-                  </Avatar>
-                </ListItemIcon>
-                <ListItemText
-                  primary={n.title}
-                  secondary={`${n.body} • ${n.time}`}
-                />
+                </Box>
               </ListItem>
               {idx < filtered.length - 1 && <Divider component="li" />}
             </React.Fragment>
           ))}
+          {filtered.length === 0 && (
+            <ListItem>
+              <ListItemText
+                primary="No notifications"
+                secondary="You're all caught up"
+              />
+            </ListItem>
+          )}
         </List>
       </Paper>
     </Box>

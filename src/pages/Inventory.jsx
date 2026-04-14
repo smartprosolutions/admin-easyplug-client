@@ -1,19 +1,25 @@
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
-import MetricsDataGrid from "../components/metrics/MetricsDataGrid";
+import CustomDataGrid from "../components/customization/CustomDataGrid";
 import {
   Stack,
   Typography,
   Button,
   IconButton,
-  CircularProgress
+  CircularProgress,
+  Tooltip,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import VisibilityIcon from "@mui/icons-material/Visibility";
 import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
 import { useNavigate, Outlet } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { getAdminListings } from "../services/listingService";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { deleteListing, getAdminListings } from "../services/listingService";
 import { gradientPrimary } from "../theme/theme";
+import ConfirmDialog from "../components/modals/ConfirmDialog";
+import ToastAlert from "../components/alerts/ToastAlert";
+import { useState } from "react";
 
 // Live data will be fetched from the API
 
@@ -34,6 +40,33 @@ const formatDate = (value) =>
 
 export default function Inventory() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [toast, setToast] = useState({
+    open: false,
+    severity: "info",
+    message: "",
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id) => deleteListing(id),
+    onSuccess: async () => {
+      try {
+        await queryClient.invalidateQueries({ queryKey: ["adminListings"] });
+      } catch {
+        // ignore
+      }
+      setToast({ open: true, severity: "success", message: "Item deleted" });
+      setDeleteTarget(null);
+    },
+    onError: (err) => {
+      setToast({
+        open: true,
+        severity: "error",
+        message: err?.response?.data?.message || err.message || "Delete failed",
+      });
+    },
+  });
 
   const { data: apiData, isPending } = useQuery({
     queryKey: ["adminListings"],
@@ -76,7 +109,6 @@ export default function Inventory() {
 
   const columns = [
     { field: "title", headerName: "Title", flex: 1, minWidth: 200 },
-    { field: "description", headerName: "Description", width: 260, flex: 1 },
     { field: "type", headerName: "Type", width: 120 },
     { field: "category", headerName: "Category", width: 140 },
     {
@@ -148,7 +180,14 @@ export default function Inventory() {
         alignItems="center"
         mb={3}
       >
-        <Typography variant="h5">Inventory</Typography>
+        <Box>
+          <Typography variant="h5" fontWeight={700}>
+            Inventory
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Manage inventory items and availability
+          </Typography>
+        </Box>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
@@ -169,7 +208,7 @@ export default function Inventory() {
             <CircularProgress />
           </Box>
         ) : (
-          <MetricsDataGrid
+          <CustomDataGrid
             autoHeight
             rows={rows}
             columns={[
@@ -177,28 +216,96 @@ export default function Inventory() {
               {
                 field: "actions",
                 headerName: "Actions",
-                width: 110,
+                width: 160,
                 sortable: false,
                 renderCell: (params) => (
-                  <IconButton
-                    sx={{
-                      background: gradientPrimary,
-                      color: "#fff",
-                      "&:hover": { opacity: 0.92 }
-                    }}
-                    onClick={() =>
-                      navigate(`/inventory/${params.row.listingId}/edit`)
-                    }
-                  >
-                    <EditIcon />
-                  </IconButton>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Tooltip title="View item">
+                      <IconButton
+                        sx={{
+                          bgcolor: "background.paper",
+                          border: "1px solid",
+                          borderColor: "divider",
+                          "&:hover": { borderColor: "primary.main" },
+                        }}
+                        onClick={() => {
+                          const rowId =
+                            params.row.listingId ??
+                            params.row.listing_id ??
+                            params.row.id;
+                          navigate(`/inventory/${rowId}/edit`);
+                        }}
+                      >
+                        <VisibilityIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Edit item">
+                      <IconButton
+                        sx={{
+                          background: gradientPrimary,
+                          color: "#fff",
+                          "&:hover": { opacity: 0.92 },
+                        }}
+                        onClick={() => {
+                          const rowId =
+                            params.row.listingId ??
+                            params.row.listing_id ??
+                            params.row.id;
+                          navigate(`/inventory/${rowId}/edit`);
+                        }}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete item">
+                      <IconButton
+                        color="error"
+                        sx={{
+                          border: "1px solid",
+                          borderColor: "divider",
+                          "&:hover": { borderColor: "error.main" },
+                        }}
+                        onClick={() => {
+                          const rowId =
+                            params.row.listingId ??
+                            params.row.listing_id ??
+                            params.row.id;
+                          setDeleteTarget({
+                            id: rowId,
+                            title: params.row.title,
+                          });
+                        }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
                 )
               }
             ]}
           />
         )}
       </Box>
-
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete item"
+        description={
+          deleteTarget?.title
+            ? `Delete ${deleteTarget.title}? This cannot be undone.`
+            : "Delete this item? This cannot be undone."
+        }
+        confirmText="Delete"
+        confirmColor="error"
+        loading={deleteMut.isPending}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget?.id && deleteMut.mutate(deleteTarget.id)}
+      />
+      <ToastAlert
+        open={toast.open}
+        severity={toast.severity}
+        message={toast.message}
+        onClose={() => setToast((prev) => ({ ...prev, open: false }))}
+      />
       <Outlet />
     </Box>
   );

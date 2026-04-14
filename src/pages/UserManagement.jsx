@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars */
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   Box,
   Stack,
@@ -22,7 +22,8 @@ import {
   Tab,
   Tabs
 } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import SearchIcon from "@mui/icons-material/Search";
 import DownloadIcon from "@mui/icons-material/Download";
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -165,6 +166,8 @@ const dummyUsers = [
 ];
 
 export default function UserManagement() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [activeTab, setActiveTab] = useState(0);
   const [adminQuery, setAdminQuery] = useState("");
   const [sellerQuery, setSellerQuery] = useState("");
@@ -179,9 +182,9 @@ export default function UserManagement() {
     severity: "success"
   });
 
-  const showSnackbar = (message, severity = "success") => {
+  const showSnackbar = useCallback((message, severity = "success") => {
     setSnackbar({ open: true, message, severity });
-  };
+  }, []);
 
   // Filter data based on search queries
   const filteredAdmins = useMemo(() => {
@@ -213,12 +216,12 @@ export default function UserManagement() {
   }, [userQuery]);
 
   // Action handlers
-  const handleToggleStatus = (user, entityType) => {
+  const handleToggleStatus = useCallback((user, entityType) => {
     setSelectedUser({ ...user, entityType });
     setDeactivateDialogOpen(true);
-  };
+  }, []);
 
-  const handleConfirmToggle = () => {
+  const handleConfirmToggle = useCallback(() => {
     if (selectedUser) {
       const action =
         selectedUser.status === "active" ? "deactivated" : "activated";
@@ -229,20 +232,20 @@ export default function UserManagement() {
     }
     setDeactivateDialogOpen(false);
     setSelectedUser(null);
-  };
+  }, [selectedUser, showSnackbar]);
 
-  const handleView = (user) => {
+  const handleView = useCallback((user) => {
     showSnackbar(
       `Viewing ${user.firstName} ${user.lastName}'s profile`,
       "info"
     );
-  };
+  }, [showSnackbar]);
 
-  const handleEdit = (user) => {
+  const handleEdit = useCallback((user) => {
     showSnackbar(`Editing ${user.firstName} ${user.lastName}`, "info");
-  };
+  }, [showSnackbar]);
 
-  const formatDate = (dateString) => {
+  const formatDate = useCallback((dateString) => {
     if (!dateString) return "-";
     try {
       const date = new Date(dateString);
@@ -254,7 +257,7 @@ export default function UserManagement() {
     } catch {
       return "-";
     }
-  };
+  }, []);
 
   // Admin columns
   const adminColumns = useMemo(
@@ -354,7 +357,7 @@ export default function UserManagement() {
         )
       }
     ],
-    []
+    [formatDate, handleEdit, handleToggleStatus]
   );
 
   // Seller columns
@@ -488,7 +491,7 @@ export default function UserManagement() {
         )
       }
     ],
-    []
+    [formatDate, handleEdit, handleToggleStatus, handleView]
   );
 
   // User columns
@@ -584,17 +587,17 @@ export default function UserManagement() {
         )
       }
     ],
-    []
+    [formatDate, handleToggleStatus, handleView]
   );
 
   const tabPanelStyle = { mt: 3 };
 
   return (
-    <Box sx={{ py: 3, px: { xs: 2, md: 3 } }}>
+    <Box sx={{ py: { xs: 2, md: 3 }, px: { xs: 1.5, sm: 2, md: 3 } }}>
       {/* Header */}
       <Stack
-        direction="row"
-        alignItems="center"
+        direction={{ xs: "column", sm: "row" }}
+        alignItems={{ xs: "flex-start", sm: "center" }}
         justifyContent="space-between"
         sx={{ mb: 3 }}
       >
@@ -616,13 +619,17 @@ export default function UserManagement() {
         <Tabs
           value={activeTab}
           onChange={(e, v) => setActiveTab(v)}
+          variant={isMobile ? "scrollable" : "standard"}
+          scrollButtons={isMobile ? "auto" : false}
+          allowScrollButtonsMobile
           sx={{
-            px: 2,
+            px: { xs: 1, sm: 2 },
             borderBottom: "1px solid #e0e0e0",
             "& .MuiTab-root": {
               fontWeight: 600,
               textTransform: "none",
-              minHeight: 56
+              minHeight: 56,
+              minWidth: isMobile ? 120 : undefined,
             },
             "& .Mui-selected": { color: "#667eea" },
             "& .MuiTabs-indicator": { bgcolor: "#667eea" }
@@ -647,12 +654,12 @@ export default function UserManagement() {
 
         {/* Admins Tab */}
         {activeTab === 0 && (
-          <Box sx={{ p: 3 }}>
+          <Box sx={{ p: { xs: 1.5, sm: 3 } }}>
             <Stack
               direction={{ xs: "column", sm: "row" }}
               spacing={2}
               sx={{ mb: 3 }}
-              alignItems="center"
+              alignItems={{ xs: "stretch", sm: "center" }}
             >
               <TextField
                 value={adminQuery}
@@ -675,7 +682,7 @@ export default function UserManagement() {
                 sx={{
                   backgroundImage: gradientPrimary,
                   color: "#fff",
-                  minWidth: 160,
+                  minWidth: { xs: "100%", sm: 160 },
                   whiteSpace: "nowrap",
                   borderRadius: 2,
                   px: 3
@@ -684,23 +691,96 @@ export default function UserManagement() {
                 Add Admin
               </Button>
             </Stack>
-            <MetricsDataGrid
-              rows={filteredAdmins}
-              columns={adminColumns}
-              autoHeight
-              pageSize={10}
-            />
+            {isMobile ? (
+              <Stack spacing={1.25}>
+                {filteredAdmins.map((admin) => (
+                  <Paper
+                    key={admin.id}
+                    variant="outlined"
+                    sx={{ p: 1.5, borderRadius: 2 }}
+                  >
+                    <Stack spacing={1.25}>
+                      <Stack direction="row" spacing={1.25} alignItems="center">
+                        <Avatar
+                          sx={{ width: 34, height: 34, bgcolor: "#667eea", fontSize: 13 }}
+                        >
+                          {admin.firstName?.charAt(0)}
+                          {admin.lastName?.charAt(0)}
+                        </Avatar>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography fontWeight={600} fontSize={14} noWrap>
+                            {admin.firstName} {admin.lastName}
+                          </Typography>
+                          <Typography fontSize={12} color="text.secondary" noWrap>
+                            {admin.email}
+                          </Typography>
+                        </Box>
+                      </Stack>
+
+                      <Stack direction="row" spacing={0.75} sx={{ flexWrap: "wrap", rowGap: 0.75 }}>
+                        <Chip
+                          size="small"
+                          label={admin.role}
+                          sx={{ bgcolor: alpha("#667eea", 0.1), color: "#667eea", fontWeight: 600 }}
+                        />
+                        <Chip
+                          size="small"
+                          color={admin.status === "active" ? "success" : "default"}
+                          label={admin.status}
+                          sx={{ fontWeight: 600 }}
+                        />
+                      </Stack>
+
+                      <Typography fontSize={12} color="text.secondary">
+                        Joined: {formatDate(admin.dateCreated)}
+                      </Typography>
+
+                      <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                        <IconButton size="small" color="primary" onClick={() => handleEdit(admin)}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color={admin.status === "active" ? "error" : "success"}
+                          onClick={() => handleToggleStatus(admin, "Admin")}
+                        >
+                          {admin.status === "active" ? (
+                            <BlockIcon fontSize="small" />
+                          ) : (
+                            <CheckCircleIcon fontSize="small" />
+                          )}
+                        </IconButton>
+                      </Stack>
+                    </Stack>
+                  </Paper>
+                ))}
+                {filteredAdmins.length === 0 && (
+                  <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                    <Typography color="text.secondary" fontSize={13}>
+                      No admins found.
+                    </Typography>
+                  </Paper>
+                )}
+              </Stack>
+            ) : (
+              <MetricsDataGrid
+                rows={filteredAdmins}
+                columns={adminColumns}
+                autoHeight
+                pageSize={10}
+              />
+            )}
           </Box>
         )}
 
         {/* Sellers Tab */}
         {activeTab === 1 && (
-          <Box sx={{ p: 3 }}>
+          <Box sx={{ p: { xs: 1.5, sm: 3 } }}>
             <Stack
               direction={{ xs: "column", sm: "row" }}
               spacing={2}
               sx={{ mb: 3 }}
-              alignItems="center"
+              alignItems={{ xs: "stretch", sm: "center" }}
             >
               <TextField
                 value={sellerQuery}
@@ -717,11 +797,15 @@ export default function UserManagement() {
                   sx: { borderRadius: 2, bgcolor: alpha("#667eea", 0.04) }
                 }}
               />
-              <Stack direction="row" spacing={1}>
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                spacing={1}
+                sx={{ width: { xs: "100%", sm: "auto" } }}
+              >
                 <Button
                   variant="outlined"
                   startIcon={<DownloadIcon />}
-                  sx={{ borderRadius: 2 }}
+                  sx={{ borderRadius: 2, width: { xs: "100%", sm: "auto" } }}
                 >
                   Export
                 </Button>
@@ -731,7 +815,7 @@ export default function UserManagement() {
                   sx={{
                     backgroundImage: gradientPrimary,
                     color: "#fff",
-                    minWidth: 160,
+                    minWidth: { xs: "100%", sm: 160 },
                     whiteSpace: "nowrap",
                     borderRadius: 2,
                     px: 3
@@ -741,23 +825,119 @@ export default function UserManagement() {
                 </Button>
               </Stack>
             </Stack>
-            <MetricsDataGrid
-              rows={filteredSellers}
-              columns={sellerColumns}
-              autoHeight
-              pageSize={10}
-            />
+            {isMobile ? (
+              <Stack spacing={1.25}>
+                {filteredSellers.map((seller) => (
+                  <Paper
+                    key={seller.id}
+                    variant="outlined"
+                    sx={{ p: 1.5, borderRadius: 2 }}
+                  >
+                    <Stack spacing={1.25}>
+                      <Stack direction="row" spacing={1.25} alignItems="center">
+                        <Avatar
+                          sx={{ width: 34, height: 34, bgcolor: "#9c27b0", fontSize: 13 }}
+                        >
+                          {seller.businessName?.charAt(0)}
+                        </Avatar>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Stack direction="row" spacing={0.5} alignItems="center">
+                            <Typography fontWeight={600} fontSize={14} noWrap>
+                              {seller.businessName}
+                            </Typography>
+                            {seller.verified && (
+                              <VerifiedIcon sx={{ fontSize: 14, color: "#667eea" }} />
+                            )}
+                          </Stack>
+                          <Typography fontSize={12} color="text.secondary" noWrap>
+                            {seller.firstName} {seller.lastName}
+                          </Typography>
+                        </Box>
+                      </Stack>
+
+                      <Typography fontSize={12} color="text.secondary" noWrap>
+                        {seller.email}
+                      </Typography>
+
+                      <Stack direction="row" spacing={0.75} sx={{ flexWrap: "wrap", rowGap: 0.75 }}>
+                        <Chip
+                          size="small"
+                          color={seller.verified ? "success" : "default"}
+                          label={seller.verified ? "Verified" : "Unverified"}
+                          sx={{ fontWeight: 600 }}
+                        />
+                        <Chip
+                          size="small"
+                          label={`${seller.listings} Listings`}
+                          sx={{ bgcolor: alpha("#4caf50", 0.1), color: "#4caf50", fontWeight: 700 }}
+                        />
+                        <Chip
+                          size="small"
+                          color={
+                            seller.status === "active"
+                              ? "success"
+                              : seller.status === "pending"
+                                ? "warning"
+                                : "error"
+                          }
+                          label={seller.status}
+                          sx={{ fontWeight: 600 }}
+                        />
+                      </Stack>
+
+                      <Typography fontSize={12} color="text.secondary">
+                        Joined: {formatDate(seller.dateCreated)}
+                      </Typography>
+
+                      <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                        <IconButton size="small" color="primary" onClick={() => handleView(seller)}>
+                          <VisibilityIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" color="info" onClick={() => handleEdit(seller)}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color={seller.status === "active" ? "error" : "success"}
+                          onClick={() => handleToggleStatus(seller, "Seller")}
+                        >
+                          {seller.status === "active" ? (
+                            <BlockIcon fontSize="small" />
+                          ) : (
+                            <CheckCircleIcon fontSize="small" />
+                          )}
+                        </IconButton>
+                      </Stack>
+                    </Stack>
+                  </Paper>
+                ))}
+                {filteredSellers.length === 0 && (
+                  <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                    <Typography color="text.secondary" fontSize={13}>
+                      No sellers found.
+                    </Typography>
+                  </Paper>
+                )}
+              </Stack>
+            ) : (
+              <MetricsDataGrid
+                rows={filteredSellers}
+                columns={sellerColumns}
+                autoHeight
+                pageSize={10}
+              />
+            )}
           </Box>
         )}
 
         {/* Users Tab */}
         {activeTab === 2 && (
-          <Box sx={{ p: 3 }}>
+          <Box sx={{ p: { xs: 1.5, sm: 3 } }}>
             <Stack
               direction={{ xs: "column", sm: "row" }}
               spacing={2}
               sx={{ mb: 3 }}
-              alignItems="center"
+              alignItems={{ xs: "stretch", sm: "center" }}
             >
               <TextField
                 value={userQuery}
@@ -777,17 +957,94 @@ export default function UserManagement() {
               <Button
                 variant="outlined"
                 startIcon={<DownloadIcon />}
-                sx={{ borderRadius: 2 }}
+                sx={{ borderRadius: 2, width: { xs: "100%", sm: "auto" } }}
               >
                 Export
               </Button>
             </Stack>
-            <MetricsDataGrid
-              rows={filteredUsers}
-              columns={userColumns}
-              autoHeight
-              pageSize={10}
-            />
+            {isMobile ? (
+              <Stack spacing={1.25}>
+                {filteredUsers.map((user) => (
+                  <Paper
+                    key={user.id}
+                    variant="outlined"
+                    sx={{ p: 1.5, borderRadius: 2 }}
+                  >
+                    <Stack spacing={1.25}>
+                      <Stack direction="row" spacing={1.25} alignItems="center">
+                        <Avatar
+                          sx={{ width: 34, height: 34, bgcolor: "#00bcd4", fontSize: 13 }}
+                        >
+                          {user.firstName?.charAt(0)}
+                          {user.lastName?.charAt(0)}
+                        </Avatar>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography fontWeight={600} fontSize={14} noWrap>
+                            {user.firstName} {user.lastName}
+                          </Typography>
+                          <Typography fontSize={12} color="text.secondary" noWrap>
+                            {user.email}
+                          </Typography>
+                        </Box>
+                      </Stack>
+
+                      <Typography fontSize={12} color="text.secondary" noWrap>
+                        {user.phone}
+                      </Typography>
+
+                      <Stack direction="row" spacing={0.75} sx={{ flexWrap: "wrap", rowGap: 0.75 }}>
+                        <Chip
+                          size="small"
+                          label={`${user.orders} Orders`}
+                          sx={{ bgcolor: alpha("#ff9800", 0.1), color: "#ff9800", fontWeight: 700 }}
+                        />
+                        <Chip
+                          size="small"
+                          color={user.status === "active" ? "success" : "default"}
+                          label={user.status}
+                          sx={{ fontWeight: 600 }}
+                        />
+                      </Stack>
+
+                      <Typography fontSize={12} color="text.secondary">
+                        Joined: {formatDate(user.dateCreated)}
+                      </Typography>
+
+                      <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                        <IconButton size="small" color="primary" onClick={() => handleView(user)}>
+                          <VisibilityIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color={user.status === "active" ? "error" : "success"}
+                          onClick={() => handleToggleStatus(user, "User")}
+                        >
+                          {user.status === "active" ? (
+                            <BlockIcon fontSize="small" />
+                          ) : (
+                            <CheckCircleIcon fontSize="small" />
+                          )}
+                        </IconButton>
+                      </Stack>
+                    </Stack>
+                  </Paper>
+                ))}
+                {filteredUsers.length === 0 && (
+                  <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                    <Typography color="text.secondary" fontSize={13}>
+                      No users found.
+                    </Typography>
+                  </Paper>
+                )}
+              </Stack>
+            ) : (
+              <MetricsDataGrid
+                rows={filteredUsers}
+                columns={userColumns}
+                autoHeight
+                pageSize={10}
+              />
+            )}
           </Box>
         )}
       </Paper>
@@ -825,10 +1082,17 @@ export default function UserManagement() {
               " They will no longer be able to access the platform."}
           </DialogContentText>
         </DialogContent>
-        <DialogActions sx={{ p: 2, pt: 1 }}>
+        <DialogActions
+          sx={{
+            p: 2,
+            pt: 1,
+            flexDirection: { xs: "column", sm: "row" },
+            gap: 1,
+          }}
+        >
           <Button
             onClick={() => setDeactivateDialogOpen(false)}
-            sx={{ borderRadius: 2 }}
+            sx={{ borderRadius: 2, width: { xs: "100%", sm: "auto" } }}
           >
             Cancel
           </Button>
@@ -837,6 +1101,7 @@ export default function UserManagement() {
             onClick={handleConfirmToggle}
             sx={{
               borderRadius: 2,
+              width: { xs: "100%", sm: "auto" },
               bgcolor:
                 selectedUser?.status === "active" ? "#f44336" : "#4caf50",
               "&:hover": {
