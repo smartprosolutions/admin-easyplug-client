@@ -26,8 +26,10 @@
     "@tiptap/starter-kit": "^3.19.0",
     "axios": "^1.12.2",
     "formik": "^2.4.6",
+    "leaflet": "^1.9.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.9.3",
     "socket.io-client": "^4.8.3",
     "yup": "^1.7.1"

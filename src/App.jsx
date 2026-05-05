@@ -29,6 +29,8 @@ import ResetPassword from "./pages/auth/ResetPassword";
 import PublicRoute from "./components/route/PublicRoute";
 import PrivateRoute from "./components/route/PrivateRoute";
 import { useState } from "react";
+import ShareLocation from "./pages/ShareLocation";
+import ViewLocation from "./pages/ViewLocation";
 import { UnreadCountsProvider } from "./context/UnreadCountsContext";
 
 const App = () => {
@@ -41,6 +43,8 @@ const App = () => {
       <Router>
         <UnreadCountsProvider>
           <Routes>
+            {/* Standalone public route — no auth wrapper */}
+            <Route path="/location/:token" element={<ViewLocation />} />
             <Route
               path="/login"
               element={
@@ -120,6 +124,7 @@ const App = () => {
                 element={<Navigate to="/userManagement" replace />}
               />
               <Route path="notifications" element={<Notifications />} />
+              <Route path="share-location" element={<ShareLocation />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
