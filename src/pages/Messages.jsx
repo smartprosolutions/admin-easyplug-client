@@ -1697,17 +1697,23 @@ export default function Messages() {
       elevation={0}
       sx={{
         height: "100%",
-        bgcolor: "white",
-        border: isMobile ? "none" : "1px solid #e0e0e0",
-        borderRadius: 0,
+        bgcolor: isMobile ? "transparent" : "background.paper",
+        border: isMobile ? "none" : "1px solid",
+        borderColor: "divider",
+        borderRadius: isMobile ? 0 : 3,
+        boxShadow: "none",
+        overflow: "hidden",
         display: "flex",
         flexDirection: "column",
       }}
     >
       {/* Header */}
-      <Box sx={{ p: 2, borderBottom: "1px solid #e0e0e0" }}>
-        <Typography variant="h6" fontWeight={700} mb={2}>
+      <Box sx={{ p: { xs: 1.5, sm: 2 }, borderBottom: "1px solid", borderColor: "divider" }}>
+        <Typography variant="h6" fontWeight={800} mb={0.25}>
           Messages
+        </Typography>
+        <Typography fontSize={12.5} color="text.secondary" mb={1.4}>
+          Buyer and seller conversations
         </Typography>
         <TextField
           fullWidth
@@ -1725,7 +1731,7 @@ export default function Messages() {
           sx={{
             "& .MuiOutlinedInput-root": {
               borderRadius: 2,
-              bgcolor: alpha("#667eea", 0.05),
+              bgcolor: alpha(theme.palette.primary.main, 0.05),
             },
           }}
         />
@@ -1752,15 +1758,17 @@ export default function Messages() {
                 fontSize: 12,
                 px: 0.5,
                 bgcolor:
-                  activeFilter === tag.id ? "#667eea" : alpha("#667eea", 0.08),
+                  activeFilter === tag.id
+                    ? "primary.main"
+                    : alpha(theme.palette.primary.main, 0.08),
                 color: activeFilter === tag.id ? "white" : "text.primary",
                 border: "none",
                 transition: "all 0.2s ease",
                 "&:hover": {
                   bgcolor:
                     activeFilter === tag.id
-                      ? "#667eea"
-                      : alpha("#667eea", 0.15),
+                      ? "primary.main"
+                      : alpha(theme.palette.primary.main, 0.15),
                 },
               }}
             />
@@ -1775,16 +1783,16 @@ export default function Messages() {
             p: 0,
             "&::-webkit-scrollbar": { width: 6 },
             "&::-webkit-scrollbar-track": {
-              bgcolor: alpha("#667eea", 0.05),
+              bgcolor: alpha(theme.palette.primary.main, 0.05),
               borderRadius: 3,
             },
             "&::-webkit-scrollbar-thumb": {
-              bgcolor: alpha("#667eea", 0.25),
+              bgcolor: alpha(theme.palette.primary.main, 0.25),
               borderRadius: 3,
-              "&:hover": { bgcolor: alpha("#667eea", 0.4) },
+              "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.4) },
             },
             scrollbarWidth: "thin",
-            scrollbarColor: `${alpha("#667eea", 0.25)} ${alpha("#667eea", 0.05)}`,
+            scrollbarColor: `${alpha(theme.palette.primary.main, 0.25)} ${alpha(theme.palette.primary.main, 0.05)}`,
           }}>
         {isLoadingConversations ? (
           <Box sx={{ p: 3 }}>
@@ -1811,12 +1819,13 @@ export default function Messages() {
               onClick={() => handleSelectConversation(conversation)}
               sx={{
                 cursor: "pointer",
-                borderBottom: "1px solid #f0f0f0",
+                borderBottom: "1px solid",
+                borderColor: "divider",
                 bgcolor:
                   selectedConversation?.id === conversation.id
-                    ? alpha("#667eea", 0.08)
+                    ? alpha(theme.palette.primary.main, 0.08)
                     : "transparent",
-                "&:hover": { bgcolor: alpha("#667eea", 0.05) },
+                "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.05) },
                 py: 1.5,
                 px: 2,
               }}
@@ -1829,7 +1838,8 @@ export default function Messages() {
                     height: 56,
                     borderRadius: 2,
                     overflow: "hidden",
-                    border: "1px solid #e0e0e0",
+                    border: "1px solid",
+                    borderColor: "divider",
                     position: "relative",
                   }}
                 >
@@ -1853,8 +1863,9 @@ export default function Messages() {
                             width: 8,
                             height: 8,
                             borderRadius: "50%",
-                            bgcolor: "#4caf50",
-                            border: "1.5px solid white",
+                            bgcolor: "success.main",
+                            border: "1.5px solid",
+                            borderColor: "background.paper",
                           }}
                         />
                       ) : null
@@ -1866,8 +1877,9 @@ export default function Messages() {
                       sx={{
                         width: 24,
                         height: 24,
-                        border: "2px solid white",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                        border: "2px solid",
+                        borderColor: "background.paper",
+                        boxShadow: `0 1px 3px ${alpha(theme.palette.common.black, 0.2)}`,
                       }}
                     />
                   </Badge>
@@ -1891,14 +1903,14 @@ export default function Messages() {
                         {conversation.listing.title} - {conversation.user.name}
                       </Typography>
                       {conversation.user.verified && (
-                        <VerifiedIcon sx={{ fontSize: 14, color: "#667eea" }} />
+                        <VerifiedIcon sx={{ fontSize: 14, color: "primary.main" }} />
                       )}
                     </Stack>
                     <Typography
                       component="span"
                       fontSize={13}
                       fontWeight={600}
-                      sx={{ color: "#667eea", display: "block" }}
+                      sx={{ color: "primary.main", display: "block" }}
                     >
                       {conversation.listing.price}
                     </Typography>
@@ -1923,7 +1935,7 @@ export default function Messages() {
                         sx={{
                           fontSize: 14,
                           color: conversation.lastMessageRead
-                            ? "#4caf50"
+                            ? "success.main"
                             : "text.disabled",
                           flexShrink: 0,
                         }}
@@ -1985,9 +1997,12 @@ export default function Messages() {
       elevation={0}
       sx={{
         height: "100%",
-        bgcolor: "white",
-        border: isMobile ? "none" : "1px solid #e0e0e0",
-        borderRadius: 0,
+        bgcolor: isMobile ? "transparent" : "background.paper",
+        border: isMobile ? "none" : "1px solid",
+        borderColor: "divider",
+        borderRadius: isMobile ? 0 : 3,
+        boxShadow: "none",
+        overflow: "hidden",
         display: "flex",
         flexDirection: "column",
       }}
@@ -1999,7 +2014,8 @@ export default function Messages() {
             sx={{
               px: 1.5,
               py: 1,
-              borderBottom: "1px solid #e0e0e0",
+              borderBottom: "1px solid",
+              borderColor: "divider",
               display: "flex",
               alignItems: "center",
               gap: 1,
@@ -2021,7 +2037,8 @@ export default function Messages() {
                 height: 42,
                 borderRadius: 1.5,
                 overflow: "hidden",
-                border: "1px solid #e0e0e0",
+                border: "1px solid",
+                borderColor: "divider",
                 flexShrink: 0,
                 cursor: selectedListingPath ? "pointer" : "default",
               }}
@@ -2062,7 +2079,7 @@ export default function Messages() {
                 >
                   {selectedConversation.listing.title}
                 </Typography>
-                <Typography fontSize={14} fontWeight={600} color="#667eea">
+                <Typography fontSize={14} fontWeight={600} color="primary.main">
                   {selectedConversation.listing.price}
                 </Typography>
               </Stack>
@@ -2083,8 +2100,9 @@ export default function Messages() {
                           width: 9,
                           height: 9,
                           borderRadius: "50%",
-                          bgcolor: "#4caf50",
-                          border: "2px solid white",
+                          bgcolor: "success.main",
+                          border: "2px solid",
+                          borderColor: "background.paper",
                         }}
                       />
                     ) : null
@@ -2106,7 +2124,7 @@ export default function Messages() {
                       {selectedConversation.user.name}
                     </Typography>
                     {selectedConversation.user.verified && (
-                      <VerifiedIcon sx={{ fontSize: 14, color: "#667eea" }} />
+                      <VerifiedIcon sx={{ fontSize: 14, color: "primary.main" }} />
                     )}
                   </Stack>
                   <Typography fontSize={11} color="text.secondary" noWrap>
@@ -2118,13 +2136,13 @@ export default function Messages() {
             <Stack direction="row" spacing={0.5}>
               <IconButton
                 sx={{
-                  color: "#667eea",
-                  bgcolor: alpha("#667eea", 0.1),
+                  color: "primary.main",
+                  bgcolor: alpha(theme.palette.primary.main, 0.1),
                   width: 34,
                   height: 34,
                   transition: "all 0.2s ease",
                   "&:hover": {
-                    bgcolor: alpha("#667eea", 0.2),
+                    bgcolor: alpha(theme.palette.primary.main, 0.2),
                     transform: "scale(1.05)",
                   },
                 }}
@@ -2133,13 +2151,13 @@ export default function Messages() {
               </IconButton>
               <IconButton
                 sx={{
-                  color: "#667eea",
-                  bgcolor: alpha("#667eea", 0.1),
+                  color: "primary.main",
+                  bgcolor: alpha(theme.palette.primary.main, 0.1),
                   width: 34,
                   height: 34,
                   transition: "all 0.2s ease",
                   "&:hover": {
-                    bgcolor: alpha("#667eea", 0.2),
+                    bgcolor: alpha(theme.palette.primary.main, 0.2),
                     transform: "scale(1.05)",
                   },
                 }}
@@ -2148,13 +2166,13 @@ export default function Messages() {
               </IconButton>
               <IconButton
                 sx={{
-                  color: "#667eea",
-                  bgcolor: alpha("#667eea", 0.1),
+                  color: "primary.main",
+                  bgcolor: alpha(theme.palette.primary.main, 0.1),
                   width: 34,
                   height: 34,
                   transition: "all 0.2s ease",
                   "&:hover": {
-                    bgcolor: alpha("#667eea", 0.2),
+                    bgcolor: alpha(theme.palette.primary.main, 0.2),
                     transform: "scale(1.05)",
                   },
                 }}
@@ -2293,8 +2311,11 @@ export default function Messages() {
                         transition: "opacity 0.2s ease",
                         alignSelf: "center",
                         mr: 0.5,
-                        color: alpha("#667eea", 0.6),
-                        "&:hover": { color: "#667eea", bgcolor: alpha("#667eea", 0.08) },
+                        color: alpha(theme.palette.primary.main, 0.6),
+                        "&:hover": {
+                          color: "primary.main",
+                          bgcolor: alpha(theme.palette.primary.main, 0.08),
+                        },
                       }}
                     >
                       <ReplyIcon sx={{ fontSize: 18 }} />
@@ -2917,7 +2938,15 @@ export default function Messages() {
           </Box>
 
           {/* Message Input */}
-          <Box sx={{ px: 1.5, py: 1, bgcolor: "white", borderTop: "1px solid #e0e0e0" }}>
+          <Box
+            sx={{
+              px: 1.5,
+              py: 1,
+              bgcolor: "background.paper",
+              borderTop: "1px solid",
+              borderColor: "divider",
+            }}
+          >
             {/* Reply Preview Banner */}
             {replyTo && (
               <Box
@@ -2928,13 +2957,13 @@ export default function Messages() {
                   p: 1,
                   pl: 1.5,
                   borderRadius: 2,
-                  bgcolor: alpha("#667eea", 0.06),
-                  borderLeft: "3px solid #667eea",
+                  bgcolor: alpha(theme.palette.primary.main, 0.06),
+                  borderLeft: `3px solid ${theme.palette.primary.main}`,
                 }}
               >
-                <ReplyIcon sx={{ fontSize: 18, color: "#667eea", mr: 1, transform: "scaleX(-1)" }} />
+                <ReplyIcon sx={{ fontSize: 18, color: "primary.main", mr: 1, transform: "scaleX(-1)" }} />
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography fontSize={12} fontWeight={600} color="#667eea">
+                  <Typography fontSize={12} fontWeight={600} color="primary.main">
                     Replying to {replyTo.senderId === "me" ? "yourself" : selectedConversation?.user?.name || "User"}
                   </Typography>
                   <Typography fontSize={12} color="text.secondary" noWrap>
@@ -2961,15 +2990,15 @@ export default function Messages() {
                   sx={{
                     fontSize: 10,
                     fontWeight: 500,
-                    bgcolor: alpha("#667eea", 0.08),
-                    color: "#667eea",
+                    bgcolor: alpha(theme.palette.primary.main, 0.08),
+                    color: "primary.main",
                     border: "1px solid",
-                    borderColor: alpha("#667eea", 0.2),
+                    borderColor: alpha(theme.palette.primary.main, 0.2),
                     cursor: "pointer",
                     transition: "all 0.2s ease",
                     "&:hover": {
-                      bgcolor: alpha("#667eea", 0.15),
-                      borderColor: "#667eea",
+                      bgcolor: alpha(theme.palette.primary.main, 0.15),
+                      borderColor: "primary.main",
                     },
                   }}
                 />
@@ -2982,16 +3011,16 @@ export default function Messages() {
                 display: "flex",
                 alignItems: "flex-end",
                 gap: 1,
-                bgcolor: alpha("#667eea", 0.04),
+                bgcolor: alpha(theme.palette.primary.main, 0.04),
                 borderRadius: 3,
                 p: 1,
                 border: "1px solid",
-                borderColor: alpha("#667eea", 0.1),
+                borderColor: alpha(theme.palette.primary.main, 0.1),
                 transition: "all 0.2s ease",
                 "&:focus-within": {
-                  borderColor: alpha("#667eea", 0.3),
-                  bgcolor: alpha("#667eea", 0.06),
-                  boxShadow: `0 0 0 3px ${alpha("#667eea", 0.1)}`,
+                  borderColor: alpha(theme.palette.primary.main, 0.3),
+                  bgcolor: alpha(theme.palette.primary.main, 0.06),
+                  boxShadow: `0 0 0 3px ${alpha(theme.palette.primary.main, 0.1)}`,
                 },
               }}
             >
@@ -3137,14 +3166,14 @@ export default function Messages() {
               width: 100,
               height: 100,
               borderRadius: "50%",
-              bgcolor: alpha("#667eea", 0.1),
+              bgcolor: alpha(theme.palette.primary.main, 0.1),
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               mb: 2,
             }}
           >
-            <SendIcon sx={{ fontSize: 40, color: "#667eea" }} />
+            <SendIcon sx={{ fontSize: 40, color: "primary.main" }} />
           </Box>
           <Typography variant="h6" fontWeight={600} mb={1}>
             Your Messages
@@ -3160,22 +3189,21 @@ export default function Messages() {
   return (
     <Box
       sx={{
-        bgcolor: "#fafafa",
-        height: "100vh",
+        bgcolor: "background.default",
+        height: { xs: "calc(100vh - 124px)", md: "100vh" },
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        m: { xs: -2, md: -3 },
-        p: { xs: 1, md: 2 },
-        width: { xs: "calc(100% + 32px)", md: "calc(100% + 48px)" },
+        p: { xs: 0.5, sm: 1, md: 1.5 },
+        borderRadius: { xs: 2, md: 2.5 },
       }}
     >
       <Container
-        maxWidth="xl"
+        maxWidth={false}
         sx={{
           flex: 1,
           overflow: "hidden",
-          px: isMobile ? 0 : undefined,
+          px: { xs: 0, md: 0.5 },
         }}
       >
         {isMobile ? (
@@ -3185,8 +3213,8 @@ export default function Messages() {
             renderConversationList()
           )
         ) : (
-          <Box sx={{ display: "flex", gap: 2, height: "100%" }}>
-            <Box sx={{ width: 380, flexShrink: 0 }}>
+          <Box sx={{ display: "flex", gap: 1.5, height: "100%" }}>
+            <Box sx={{ width: 360, flexShrink: 0 }}>
               {renderConversationList()}
             </Box>
             <Box sx={{ flex: 1 }}>{renderChatView()}</Box>
