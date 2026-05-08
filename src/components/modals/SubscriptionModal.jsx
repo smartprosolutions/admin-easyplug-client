@@ -187,8 +187,9 @@ export default function SubscriptionModal() {
         sx={{
           p: 3,
           pb: 2.5,
-          background: gradientPrimary,
-          color: "white",
+          background: (theme) =>
+            `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+          color: "common.white",
           position: "relative"
         }}
       >
@@ -198,7 +199,7 @@ export default function SubscriptionModal() {
             position: "absolute",
             right: 16,
             top: 16,
-            color: "white",
+            color: "common.white",
             "&:hover": {
               background: alpha("#fff", 0.1)
             }
@@ -213,7 +214,7 @@ export default function SubscriptionModal() {
               width: 56,
               height: 56,
               background: alpha("#fff", 0.2),
-              color: "white",
+              color: "common.white",
               backdropFilter: "blur(10px)"
             }}
           >
@@ -230,9 +231,9 @@ export default function SubscriptionModal() {
                 size="small"
                 sx={{
                   background: alpha("#fff", 0.2),
-                  color: "white",
+                  color: "common.white",
                   border: "1px solid rgba(255,255,255,0.3)",
-                  "& .MuiChip-icon": { color: "white" }
+                  "& .MuiChip-icon": { color: "common.white" }
                 }}
               />
               <Chip
@@ -241,9 +242,9 @@ export default function SubscriptionModal() {
                 size="small"
                 sx={{
                   background: alpha("#fff", 0.2),
-                  color: "white",
+                  color: "common.white",
                   border: "1px solid rgba(255,255,255,0.3)",
-                  "& .MuiChip-icon": { color: "white" }
+                  "& .MuiChip-icon": { color: "common.white" }
                 }}
               />
             </Stack>

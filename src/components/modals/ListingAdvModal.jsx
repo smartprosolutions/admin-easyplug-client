@@ -27,13 +27,17 @@ import ToastAlert from "../../components/alerts/ToastAlert";
 import DeleteIcon from "@mui/icons-material/Delete";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import { gradientPrimary } from "../../theme/theme";
-import { getSubscriptions } from "../../services/subscriptionService";
 import {
   createAdvert,
   getAdvert,
   updateAdvert,
 } from "../../services/advertService";
 import { resolveListingImagePath } from "../../utils/listingImages";
+import { useUserProfileQuery } from "../../services/queries";
+import {
+  isOwnedByUser,
+  resolveUserId,
+} from "../../utils/accessControl";
 
 const formatCurrency = (val) => {
   try {
@@ -53,6 +57,32 @@ const getImageRef = (img) => {
 
 const unique = (arr = []) => [...new Set(arr.filter(Boolean))];
 
+const appendAdvertToCachedList = (cached, advert) => {
+  if (!advert) return cached;
+
+  if (Array.isArray(cached)) {
+    return [advert, ...cached];
+  }
+
+  if (cached && Array.isArray(cached.listings)) {
+    return { ...cached, listings: [advert, ...cached.listings] };
+  }
+
+  if (cached && Array.isArray(cached.adverts)) {
+    return { ...cached, adverts: [advert, ...cached.adverts] };
+  }
+
+  if (cached && Array.isArray(cached.items)) {
+    return { ...cached, items: [advert, ...cached.items] };
+  }
+
+  if (cached && Array.isArray(cached.data)) {
+    return { ...cached, data: [advert, ...cached.data] };
+  }
+
+  return cached;
+};
+
 export default function ListingAdvModal() {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down("md"));
@@ -68,6 +98,10 @@ export default function ListingAdvModal() {
     severity: "info",
     message: "",
   });
+  const { data: profileData, isLoading: isProfileLoading } = useUserProfileQuery({
+    retry: false,
+  });
+  const currentUserId = resolveUserId(profileData);
 
   const { data: existing, isPending: isFetching } = useQuery({
     queryKey: ["advertisementItem", id],
@@ -76,30 +110,6 @@ export default function ListingAdvModal() {
     retry: false,
   });
 
-  const {
-    data: subsData,
-    isPending: isSubsPending,
-    error: subsError,
-    refetch: refetchSubs,
-  } = useQuery({
-    queryKey: ["subscriptions"],
-    queryFn: () => getSubscriptions(),
-    enabled: true,
-    retry: false,
-  });
-
-  const subscriptionList =
-    subsData && subsData.subscriptions
-      ? subsData.subscriptions
-      : Array.isArray(subsData)
-        ? subsData
-        : subsData?.data || [];
-
-  const subscriptionOptions = subscriptionList.map((s) => ({
-    value: s.subscriptionId,
-    label: s.name,
-  }));
-
   const itemData =
     existing?.advert ||
     existing?.advertisement ||
@@ -107,6 +117,7 @@ export default function ListingAdvModal() {
     existing?.data ||
     existing ||
     null;
+  const canEditAdvert = isOwnedByUser(itemData, currentUserId);
 
   const previewSellerEmail =
     itemData?.seller?.email || itemData?.sellerEmail || "";
@@ -181,9 +192,25 @@ export default function ListingAdvModal() {
 
   const createMut = useMutation({
     mutationFn: (vals) => createAdvert(vals),
-    onSuccess: async () => {
+    onSuccess: async (result) => {
+      const createdAdvert =
+        result?.advert || result?.listing || result?.data || result || null;
+
+      if (createdAdvert) {
+        queryClient.setQueryData(["adverts"], (cached) =>
+          appendAdvertToCachedList(cached, createdAdvert),
+        );
+        queryClient.setQueryData(["sellerAdverts", currentUserId], (cached) =>
+          appendAdvertToCachedList(cached, createdAdvert),
+        );
+      }
+
       try {
         await queryClient.invalidateQueries({ queryKey: ["advertCatalogue"] });
+        await queryClient.invalidateQueries({ queryKey: ["adverts"] });
+        await queryClient.invalidateQueries({
+          queryKey: ["sellerAdverts", currentUserId],
+        });
       } catch {
         // ignore
       }
@@ -229,21 +256,6 @@ export default function ListingAdvModal() {
 
   const isSaving = createMut.isPending || updateMut.isPending;
 
-  const initialSubscriptionId =
-    itemData?.subscriptionId ||
-    itemData?.sellerSubscriptions?.[0]?.subscriptionId ||
-    itemData?.sellerSubscriptions?.[0]?.subscription?.subscriptionId ||
-    "";
-
-  const initialTierUsersPerHour =
-    itemData?.pricingTier?.usersPerHour ||
-    itemData?.usersPerHour ||
-    itemData?.subscriptionTierUsersPerHour ||
-    itemData?.sellerSubscriptions?.[0]?.pricingTier?.usersPerHour ||
-    itemData?.sellerSubscriptions?.[0]?.subscription?.pricingTiers?.[0]
-      ?.usersPerHour ||
-    "";
-
   const initialUrl =
     itemData?.url ||
     itemData?.advertUrl ||
@@ -265,8 +277,6 @@ export default function ListingAdvModal() {
     images: initialImages,
     status: itemData?.status || "active",
     expires_at: itemData?.expires_at || "",
-    subscriptionId: initialSubscriptionId,
-    subscriptionTierUsersPerHour: initialTierUsersPerHour,
   };
 
   const originalImageRefs = React.useMemo(
@@ -305,6 +315,26 @@ export default function ListingAdvModal() {
     navigate("/advertisements");
   };
 
+  if (isEdit && !isFetching && !isProfileLoading && itemData && !canEditAdvert) {
+    return (
+      <Dialog open onClose={handleClose} fullScreen={fullScreen} fullWidth>
+        <Stack spacing={2} sx={{ p: { xs: 2, sm: 2.5 } }}>
+          <Typography variant="h6" fontWeight={700}>
+            Access restricted
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            You can only edit adverts that belong to your account.
+          </Typography>
+          <Stack direction="row" justifyContent="flex-end">
+            <Button variant="contained" onClick={handleClose}>
+              Back to adverts
+            </Button>
+          </Stack>
+        </Stack>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog
       open
@@ -316,8 +346,8 @@ export default function ListingAdvModal() {
         sx: {
           display: "flex",
           flexDirection: "column",
-          maxHeight: "calc(100vh - 64px)",
-          borderRadius: 4,
+          maxHeight: fullScreen ? "100dvh" : "calc(100vh - 64px)",
+          borderRadius: fullScreen ? 0 : 4,
           overflow: "hidden",
           backdropFilter: "blur(20px)",
         },
@@ -354,12 +384,19 @@ export default function ListingAdvModal() {
       )}
 
       <Box sx={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <Box sx={{ background: gradientPrimary, color: "white", p: 3 }}>
+        <Box
+          sx={{
+            background: (theme) =>
+              `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+            color: "common.white",
+            p: 3,
+          }}
+        >
           <Stack direction="row" alignItems="center" spacing={2}>
             <Avatar
               sx={{
                 background: alpha("#fff", 0.2),
-                color: "white",
+                color: "common.white",
               }}
             >
               <CloudUploadIcon />
@@ -378,7 +415,7 @@ export default function ListingAdvModal() {
               onClick={handleClose}
               disabled={isSaving}
               sx={{
-                color: "white",
+                color: "common.white",
                 background: alpha("#fff", 0.1),
                 "&:hover": {
                   background: alpha("#fff", 0.2),
@@ -434,8 +471,6 @@ export default function ListingAdvModal() {
               validationSchema={Yup.object({
                 images: Yup.array().max(6, "Maximum 6 images allowed"),
                 description: Yup.string(),
-                subscriptionId: Yup.string().required("Required"),
-                subscriptionTierUsersPerHour: Yup.string().required("Required"),
                 advertSourceType: Yup.string()
                   .oneOf(["CATALOGUE", "URL"])
                   .required("Required"),
@@ -451,22 +486,6 @@ export default function ListingAdvModal() {
               })}
               onSubmit={async (values, { setSubmitting }) => {
                 try {
-                  const selectedSubscription = subscriptionList.find(
-                    (s) => s.subscriptionId === values.subscriptionId,
-                  );
-                  const selectedTier = selectedSubscription?.pricingTiers?.find(
-                    (tier) =>
-                      String(tier.usersPerHour) ===
-                      String(values.subscriptionTierUsersPerHour),
-                  );
-                  if (values.subscriptionId && !selectedTier) {
-                    setToast({
-                      open: true,
-                      severity: "error",
-                      message: "Select a valid subscription tier",
-                    });
-                    return;
-                  }
                   const isUrlSource = values.advertSourceType === "URL";
                   const currentExistingRefs = unique(
                     (values.images || [])
@@ -479,7 +498,6 @@ export default function ListingAdvModal() {
                   const toSend = {
                     ...values,
                     url: isUrlSource ? String(values.url || "").trim() : "",
-                    pricingTier: selectedTier || null,
                   };
 
                   if (isEdit) {
@@ -506,17 +524,6 @@ export default function ListingAdvModal() {
                 touched,
                 setFieldTouched,
               }) => {
-                const selectedSubscription = subscriptionList.find(
-                  (s) => s.subscriptionId === values.subscriptionId,
-                );
-
-                const tierOptions = (
-                  selectedSubscription?.pricingTiers || []
-                ).map((tier) => ({
-                  value: String(tier.usersPerHour),
-                  label: `${formatCurrency(tier.price)} • ${Number(tier.usersPerHour || 0).toLocaleString("en-ZA")} users/hr`,
-                }));
-
                 submitRef.current = submitForm;
                 submittingRef.current = isSubmitting;
 
@@ -576,40 +583,6 @@ export default function ListingAdvModal() {
                           touched.description ? errors.description : ""
                         }
                         minHeight={180}
-                      />
-                      <SelectFieldWrapper
-                        name="subscriptionId"
-                        label="Subscription"
-                        options={subscriptionOptions}
-                        disabled={isSubsPending}
-                      />
-                      {(subsError ||
-                        (!isSubsPending && !subscriptionOptions.length)) && (
-                        <Stack
-                          direction="row"
-                          alignItems="center"
-                          justifyContent="space-between"
-                        >
-                          <Typography variant="caption" color="error">
-                            {subsError
-                              ? "Failed to load subscriptions."
-                              : "No subscriptions available."}
-                          </Typography>
-                          <Button
-                            size="small"
-                            variant="text"
-                            onClick={() => refetchSubs()}
-                            disabled={isSubsPending}
-                          >
-                            Retry
-                          </Button>
-                        </Stack>
-                      )}
-                      <SelectFieldWrapper
-                        name="subscriptionTierUsersPerHour"
-                        label="Subscription Tier"
-                        options={tierOptions}
-                        disabled={!values.subscriptionId}
                       />
                       <SelectFieldWrapper
                         name="status"

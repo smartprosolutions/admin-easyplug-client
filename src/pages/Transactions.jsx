@@ -12,6 +12,7 @@ import {
   IconButton,
   Tooltip,
   Avatar,
+  Grid,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
@@ -22,8 +23,6 @@ import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import CreditCardIcon from "@mui/icons-material/CreditCard";
 import AccountBalanceIcon from "@mui/icons-material/AccountBalance";
 import PaymentsIcon from "@mui/icons-material/Payments";
-import TrendingUpIcon from "@mui/icons-material/TrendingUp";
-import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import MetricsDataGrid from "../components/metrics/MetricsDataGrid";
 import { gradientPrimary } from "../theme/theme";
 
@@ -93,7 +92,7 @@ const dummyTransactions = [
 
 export default function Transactions() {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const [searchQuery, setSearchQuery] = useState("");
 
   // Filter transactions based on search
@@ -277,6 +276,33 @@ export default function Transactions() {
     [],
   );
 
+  const transactionCards = [
+    {
+      label: "Total Transactions",
+      value: filteredTransactions.length.toLocaleString("en-ZA"),
+      sub: "Records in current view",
+      accent: "primary.main",
+    },
+    {
+      label: "Completed Value",
+      value: formatCurrency(totals.completed),
+      sub: "Successfully completed transactions",
+      accent: "success.main",
+    },
+    {
+      label: "Pending Value",
+      value: formatCurrency(totals.pending),
+      sub: "Transactions awaiting completion",
+      accent: "warning.main",
+    },
+    {
+      label: "Refunded Value",
+      value: formatCurrency(totals.refunded),
+      sub: "Returned payments",
+      accent: "secondary.main",
+    },
+  ];
+
   return (
     <Box
       sx={{
@@ -301,137 +327,50 @@ export default function Transactions() {
         </Box>
       </Stack>
 
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mb: 3 }}>
-        <Paper
-          elevation={0}
-          sx={{
-            flex: 1,
-            p: 2,
-            borderRadius: 3,
-            border: "1px solid #e0e0e0",
-            bgcolor: alpha("#4caf50", 0.04),
-          }}
-        >
-          <Stack
-            direction="row"
-            alignItems="center"
-            justifyContent="space-between"
-          >
-            <Box>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                fontWeight={500}
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.2 }}>
+          Transaction Overview
+        </Typography>
+        <Grid container spacing={1.5}>
+          {transactionCards.map((card) => (
+            <Grid key={card.label} size={{ xs: 6, sm: 6, md: 3 }}>
+              <Paper
+                variant="outlined"
+                sx={{
+                  p: 1.8,
+                  height: "100%",
+                  borderLeft: "4px solid",
+                  borderLeftColor: card.accent,
+                }}
               >
-                Completed
-              </Typography>
-              <Typography variant="h6" fontWeight={700} color="#4caf50">
-                {formatCurrency(totals.completed)}
-              </Typography>
-            </Box>
-            <TrendingUpIcon sx={{ fontSize: 32, color: "#4caf50" }} />
-          </Stack>
-        </Paper>
-
-        <Paper
-          elevation={0}
-          sx={{
-            flex: 1,
-            p: 2,
-            borderRadius: 3,
-            border: "1px solid #e0e0e0",
-            bgcolor: alpha("#ff9800", 0.04),
-          }}
-        >
-          <Stack
-            direction="row"
-            alignItems="center"
-            justifyContent="space-between"
-          >
-            <Box>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                fontWeight={500}
-              >
-                Pending
-              </Typography>
-              <Typography variant="h6" fontWeight={700} color="#ff9800">
-                {formatCurrency(totals.pending)}
-              </Typography>
-            </Box>
-            <PaymentsIcon sx={{ fontSize: 32, color: "#ff9800" }} />
-          </Stack>
-        </Paper>
-
-        <Paper
-          elevation={0}
-          sx={{
-            flex: 1,
-            p: 2,
-            borderRadius: 3,
-            border: "1px solid #e0e0e0",
-            bgcolor: alpha("#f44336", 0.04),
-          }}
-        >
-          <Stack
-            direction="row"
-            alignItems="center"
-            justifyContent="space-between"
-          >
-            <Box>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                fontWeight={500}
-              >
-                Failed
-              </Typography>
-              <Typography variant="h6" fontWeight={700} color="#f44336">
-                {formatCurrency(totals.failed)}
-              </Typography>
-            </Box>
-            <TrendingDownIcon sx={{ fontSize: 32, color: "#f44336" }} />
-          </Stack>
-        </Paper>
-
-        <Paper
-          elevation={0}
-          sx={{
-            flex: 1,
-            p: 2,
-            borderRadius: 3,
-            border: "1px solid #e0e0e0",
-            bgcolor: alpha("#2196f3", 0.04),
-          }}
-        >
-          <Stack
-            direction="row"
-            alignItems="center"
-            justifyContent="space-between"
-          >
-            <Box>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                fontWeight={500}
-              >
-                Refunded
-              </Typography>
-              <Typography variant="h6" fontWeight={700} color="#2196f3">
-                {formatCurrency(totals.refunded)}
-              </Typography>
-            </Box>
-            <ReceiptLongIcon sx={{ fontSize: 32, color: "#2196f3" }} />
-          </Stack>
-        </Paper>
-      </Stack>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  fontWeight={600}
+                >
+                  {card.label}
+                </Typography>
+                <Typography
+                  variant="h6"
+                  fontWeight={800}
+                  sx={{ lineHeight: 1.2, my: 0.4 }}
+                >
+                  {card.value}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {card.sub}
+                </Typography>
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
+      </Box>
 
       <Paper
         elevation={0}
         sx={{ borderRadius: 3, border: "1px solid #e0e0e0" }}
       >
-        <Box sx={{ p: 3 }}>
+        <Box sx={{ p: { xs: 1.5, sm: 2, md: 3 } }}>
           <Stack
             direction={{ xs: "column", sm: "row" }}
             spacing={2}

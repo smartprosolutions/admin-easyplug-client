@@ -36,6 +36,11 @@ import {
   getListing as getItem,
 } from "../../services/listingService";
 import { addListingToAdvert } from "../../services/advertService";
+import { useUserProfileQuery } from "../../services/queries";
+import {
+  isOwnedByUser,
+  resolveUserId,
+} from "../../utils/accessControl";
 
 export default function InventoryModal({
   onClose,
@@ -60,6 +65,10 @@ export default function InventoryModal({
     severity: "info",
     message: "",
   });
+  const { data: profileData, isLoading: isProfileLoading } = useUserProfileQuery({
+    retry: false,
+  });
+  const currentUserId = resolveUserId(profileData);
 
   const { data: existing, isPending: isFetching } = useQuery({
     queryKey: ["inventoryItem", id],
@@ -178,6 +187,7 @@ export default function InventoryModal({
       (existing?.subscription ? existing.subscription : existing) ||
       null
     : null;
+  const canEditItem = isOwnedByUser(itemData, currentUserId);
 
   const resolvedType = itemData?.type || presetType || "PRODUCTS";
   const resolvedCategory = itemData?.category || presetCategory || "";
@@ -222,6 +232,26 @@ export default function InventoryModal({
     navigate("/inventory");
   };
 
+  if (isEdit && !isFetching && !isProfileLoading && itemData && !canEditItem) {
+    return (
+      <Dialog open onClose={handleClose} fullScreen={fullScreen} fullWidth>
+        <Stack spacing={2} sx={{ p: { xs: 2, sm: 2.5 } }}>
+          <Typography variant="h6" fontWeight={700}>
+            Access restricted
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            You can only edit listings that belong to your account.
+          </Typography>
+          <Stack direction="row" justifyContent="flex-end">
+            <Button variant="contained" onClick={handleClose}>
+              Back to inventory
+            </Button>
+          </Stack>
+        </Stack>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog
       open
@@ -233,8 +263,8 @@ export default function InventoryModal({
         sx: {
           display: "flex",
           flexDirection: "column",
-          maxHeight: "calc(100vh - 64px)",
-          borderRadius: 4,
+          maxHeight: fullScreen ? "100dvh" : "calc(100vh - 64px)",
+          borderRadius: fullScreen ? 0 : 4,
           overflow: "hidden",
           backdropFilter: "blur(20px)",
         },
@@ -271,12 +301,19 @@ export default function InventoryModal({
       )}
 
       <Box sx={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <Box sx={{ background: gradientPrimary, color: "white", p: 3 }}>
+        <Box
+          sx={{
+            background: (theme) =>
+              `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+            color: "common.white",
+            p: 3,
+          }}
+        >
           <Stack direction="row" alignItems="center" spacing={2}>
             <Avatar
               sx={{
                 background: alpha("#fff", 0.2),
-                color: "white",
+                color: "common.white",
               }}
             >
               <CloudUploadIcon />
@@ -295,7 +332,7 @@ export default function InventoryModal({
               onClick={handleClose}
               disabled={createMut.isPending || updateMut.isPending}
               sx={{
-                color: "white",
+                color: "common.white",
                 background: alpha("#fff", 0.1),
                 "&:hover": {
                   background: alpha("#fff", 0.2),

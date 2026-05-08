@@ -20,11 +20,12 @@ import EmailIcon from "@mui/icons-material/Email";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import LocalOfferIcon from "@mui/icons-material/LocalOffer";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import { useTheme } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getNotifications,
   markAsRead,
+  markAllAsRead,
   deleteNotification,
 } from "../services/notificationService";
 import { connectSocket, getSocket } from "../socket/socketClient";
@@ -46,10 +47,13 @@ const formatTimeAgo = (dateValue) => {
 
 export default function Notifications() {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const queryClient = useQueryClient();
-  const { decrementUnreadNotifications, refetchUnreadNotifications } =
-    useUnreadCounts();
+  const {
+    decrementUnreadNotifications,
+    refetchUnreadNotifications,
+    setNotificationsUnreadCount,
+  } = useUnreadCounts();
   const [filter, setFilter] = useState("all");
   const [notifications, setNotifications] = useState([]);
 
@@ -71,6 +75,43 @@ export default function Notifications() {
       })),
     );
   }, [notificationsResponse]);
+
+  // Opening notifications should clear unread badge and mark all backend records as read.
+  useEffect(() => {
+    const unreadItems = notifications.filter((n) => !n.isRead);
+    if (unreadItems.length === 0) {
+      setNotificationsUnreadCount(0);
+      return;
+    }
+
+    let cancelled = false;
+
+    const syncReadState = async () => {
+      try {
+        setNotificationsUnreadCount(0);
+        await markAllAsRead();
+        if (cancelled) return;
+
+        setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+        queryClient.invalidateQueries({ queryKey: ["admin-notifications"] });
+      } catch {
+        if (!cancelled) {
+          refetchUnreadNotifications();
+        }
+      }
+    };
+
+    syncReadState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    notifications,
+    queryClient,
+    refetchUnreadNotifications,
+    setNotificationsUnreadCount,
+  ]);
 
   // Connect socket and listen for incoming notifications
   useEffect(() => {
@@ -183,113 +224,187 @@ export default function Notifications() {
   };
 
   return (
-    <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
-      <Stack
-        direction={{ xs: "column", sm: "row" }}
-        justifyContent="space-between"
-        alignItems={{ xs: "stretch", sm: "center" }}
-        sx={{ mb: 2 }}
+    <Box
+      sx={{
+        px: { xs: 2, sm: 2 },
+        py: { xs: 1.25, sm: 2 },
+        bgcolor: "background.default",
+      }}
+    >
+      <Paper
+        elevation={0}
+        sx={{
+          p: { xs: 2, sm: 2 },
+          mb: 1.5,
+          borderRadius: 3,
+          border: "1px solid",
+          borderColor: "divider",
+          bgcolor: "background.paper",
+        }}
       >
-        <Typography variant="h5">Notifications</Typography>
-        <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
-          <Button
-            startIcon={<FilterListIcon />}
-            onClick={() => setFilter("all")}
-            size={isMobile ? "small" : "medium"}
-          >
-            All
-          </Button>
-          <Button
-            onClick={() => setFilter("system")}
-            size={isMobile ? "small" : "medium"}
-          >
-            System
-          </Button>
-          <Button
-            onClick={() => setFilter("message")}
-            size={isMobile ? "small" : "medium"}
-          >
-            Messages
-          </Button>
-          <Button
-            onClick={() => setFilter("warning")}
-            size={isMobile ? "small" : "medium"}
-          >
-            Warnings
-          </Button>
-          <Button
-            onClick={() => setFilter("promo")}
-            size={isMobile ? "small" : "medium"}
-          >
-            Promos
-          </Button>
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          justifyContent="space-between"
+          alignItems={{ xs: "flex-start", sm: "center" }}
+          spacing={1.25}
+        >
+          <Stack spacing={0.35}>
+            <Typography variant="h5" sx={{ fontWeight: 800, fontSize: { xs: 22, sm: 28 } }}>
+              Notifications
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Stay on top of buyer activity, system updates, and promos.
+            </Typography>
+          </Stack>
+
+          <Chip
+            icon={<NotificationsActiveIcon />}
+            label={`${filtered.length} visible`}
+            color="primary"
+            variant="outlined"
+            sx={{ fontWeight: 600 }}
+          />
         </Stack>
-      </Stack>
-      <Paper sx={{ p: 2 }} elevation={3}>
-        <List>
-          {filtered.map((n, idx) => (
-            <React.Fragment key={n.id}>
-              <ListItem
-                sx={{
-                  opacity: n.isRead ? 0.6 : 1,
-                  alignItems: "flex-start",
-                  gap: 1,
-                  px: { xs: 0.5, sm: 2 },
-                }}
-              >
-                <ListItemIcon>
-                  <Avatar
-                    sx={{ bgcolor: n.isRead ? "grey.400" : "primary.main" }}
-                  >
-                    {n.title?.charAt(0) || "N"}
-                  </Avatar>
-                </ListItemIcon>
-                <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <ListItemText
-                    primary={n.title}
-                    secondary={`${n.body} • ${n.time}`}
-                    sx={{ my: 0 }}
-                  />
-                  <Stack
-                    direction="row"
-                    spacing={1}
-                    sx={{ mt: 1, flexWrap: "wrap", rowGap: 1 }}
-                  >
-                    {typeChip(n.type)}
-                    {!n.isRead && (
-                      <IconButton
-                        size="small"
-                        color="success"
-                        onClick={() => markAsReadMutation.mutate(n.id)}
-                        disabled={markAsReadMutation.isPending}
-                      >
-                        <CheckIcon />
-                      </IconButton>
-                    )}
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={() => deleteNotificationMutation.mutate(n.id)}
-                      disabled={deleteNotificationMutation.isPending}
-                    >
-                      <DeleteOutlineIcon />
-                    </IconButton>
-                  </Stack>
-                </Box>
-              </ListItem>
-              {idx < filtered.length - 1 && <Divider component="li" />}
-            </React.Fragment>
+
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{ mt: 1.5, overflowX: "auto", pb: 0.25 }}
+        >
+          {[
+            { id: "all", label: "All", icon: <FilterListIcon fontSize="small" /> },
+            { id: "system", label: "System" },
+            { id: "message", label: "Messages" },
+            { id: "warning", label: "Warnings" },
+            { id: "promo", label: "Promos" },
+          ].map((item) => (
+            <Chip
+              key={item.id}
+              icon={item.icon}
+              label={item.label}
+              clickable
+              onClick={() => setFilter(item.id)}
+              color={filter === item.id ? "primary" : "default"}
+              variant={filter === item.id ? "filled" : "outlined"}
+              sx={{ fontWeight: 600, flexShrink: 0 }}
+            />
           ))}
-          {filtered.length === 0 && (
-            <ListItem>
-              <ListItemText
-                primary="No notifications"
-                secondary="You're all caught up"
-              />
-            </ListItem>
-          )}
-        </List>
+        </Stack>
       </Paper>
+
+      <List sx={{ p: 0, m: 0, display: "grid", gap: 1.1 }}>
+        {filtered.map((n) => (
+          <Paper
+            key={n.id}
+            elevation={0}
+            sx={{
+              borderRadius: 2.5,
+              border: "1px solid",
+              borderColor: n.isRead ? "divider" : alpha(theme.palette.primary.main, 0.3),
+              bgcolor: n.isRead
+                ? "background.paper"
+                : alpha(theme.palette.primary.main, 0.05),
+            }}
+          >
+            <ListItem
+              sx={{
+                opacity: n.isRead ? 0.72 : 1,
+                alignItems: "flex-start",
+                gap: 1,
+                px: { xs: 2, sm: 1.5 },
+                py: { xs: 1.2, sm: 1.35 },
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 0, mr: 1.2, mt: 0.2 }}>
+                <Avatar
+                  sx={{
+                    width: 34,
+                    height: 34,
+                    fontSize: 14,
+                    bgcolor: n.isRead ? "action.disabledBackground" : "primary.main",
+                    color: n.isRead ? "text.secondary" : "primary.contrastText",
+                  }}
+                >
+                  {n.title?.charAt(0) || "N"}
+                </Avatar>
+              </ListItemIcon>
+
+              <Box sx={{ minWidth: 0, flex: 1 }}>
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={{ xs: 0.25, sm: 0.8 }}
+                  alignItems={{ xs: "flex-start", sm: "center" }}
+                  justifyContent="space-between"
+                >
+                  <Typography fontWeight={700} fontSize={14.5} noWrap>
+                    {n.title}
+                  </Typography>
+                  <Typography fontSize={11} color="text.secondary" sx={{ flexShrink: 0 }}>
+                    {n.time}
+                  </Typography>
+                </Stack>
+
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mt: 0.45, lineHeight: 1.45 }}
+                >
+                  {n.body}
+                </Typography>
+
+                <Stack
+                  direction="row"
+                  spacing={0.8}
+                  sx={{ mt: 1.1, flexWrap: "wrap", rowGap: 0.8 }}
+                  alignItems="center"
+                >
+                  {typeChip(n.type)}
+                  {!n.isRead && (
+                    <Chip
+                      size="small"
+                      icon={<CheckIcon />}
+                      label="Mark read"
+                      color="success"
+                      variant="outlined"
+                      onClick={() => markAsReadMutation.mutate(n.id)}
+                      disabled={markAsReadMutation.isPending}
+                      clickable
+                    />
+                  )}
+                  <Chip
+                    size="small"
+                    icon={<DeleteOutlineIcon />}
+                    label="Delete"
+                    color="error"
+                    variant="outlined"
+                    onClick={() => deleteNotificationMutation.mutate(n.id)}
+                    disabled={deleteNotificationMutation.isPending}
+                    clickable
+                  />
+                </Stack>
+              </Box>
+            </ListItem>
+          </Paper>
+        ))}
+
+        {filtered.length === 0 && (
+          <Paper
+            elevation={0}
+            sx={{
+              borderRadius: 2.5,
+              border: "1px dashed",
+              borderColor: "divider",
+              p: { xs: 2, sm: 2.5 },
+              textAlign: "center",
+            }}
+          >
+            <Typography fontWeight={700}>No notifications</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.35 }}>
+              You're all caught up.
+            </Typography>
+          </Paper>
+        )}
+      </List>
     </Box>
   );
 }

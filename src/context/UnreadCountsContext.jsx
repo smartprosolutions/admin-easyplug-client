@@ -156,6 +156,10 @@ export function UnreadCountsProvider({ children }) {
     };
 
     const handleNewNotification = ({ notification }) => {
+      if (location.pathname.startsWith("/notifications")) {
+        return;
+      }
+
       if (!notification?.isRead) {
         incrementUnreadNotifications(1);
       }
@@ -180,6 +184,7 @@ export function UnreadCountsProvider({ children }) {
     incrementUnreadNotifications,
     refetchUnreadMessages,
     refetchUnreadNotifications,
+    location.pathname,
   ]);
 
   useEffect(() => {

@@ -1,6 +1,5 @@
 import React from "react";
 import Box from "@mui/material/Box";
-import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
@@ -16,6 +15,9 @@ import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import TaskAltIcon from "@mui/icons-material/TaskAlt";
+import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
+import BusinessIcon from "@mui/icons-material/Business";
+import { alpha } from "@mui/material/styles";
 import { Formik, Form, getIn } from "formik";
 import * as Yup from "yup";
 import { useMutation } from "@tanstack/react-query";
@@ -119,14 +121,18 @@ function isAddressStepComplete(values) {
 
 function StepCard({ title, children }) {
   return (
-    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2.5 }}>
+    <Box
+      sx={{
+        p: 0,
+      }}
+    >
       <Stack spacing={1.25}>
         <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
           {title}
         </Typography>
         {children}
       </Stack>
-    </Paper>
+    </Box>
   );
 }
 
@@ -143,22 +149,25 @@ function StepOneFields({
 }) {
   return (
     <StepCard title="Step 1 · Account Setup">
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+      <Stack direction="row" spacing={{ xs: 1, sm: 1.5 }}>
         {[
           {
             value: "sole",
             title: "Sole Provider",
             caption: "Register as an individual seller",
+            icon: PersonOutlineIcon,
           },
           {
             value: "business",
             title: "Registered Business",
             caption: "Register and manage a business profile",
+            icon: BusinessIcon,
           },
         ].map((option) => {
           const selected = values.registrationType === option.value;
+          const Icon = option.icon;
           return (
-            <Paper
+            <Box
               key={option.value}
               role="button"
               tabIndex={0}
@@ -169,29 +178,78 @@ function StepOneFields({
                   setFieldValue("registrationType", option.value);
                 }
               }}
-              variant="outlined"
               sx={{
-                p: 1.5,
+                p: { xs: 1.2, sm: 1.65 },
                 flex: 1,
+                minWidth: 0,
                 cursor: "pointer",
-                borderRadius: 2,
+                borderRadius: 2.2,
+                border: "1px solid",
                 borderColor: selected ? "primary.main" : "divider",
-                bgcolor: selected ? "action.selected" : "background.paper",
+                bgcolor: selected
+                  ? (theme) => alpha(theme.palette.primary.main, 0.12)
+                  : "background.paper",
                 boxShadow: selected
-                  ? "0 0 0 1px rgba(102,126,234,0.25)"
+                  ? (theme) => `0 0 0 1px ${alpha(theme.palette.primary.main, 0.25)}`
                   : "none",
+                transition: "all 180ms ease",
+                "&:hover": {
+                  borderColor: "primary.main",
+                  transform: "translateY(-1px)",
+                },
               }}
             >
-              <Typography variant="subtitle2" fontWeight={700}>
-                {option.title}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {option.caption}
-              </Typography>
-            </Paper>
+              <Stack spacing={0.8}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Box
+                    sx={{
+                      width: { xs: 24, sm: 30 },
+                      height: { xs: 24, sm: 30 },
+                      borderRadius: 1.6,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      bgcolor: selected
+                        ? (theme) => alpha(theme.palette.primary.main, 0.18)
+                        : "action.hover",
+                      color: selected ? "primary.main" : "text.secondary",
+                    }}
+                  >
+                    <Icon fontSize="small" />
+                  </Box>
+                  <Typography
+                    variant="subtitle2"
+                    fontWeight={700}
+                    sx={{ fontSize: { xs: 12, sm: 14 }, lineHeight: 1.2 }}
+                  >
+                    {option.title}
+                  </Typography>
+                  {selected && (
+                    <Box
+                      sx={{
+                        ml: "auto",
+                        width: 9,
+                        height: 9,
+                        borderRadius: "50%",
+                        bgcolor: "primary.main",
+                      }}
+                    />
+                  )}
+                </Stack>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ fontSize: { xs: 10, sm: 12 }, lineHeight: 1.25 }}
+                >
+                  {option.caption}
+                </Typography>
+              </Stack>
+            </Box>
           );
         })}
       </Stack>
+
+      <Box sx={{ height: { xs: 1, sm: 1.5 } }} />
 
       {(submitCount > 0 || touched.registrationType) &&
       errors.registrationType ? (
@@ -717,32 +775,62 @@ export default function RegisterUser() {
       sx={{
         minHeight: "100vh",
         width: "100vw",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
         background: (theme) =>
-          theme.palette.mode === "light"
-            ? "linear-gradient(135deg, #f5f7ff 0%, #f9fbff 55%, #ffffff 100%)"
-            : "linear-gradient(135deg, #0f1115 0%, #141924 55%, #1a2230 100%)",
-        p: { xs: 1.5, md: 3 },
+          `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.2)} 0%, ${alpha(theme.palette.secondary.main, 0.1)} 34%, ${theme.palette.background.default} 100%)`,
+        pt: 0,
+        pb: { xs: 2.5, md: 3 },
+        px: 0,
         position: "relative",
         overflow: "hidden",
       }}
     >
-      <Paper
-        elevation={3}
+      <Box
+        sx={{
+          width: "100%",
+          minHeight: { xs: 240, md: 300 },
+          bgcolor: (theme) => alpha(theme.palette.primary.main, 0.18),
+          backgroundImage: (theme) =>
+            `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.24)} 0%, ${alpha(theme.palette.primary.main, 0.14)} 100%)`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          position: "relative",
+          overflow: "hidden",
+          borderBottomLeftRadius: "46% 20%",
+          borderBottomRightRadius: "46% 20%",
+          "&::after": {
+            content: '""',
+            position: "absolute",
+            left: -40,
+            right: -40,
+            bottom: -22,
+            height: 56,
+            background: (theme) =>
+              `radial-gradient(70% 40px at 50% 0%, ${alpha(theme.palette.common.black, theme.palette.mode === "light" ? 0.14 : 0.3)} 0%, ${alpha(theme.palette.common.black, 0)} 72%)`,
+            pointerEvents: "none",
+          },
+        }}
+      >
+        <Box
+          component="img"
+          src={logo}
+          alt="Easyplug Logo"
+          sx={{
+            width: { xs: 185, md: 235 },
+            height: { xs: 185, md: 235 },
+            objectFit: "contain",
+            zIndex: 1,
+          }}
+        />
+      </Box>
+
+      <Box
         sx={{
           maxWidth: 1080,
           width: "100%",
-          borderRadius: 4,
+          mx: "auto",
+          px: { xs: 2.25, md: 4 },
           position: "relative",
-          overflow: "hidden",
-          border: (theme) =>
-            `1px solid ${
-              theme.palette.mode === "light"
-                ? "rgba(102,126,234,0.12)"
-                : "rgba(255,255,255,0.08)"
-            }`,
         }}
       >
         {mutation.isPending && (
@@ -754,50 +842,59 @@ export default function RegisterUser() {
               top: 0,
               left: 0,
               width: "100%",
-              borderTopLeftRadius: 12,
-              borderTopRightRadius: 12,
             }}
           />
         )}
 
         <Stack
           spacing={2.5}
-          sx={{ p: { xs: 2.25, md: 4 }, maxWidth: 860, mx: "auto" }}
+          sx={{ pt: { xs: 2, md: 2.5 } }}
         >
-          <Box sx={{ display: "flex", justifyContent: "center" }}>
-            <Box
+          <Box>
+            <Typography
               sx={{
-                width: { xs: 110, md: 124 },
-                height: { xs: 110, md: 124 },
-                borderRadius: "50%",
-                bgcolor: "#fff",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                fontSize: { xs: 11, sm: 12 },
+                letterSpacing: { xs: 2.8, sm: 4 },
+                color: "primary.main",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                textAlign: "center",
               }}
             >
-              <Box
-                component="img"
-                src={logo}
-                alt="Easyplug Logo"
-                sx={{
-                  width: { xs: 84, md: 96 },
-                  height: { xs: 84, md: 96 },
-                  objectFit: "contain",
-                }}
-              />
-            </Box>
+              Powering Easyplug Commerce
+            </Typography>
+            <Typography
+              variant="h4"
+              sx={{
+                fontWeight: 800,
+                textAlign: "center",
+                lineHeight: 1.15,
+                mt: 0.8,
+              }}
+            >
+              Create Seller Account
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{ mt: 0.9, textAlign: "center", color: "text.secondary" }}
+            >
+              Join the marketplace and set up your profile step by step.
+            </Typography>
+            <Box
+              sx={{
+                width: 64,
+                height: 3,
+                borderRadius: 99,
+                bgcolor: "secondary.main",
+                mx: "auto",
+                mt: 1.8,
+              }}
+            />
           </Box>
 
-          <Paper
-            variant="outlined"
+          <Box
             sx={{
-              p: { xs: 2, md: 2.5 },
-              borderRadius: 2.5,
-              background: (theme) =>
-                theme.palette.mode === "light"
-                  ? "linear-gradient(135deg, rgba(102,126,234,0.09), rgba(118,75,162,0.07))"
-                  : "linear-gradient(135deg, rgba(102,126,234,0.3), rgba(118,75,162,0.22))",
+              p: { xs: 0.5, md: 1 },
             }}
           >
             <Typography
@@ -810,9 +907,9 @@ export default function RegisterUser() {
               variant="body2"
               sx={{ mt: 0.5, textAlign: "center", color: "text.secondary" }}
             >
-              A guided setup flow for your Easyplug seller account.
+              Guided setup flow for your Easyplug seller account.
             </Typography>
-          </Paper>
+          </Box>
 
           <Formik
             initialValues={{
@@ -1159,13 +1256,18 @@ export default function RegisterUser() {
               return (
                 <Form>
                   <Stack spacing={2.25}>
-                    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2.5 }}>
+                    <Box sx={{ p: 0.5 }}>
                       <Stepper
                         activeStep={currentStep}
                         alternativeLabel
                         sx={{
+                          overflowX: "auto",
+                          pb: { xs: 0.5, sm: 0 },
+                          "& .MuiStep-root": {
+                            minWidth: { xs: 92, sm: "auto" },
+                          },
                           "& .MuiStepLabel-label": {
-                            fontSize: 12,
+                            fontSize: { xs: 10, sm: 12 },
                             fontWeight: 600,
                           },
                         }}
@@ -1176,19 +1278,9 @@ export default function RegisterUser() {
                           </Step>
                         ))}
                       </Stepper>
-                    </Paper>
+                    </Box>
 
-                    <Paper
-                      variant="outlined"
-                      sx={{
-                        p: 2,
-                        borderRadius: 2.5,
-                        background: (theme) =>
-                          theme.palette.mode === "light"
-                            ? "linear-gradient(180deg, rgba(102,126,234,0.08), rgba(102,126,234,0.02))"
-                            : "linear-gradient(180deg, rgba(102,126,234,0.24), rgba(102,126,234,0.08))",
-                      }}
-                    >
+                    <Box sx={{ p: 0.5 }}>
                       <Stack spacing={1.2}>
                         <Stack
                           direction="row"
@@ -1274,7 +1366,7 @@ export default function RegisterUser() {
                           />
                         </Stack>
                       </Stack>
-                    </Paper>
+                    </Box>
 
                     {currentStep === 0 && (
                       <StepOneFields
@@ -1412,7 +1504,7 @@ export default function RegisterUser() {
             }}
           </Formik>
         </Stack>
-      </Paper>
+      </Box>
 
       <ToastAlert
         open={authToast.open}
