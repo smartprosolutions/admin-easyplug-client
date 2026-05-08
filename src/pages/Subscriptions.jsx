@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars */
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Box,
   Grid,
@@ -31,6 +31,7 @@ import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import { getSubscriptions } from "../services/subscriptionService";
 import { gradientPrimary } from "../theme/theme";
+import MetricsDataGrid from "../components/metrics/MetricsDataGrid";
 
 const float = keyframes`
   0%, 100% { transform: translateY(0px); }
@@ -44,9 +45,7 @@ const pulse = keyframes`
 
 export default function Subscriptions() {
   const [query, setQuery] = useState("");
-  const [page, setPage] = useState(1);
   const navigate = useNavigate();
-  const itemsPerPage = 8;
 
   const { data, isPending, error, refetch } = useQuery({
     queryKey: ["subscriptions"],
@@ -67,46 +66,264 @@ export default function Subscriptions() {
       s.description?.toLowerCase().includes(query.toLowerCase()),
   );
 
-  // Pagination
-  const totalPages =
-    Math.ceil(filteredSubscriptions.length / itemsPerPage) || 1;
-  const currentPage = Math.min(page, totalPages);
-  const paginatedSubscriptions = filteredSubscriptions.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage,
-  );
-
-  useEffect(() => {
-    // Reset to first page when search query changes
-    if (query && page !== 1) {
-      setPage(1);
-    }
-  }, [query, page]);
-
-  const formatCurrency = (val) => {
+  const formatCurrency = useCallback((val) => {
     try {
       const n = Number(val);
       return `R ${Number.isFinite(n) ? n.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0.00"}`;
     } catch {
       return val;
     }
-  };
+  }, []);
 
-  const formatDuration = (hours) => {
+  const formatDuration = useCallback((hours) => {
     if (!hours) return "-";
     if (hours < 24) return `${hours} hrs`;
     const days = Math.floor(hours / 24);
     return days === 1 ? "1 day" : `${days} days`;
-  };
+  }, []);
 
-  const formatTierLabel = (tier) => {
+  const formatTierLabel = useCallback((tier) => {
     const priceLabel = formatCurrency(tier?.price);
     const users = Number(tier?.usersPerHour);
     const usersLabel = Number.isFinite(users)
       ? `${users.toLocaleString("en-ZA")} users/hr`
       : "users/hr";
     return `${priceLabel} • ${usersLabel}`;
-  };
+  }, [formatCurrency]);
+
+  const activeSubscriptions = allSubscriptions.filter(
+    (s) => String(s?.status || "").toLowerCase() === "active",
+  ).length;
+
+  const tierPrices = allSubscriptions.flatMap((s) =>
+    Array.isArray(s?.pricingTiers)
+      ? s.pricingTiers
+          .map((tier) => Number(tier?.price || 0))
+          .filter((p) => Number.isFinite(p) && p > 0)
+      : [],
+  );
+
+  const avgTierPrice =
+    tierPrices.length > 0
+      ? tierPrices.reduce((sum, p) => sum + p, 0) / tierPrices.length
+      : 0;
+
+  const durationMap = allSubscriptions.reduce((acc, sub) => {
+    const duration = Number(sub?.durationInHours || 0);
+    if (!Number.isFinite(duration) || duration <= 0) return acc;
+    acc[duration] = (acc[duration] || 0) + 1;
+    return acc;
+  }, {});
+
+  const topDurationEntry = Object.entries(durationMap).sort(
+    (a, b) => b[1] - a[1],
+  )[0];
+  const topDurationHours = Number(topDurationEntry?.[0] || 0);
+  const topDurationCount = topDurationEntry?.[1] || 0;
+
+  const subscriptionCards = [
+    {
+      label: "Total Plans",
+      value: allSubscriptions.length.toLocaleString("en-ZA"),
+      sub: "All subscription packages",
+      accent: "primary.main",
+    },
+    {
+      label: "Active Plans",
+      value: activeSubscriptions.toLocaleString("en-ZA"),
+      sub: "Currently available to sellers",
+      accent: "success.main",
+    },
+    {
+      label: "Average Tier Price",
+      value: formatCurrency(avgTierPrice),
+      sub: "Average across all pricing tiers",
+      accent: "warning.main",
+    },
+    {
+      label: "Top Duration",
+      value: topDurationHours ? formatDuration(topDurationHours) : "-",
+      sub: `${topDurationCount.toLocaleString("en-ZA")} plans`,
+      accent: "secondary.main",
+    },
+  ];
+
+  const subscriptionRows = filteredSubscriptions.map((sub) => ({
+    id: sub.subscriptionId ?? sub.id,
+    ...sub,
+  }));
+
+  const gridColumns = useMemo(
+    () => [
+      {
+        field: "name",
+        headerName: "Plan Name",
+        minWidth: 220,
+        flex: 1.1,
+        renderCell: (params) => (
+          <Typography
+            fontWeight={600}
+            fontSize={13}
+            sx={{ whiteSpace: "normal", lineHeight: 1.35, py: 0.5 }}
+          >
+            {params.row.name || "Untitled"}
+          </Typography>
+        ),
+      },
+      {
+        field: "status",
+        headerName: "Status",
+        minWidth: 130,
+        flex: 0.7,
+        renderCell: (params) => {
+          const status = String(params.value || "").toLowerCase();
+          const chipColor =
+            status === "active"
+              ? "success"
+              : status === "draft"
+                ? "info"
+                : "default";
+
+          return (
+            <Chip
+              size="small"
+              color={chipColor}
+              label={
+                status
+                  ? status.charAt(0).toUpperCase() + status.slice(1)
+                  : "Unknown"
+              }
+            />
+          );
+        },
+      },
+      {
+        field: "durationInHours",
+        headerName: "Duration",
+        minWidth: 140,
+        flex: 0.7,
+        renderCell: (params) => (
+          <Typography
+            fontSize={13}
+            color="text.secondary"
+            sx={{ whiteSpace: "normal", lineHeight: 1.35, py: 0.5 }}
+          >
+            {formatDuration(params.value)}
+          </Typography>
+        ),
+      },
+      {
+        field: "baseTierPrice",
+        headerName: "Price",
+        minWidth: 140,
+        flex: 0.7,
+        renderCell: (params) => {
+          const tierPrice = Array.isArray(params.row.pricingTiers)
+            ? Number(params.row.pricingTiers[0]?.price || 0)
+            : Number(params.row.price || 0);
+          return (
+            <Typography
+              fontWeight={700}
+              fontSize={13}
+              color="success.main"
+              sx={{ whiteSpace: "normal", lineHeight: 1.35, py: 0.5 }}
+            >
+              {formatCurrency(tierPrice)}
+            </Typography>
+          );
+        },
+      },
+      {
+        field: "tiers",
+        headerName: "Pricing Tiers",
+        minWidth: 280,
+        flex: 1.45,
+        renderCell: (params) => {
+          const tiers = Array.isArray(params.row.pricingTiers)
+            ? params.row.pricingTiers
+            : [];
+          if (tiers.length === 0) {
+            return (
+              <Typography fontSize={13} color="text.secondary">
+                No tiers configured
+              </Typography>
+            );
+          }
+
+          return (
+            <Typography
+              fontSize={13}
+              color="text.secondary"
+              sx={{
+                whiteSpace: "normal",
+                overflowWrap: "anywhere",
+                lineHeight: 1.35,
+                py: 0.5,
+                width: "100%",
+              }}
+              title={tiers.map((tier) => formatTierLabel(tier)).join(" | ")}
+            >
+              {tiers.map((tier) => formatTierLabel(tier)).join(" | ")}
+            </Typography>
+          );
+        },
+      },
+      {
+        field: "description",
+        headerName: "Description",
+        minWidth: 300,
+        flex: 1.6,
+        renderCell: (params) => (
+          <Typography
+            fontSize={13}
+            color="text.secondary"
+            sx={{
+              whiteSpace: "normal",
+              overflowWrap: "anywhere",
+              lineHeight: 1.35,
+              py: 0.5,
+              width: "100%",
+            }}
+            title={params.value || "No description provided"}
+          >
+            {params.value || "No description provided"}
+          </Typography>
+        ),
+      },
+      {
+        field: "actions",
+        headerName: "Actions",
+        minWidth: 170,
+        flex: 0.8,
+        sortable: false,
+        renderCell: (params) => (
+          <Stack direction="row" spacing={1}>
+            <Tooltip title="View plan">
+              <IconButton size="small" color="primary">
+                <VisibilityIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Edit plan">
+              <IconButton
+                size="small"
+                onClick={() =>
+                  navigate(`/subscriptions/${params.row.subscriptionId}/edit`)
+                }
+                sx={{
+                  color: "#fff",
+                  backgroundImage: gradientPrimary,
+                  "&:hover": { opacity: 0.92 },
+                }}
+              >
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        ),
+      },
+    ],
+    [formatCurrency, formatDuration, formatTierLabel, navigate],
+  );
 
   if (error) {
     return (
@@ -136,6 +353,45 @@ export default function Subscriptions() {
           </Typography>
         </Box>
       </Stack>
+
+      <Box sx={{ mb: 2.5 }}>
+        <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.2 }}>
+          Subscription Overview
+        </Typography>
+        <Grid container spacing={1.5}>
+          {subscriptionCards.map((card) => (
+            <Grid key={card.label} size={{ xs: 6, sm: 6, md: 3 }}>
+              <Paper
+                variant="outlined"
+                sx={{
+                  p: 1.8,
+                  height: "100%",
+                  borderLeft: "4px solid",
+                  borderLeftColor: card.accent,
+                }}
+              >
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  fontWeight={600}
+                >
+                  {card.label}
+                </Typography>
+                <Typography
+                  variant="h6"
+                  fontWeight={800}
+                  sx={{ lineHeight: 1.2, my: 0.4 }}
+                >
+                  {card.value}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {card.sub}
+                </Typography>
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
+      </Box>
 
       {/* Search & Add */}
       <Stack
@@ -168,6 +424,7 @@ export default function Subscriptions() {
             backgroundImage: gradientPrimary,
             color: "#fff",
             minWidth: { xs: "100%", sm: 180 },
+            mt: { xs: 0.25, sm: 0 },
             whiteSpace: "nowrap",
             borderRadius: 2,
             px: 3,
@@ -183,7 +440,7 @@ export default function Subscriptions() {
         <Box sx={{ display: "flex", justifyContent: "center", mt: 4 }}>
           <CircularProgress />
         </Box>
-      ) : paginatedSubscriptions.length === 0 ? (
+      ) : filteredSubscriptions.length === 0 ? (
         <Box
           sx={{
             display: "flex",
@@ -349,338 +606,28 @@ export default function Subscriptions() {
           </Card>
         </Box>
       ) : (
-        <>
-          <Grid container spacing={2.5}>
-            {paginatedSubscriptions.map((sub) => (
-              <Grid
-                key={sub.subscriptionId}
-                size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
-              >
-                <Paper
-                  sx={{
-                    p: 0,
-                    height: "100%",
-                    display: "flex",
-                    flexDirection: "column",
-                    bgcolor: (theme) => theme.palette.background.paper,
-                    border: (theme) =>
-                      `1px solid ${alpha(theme.palette.divider, 0.8)}`,
-                    boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
-                    borderRadius: 3,
-                    overflow: "hidden",
-                    transition: "all .25s ease",
-                    "&:hover": {
-                      boxShadow: "0 8px 30px rgba(102, 126, 234, 0.15)",
-                      transform: "translateY(-4px)",
-                      borderColor: alpha("#667eea", 0.3),
-                    },
-                  }}
-                >
-                  {/* Header with gradient */}
-                  <Box
-                    sx={{
-                      backgroundImage: gradientPrimary,
-                      p: 2,
-                      position: "relative",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        position: "absolute",
-                        top: -20,
-                        right: -20,
-                        width: 80,
-                        height: 80,
-                        borderRadius: "50%",
-                        bgcolor: "rgba(255,255,255,0.1)",
-                      }}
-                    />
-                    <Box
-                      sx={{
-                        position: "absolute",
-                        bottom: -30,
-                        left: -10,
-                        width: 60,
-                        height: 60,
-                        borderRadius: "50%",
-                        bgcolor: "rgba(255,255,255,0.08)",
-                      }}
-                    />
-                    <Stack
-                      direction="row"
-                      alignItems="center"
-                      spacing={1.5}
-                      sx={{ position: "relative", zIndex: 1 }}
-                    >
-                      <Avatar
-                        sx={{
-                          bgcolor: "rgba(255,255,255,0.2)",
-                          color: "#fff",
-                          width: 44,
-                          height: 44,
-                          backdropFilter: "blur(10px)",
-                        }}
-                      >
-                        <SubscriptionsIcon />
-                      </Avatar>
-                      <Box sx={{ minWidth: 0, flex: 1 }}>
-                        <Typography
-                          noWrap
-                          sx={{
-                            fontWeight: 700,
-                            fontSize: 15,
-                            color: "#fff",
-                          }}
-                        >
-                          {sub.name || "Untitled"}
-                        </Typography>
-                        <Chip
-                          label={
-                            sub.status?.toLowerCase() === "active"
-                              ? "Active"
-                              : sub.status?.toLowerCase() === "draft"
-                                ? "Draft"
-                                : sub.status || "Inactive"
-                          }
-                          size="small"
-                          sx={{
-                            mt: 0.5,
-                            height: 20,
-                            fontSize: 11,
-                            fontWeight: 600,
-                            bgcolor:
-                              sub.status?.toLowerCase() === "active"
-                                ? "rgba(76, 175, 80, 0.9)"
-                                : sub.status?.toLowerCase() === "draft"
-                                  ? "rgba(33, 150, 243, 0.9)"
-                                  : "rgba(244, 67, 54, 0.9)",
-                            color: "#fff",
-                          }}
-                        />
-                      </Box>
-                    </Stack>
-                  </Box>
-
-                  {/* Content */}
-                  <Box
-                    sx={{
-                      p: 2,
-                      flex: 1,
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 1.5,
-                    }}
-                  >
-                    {/* Price highlight */}
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        p: 1.5,
-                        borderRadius: 2,
-                        bgcolor: alpha("#4caf50", 0.08),
-                        border: `1px solid ${alpha("#4caf50", 0.15)}`,
-                      }}
-                    >
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        fontWeight={500}
-                      >
-                        Price
-                      </Typography>
-                      <Typography
-                        variant="h6"
-                        fontWeight={700}
-                        color="success.main"
-                      >
-                        {formatCurrency(sub.price)}
-                      </Typography>
-                    </Box>
-
-                    {/* Duration */}
-                    <Stack
-                      direction="row"
-                      alignItems="center"
-                      spacing={1}
-                      sx={{ px: 0.5 }}
-                    >
-                      <AccessTimeIcon
-                        sx={{ fontSize: 18, color: "text.secondary" }}
-                      />
-                      <Typography variant="body2" color="text.secondary">
-                        Duration:{" "}
-                        <strong>{formatDuration(sub.durationInHours)}</strong>
-                      </Typography>
-                    </Stack>
-
-                    {/* Pricing tiers */}
-                    <Box sx={{ px: 0.5 }}>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ fontWeight: 600 }}
-                      >
-                        Pricing tiers
-                      </Typography>
-                      {Array.isArray(sub.pricingTiers) &&
-                      sub.pricingTiers.length > 0 ? (
-                        <Stack
-                          spacing={0.75}
-                          sx={{ mt: 0.75 }}
-                          divider={
-                            <Box
-                              sx={{
-                                borderBottom: "1px dashed",
-                                borderColor: "divider",
-                              }}
-                            />
-                          }
-                        >
-                          {sub.pricingTiers.map((tier, index) => (
-                            <Stack
-                              key={`${sub.subscriptionId}-tier-${index}`}
-                              direction="row"
-                              alignItems="center"
-                              spacing={1}
-                            >
-                              <AttachMoneyIcon
-                                sx={{ fontSize: 16, color: "text.secondary" }}
-                              />
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                              >
-                                {formatTierLabel(tier)}
-                              </Typography>
-                            </Stack>
-                          ))}
-                        </Stack>
-                      ) : (
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          sx={{ mt: 0.5 }}
-                        >
-                          No tiers configured
-                        </Typography>
-                      )}
-                    </Box>
-
-                    {/* Description */}
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        display: "-webkit-box",
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: "vertical",
-                        minHeight: 40,
-                        lineHeight: 1.5,
-                        px: 0.5,
-                      }}
-                    >
-                      {sub.description || "No description provided"}
-                    </Typography>
-
-                    {/* Actions */}
-                    <Stack
-                      direction={{ xs: "column", sm: "row" }}
-                      spacing={1}
-                      sx={{
-                        mt: "auto",
-                        pt: 1.5,
-                        borderTop: "1px solid",
-                        borderColor: "divider",
-                      }}
-                    >
-                      <Button
-                        size="small"
-                        startIcon={<VisibilityIcon sx={{ fontSize: 16 }} />}
-                        sx={{
-                          flex: 1,
-                          width: { xs: "100%", sm: "auto" },
-                          borderRadius: 2,
-                          textTransform: "none",
-                          fontWeight: 600,
-                        }}
-                      >
-                        View
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="contained"
-                        startIcon={<EditIcon sx={{ fontSize: 16 }} />}
-                        onClick={() =>
-                          navigate(`/subscriptions/${sub.subscriptionId}/edit`)
-                        }
-                        sx={{
-                          flex: 1,
-                          width: { xs: "100%", sm: "auto" },
-                          borderRadius: 2,
-                          textTransform: "none",
-                          fontWeight: 600,
-                          backgroundImage: gradientPrimary,
-                          boxShadow: "none",
-                          "&:hover": {
-                            boxShadow: "0 4px 12px rgba(102, 126, 234, 0.3)",
-                          },
-                        }}
-                      >
-                        Edit
-                      </Button>
-                    </Stack>
-                  </Box>
-                </Paper>
-              </Grid>
-            ))}
-          </Grid>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                gap: { xs: 1, sm: 2 },
-                flexDirection: { xs: "column", sm: "row" },
-                mt: 4,
-              }}
-            >
-              <Button
-                variant="outlined"
-                disabled={currentPage <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                sx={{ borderRadius: 2, width: { xs: "100%", sm: "auto" } }}
-              >
-                Previous
-              </Button>
-              <Typography variant="body2" color="text.secondary">
-                Page {currentPage} of {totalPages}
-              </Typography>
-              <Button
-                variant="contained"
-                disabled={currentPage >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                sx={{
-                  backgroundImage: gradientPrimary,
-                  color: "#fff",
-                  borderRadius: 2,
-                  width: { xs: "100%", sm: "auto" },
-                  "&:hover": { filter: "brightness(0.95)" },
-                  "&:disabled": { backgroundImage: "none" },
-                }}
-              >
-                Next
-              </Button>
-            </Box>
-          )}
-        </>
+        <MetricsDataGrid
+          autoHeight
+          rows={subscriptionRows}
+          columns={gridColumns}
+          pageSize={10}
+          getRowHeight={() => "auto"}
+          sx={{
+            "& .MuiDataGrid-columnHeaderTitle": {
+              whiteSpace: "normal",
+              lineHeight: 1.25,
+            },
+            "& .MuiDataGrid-cell": {
+              alignItems: "center",
+              py: 1,
+            },
+            "& .MuiDataGrid-cellContent": {
+              whiteSpace: "normal",
+              overflow: "visible",
+              textOverflow: "unset",
+            },
+          }}
+        />
       )}
 
       {/* Outlet for nested routes (modal) */}
