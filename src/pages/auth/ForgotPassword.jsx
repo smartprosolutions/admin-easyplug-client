@@ -1,11 +1,11 @@
 import React from "react";
 import Box from "@mui/material/Box";
-import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Avatar from "@mui/material/Avatar";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
+import { alpha } from "@mui/material/styles";
 import { Formik, Form } from "formik";
 import * as Yup from "yup";
 import { useMutation } from "@tanstack/react-query";
@@ -50,58 +50,105 @@ export default function ForgotPassword() {
       sx={{
         minHeight: "100vh",
         width: "100vw",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
         background: (theme) =>
-          theme.palette.mode === "light"
-            ? "radial-gradient(circle at top, rgba(102,126,234,0.16), rgba(247,247,247,1) 45%)"
-            : "radial-gradient(circle at top, rgba(102,126,234,0.18), rgba(15,17,21,1) 45%)",
-        p: 2
+          `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.2)} 0%, ${alpha(theme.palette.secondary.main, 0.1)} 36%, ${theme.palette.background.default} 100%)`,
+        pt: 0,
+        pb: { xs: 2.5, sm: 3.5 },
+        px: 0,
+        position: "relative",
+        overflow: "hidden",
       }}
     >
-      <Paper
-        elevation={0}
+      <Box
         sx={{
-          maxWidth: 500,
           width: "100%",
-          borderRadius: 4,
-          border: "1px solid",
-          borderColor: "divider",
-          boxShadow: (theme) =>
-            theme.palette.mode === "light"
-              ? "0 18px 48px rgba(15, 23, 42, 0.14)"
-              : "0 18px 48px rgba(0, 0, 0, 0.5)",
-          backdropFilter: "blur(6px)",
-          backgroundColor: "background.paper"
+          minHeight: { xs: 240, sm: 300 },
+          bgcolor: (theme) => alpha(theme.palette.primary.main, 0.18),
+          backgroundImage: (theme) =>
+            `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.24)} 0%, ${alpha(theme.palette.primary.main, 0.14)} 100%)`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          position: "relative",
+          overflow: "hidden",
+          borderBottomLeftRadius: "46% 20%",
+          borderBottomRightRadius: "46% 20%",
+          "&::after": {
+            content: '\"\"',
+            position: "absolute",
+            left: -40,
+            right: -40,
+            bottom: -22,
+            height: 56,
+            background: (theme) =>
+              `radial-gradient(70% 40px at 50% 0%, ${alpha(theme.palette.common.black, theme.palette.mode === "light" ? 0.14 : 0.3)} 0%, ${alpha(theme.palette.common.black, 0)} 72%)`,
+            pointerEvents: "none",
+          },
         }}
       >
-        <Stack spacing={3} sx={{ p: { xs: 3, sm: 4 } }}>
-          <Stack alignItems="center" justifyContent="center">
-            <Avatar
-              src={logo}
-              alt="Logo"
-              sx={{
-                width: { xs: 110, sm: 140 },
-                height: { xs: 110, sm: 140 },
-                border: "1px solid",
-                borderColor: "divider",
-                bgcolor: "background.paper"
-              }}
-            />
-          </Stack>
+        <Avatar
+          src={logo}
+          alt="Logo"
+          sx={{
+            width: { xs: 185, sm: 235 },
+            height: { xs: 185, sm: 235 },
+            bgcolor: "transparent",
+          }}
+        />
+      </Box>
 
-          <Stack spacing={1}>
+      <Box
+        sx={{
+          maxWidth: 470,
+          width: "100%",
+          mx: "auto",
+          px: { xs: 2.25, sm: 4 },
+        }}
+      >
+        <Stack spacing={2.25} sx={{ pb: { xs: 3, sm: 4 }, pt: { xs: 3, sm: 4 } }}>
+          <Box sx={{ textAlign: "center" }}>
             <Typography
-              variant="h5"
-              sx={{ fontWeight: 800, textAlign: "center", letterSpacing: 0.2 }}
+              sx={{
+                fontSize: { xs: 11, sm: 12 },
+                letterSpacing: { xs: 2.8, sm: 4 },
+                color: "primary.main",
+                fontWeight: 700,
+                textTransform: "uppercase",
+              }}
             >
-              Forgot password
+              Powering Easyplug Commerce
             </Typography>
-            <Typography variant="body2" color="text.secondary" textAlign="center">
+            <Typography
+              variant="h3"
+              sx={{ fontWeight: 800, lineHeight: 1.05, mt: 0.5, fontSize: { xs: 36, sm: 50 } }}
+            >
+              Forgot
+            </Typography>
+            <Typography
+              variant="h3"
+              sx={{
+                fontWeight: 800,
+                lineHeight: 1.05,
+                fontSize: { xs: 36, sm: 50 },
+                color: "secondary.main",
+              }}
+            >
+              Password
+            </Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
               Enter your account email and we will send a reset link.
             </Typography>
-          </Stack>
+            <Box
+              sx={{
+                width: 56,
+                height: 3,
+                borderRadius: 99,
+                bgcolor: "secondary.main",
+                mt: 2,
+                mx: "auto",
+              }}
+            />
+          </Box>
 
           <Formik
             initialValues={{ email: "" }}
@@ -121,7 +168,18 @@ export default function ForgotPassword() {
             {({ isSubmitting }) => (
               <Form>
                 <Stack spacing={2}>
-                  <TextFieldWrapper name="email" label="Email" size="medium" />
+                  <Typography
+                    variant="caption"
+                    sx={{ letterSpacing: { xs: 2.2, sm: 3 }, fontWeight: 700, color: "secondary.main" }}
+                  >
+                    EMAIL ADDRESS
+                  </Typography>
+                  <TextFieldWrapper
+                    name="email"
+                    label=""
+                    placeholder="you@example.com"
+                    size="medium"
+                  />
 
                   <Button
                     type="submit"
@@ -133,6 +191,11 @@ export default function ForgotPassword() {
                       color: "#fff",
                       backgroundImage: gradientPrimary,
                       boxShadow: "none",
+                      borderRadius: 3,
+                      py: { xs: 1.15, sm: 1.3 },
+                      fontSize: { xs: 16, sm: 18 },
+                      fontWeight: 800,
+                      letterSpacing: { xs: 1, sm: 1.4 },
                       "&:hover": { opacity: 0.95, boxShadow: "none" }
                     }}
                   >
@@ -142,7 +205,7 @@ export default function ForgotPassword() {
                         <span>Sending...</span>
                       </Stack>
                     ) : (
-                      "Send reset link"
+                      "SEND RESET LINK"
                     )}
                   </Button>
 
@@ -152,7 +215,7 @@ export default function ForgotPassword() {
             )}
           </Formik>
         </Stack>
-      </Paper>
+      </Box>
 
       <ToastAlert
         open={toast.open}
