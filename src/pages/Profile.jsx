@@ -50,10 +50,16 @@ import {
   CircularProgress,
   InputAdornment,
   Link as MuiLink,
+  Dialog,
+  DialogActions,
+  DialogContent,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import SaveIcon from "@mui/icons-material/Save";
 import CancelIcon from "@mui/icons-material/Cancel";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import PersonAddRoundedIcon from "@mui/icons-material/PersonAddRounded";
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EmailIcon from "@mui/icons-material/Email";
 import PhoneIcon from "@mui/icons-material/LocalPhone";
@@ -72,6 +78,8 @@ import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import VerifiedIcon from "@mui/icons-material/Verified";
 import LogoutIcon from "@mui/icons-material/Logout";
+import DarkModeIcon from "@mui/icons-material/DarkMode";
+import LightModeIcon from "@mui/icons-material/LightMode";
 import TextFieldWrapper from "../components/forms/TextFieldWrapper";
 import {
   getUserProfileInfo,
@@ -111,8 +119,13 @@ const gradientButtonSx = {
   "&:hover": { background: gradientPrimary, filter: "brightness(0.95)" },
 };
 
-const normalizeCompanyAddress = (sellerInfo) => {
-  const rawAddress = sellerInfo?.address;
+const normalizeCompanyAddress = (sellerInfo, user) => {
+  const fallbackAddress =
+    user?.location ||
+    (Array.isArray(user?.addresses) && user.addresses.length > 0
+      ? user.addresses[0]
+      : null);
+  const rawAddress = sellerInfo?.address || fallbackAddress;
 
   if (rawAddress && typeof rawAddress === "object") {
     return {
@@ -127,7 +140,7 @@ const normalizeCompanyAddress = (sellerInfo) => {
         rawAddress?.street ||
         rawAddress?.streetAddress ||
         rawAddress?.addressLine1 ||
-        "",
+        `${rawAddress?.streetNumber || ""} ${rawAddress?.streetName || ""}`.trim(),
       line2: rawAddress?.line2 || rawAddress?.addressLine2 || "",
       city: rawAddress?.city || rawAddress?.town || "",
       state: rawAddress?.state || rawAddress?.province || "",
@@ -142,12 +155,24 @@ const normalizeCompanyAddress = (sellerInfo) => {
       streetName: rawAddress?.streetName || rawAddress?.route || "",
       suburb: rawAddress?.suburb || rawAddress?.sublocality || "",
       province: rawAddress?.province || rawAddress?.state || "",
-      fullAddress: rawAddress?.fullAddress || "",
+      fullAddress:
+        rawAddress?.fullAddress ||
+        [
+          `${rawAddress?.streetNumber || ""} ${rawAddress?.streetName || ""}`.trim(),
+          rawAddress?.suburb || "",
+          rawAddress?.city || "",
+          rawAddress?.province || rawAddress?.state || "",
+          rawAddress?.country || "",
+          rawAddress?.postalCode || "",
+        ]
+          .map((part) => String(part || "").trim())
+          .filter(Boolean)
+          .join(", "),
     };
   }
 
   return {
-    id: sellerInfo?.addressId || "",
+    id: sellerInfo?.addressId || fallbackAddress?.addressId || "",
     line1: typeof rawAddress === "string" ? rawAddress : "",
     line2: "",
     city: "",
@@ -167,11 +192,13 @@ const normalizeCompanyAddress = (sellerInfo) => {
 };
 
 const formatAddressPreview = (address) => {
+  const line1FromStreet = `${address?.streetNumber || ""} ${address?.streetName || ""}`.trim();
   const parts = [
-    address?.line1,
+    address?.line1 || line1FromStreet,
     address?.line2,
+    address?.suburb,
     address?.city,
-    address?.state,
+    address?.state || address?.province,
     address?.postalCode,
     address?.country,
   ]
@@ -185,7 +212,7 @@ const formatAddressPreview = (address) => {
   return fallback || "No company address yet";
 };
 
-export default function Profile() {
+export default function Profile({ currentTheme = true, setThemeMode }) {
   const queryClient = useQueryClient();
   const { data: meData } = useUserProfileQuery();
   const navigate = useNavigate();
@@ -236,7 +263,7 @@ export default function Profile() {
       sellerInfoId: s?.id || s?._id,
     };
 
-    const companyAddressVM = normalizeCompanyAddress(s);
+    const companyAddressVM = normalizeCompanyAddress(s, u);
 
     return {
       user: userVM,
@@ -245,6 +272,7 @@ export default function Profile() {
     };
   }, [meData]);
   const [editingUser, setEditingUser] = useState(false);
+  const [editProfileModalOpen, setEditProfileModalOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState(false);
   const [editingCompanyAddress, setEditingCompanyAddress] = useState(false);
   const [isAddressLocationLoading, setIsAddressLocationLoading] =
@@ -277,6 +305,7 @@ export default function Profile() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["user", "me", "full"] });
       setToast({ open: true, severity: "success", message: "User updated" });
+      setEditProfileModalOpen(false);
     },
     onError: (e) => {
       console.error(e);
@@ -440,12 +469,67 @@ export default function Profile() {
   const hasCompanyAddress =
     Boolean(companyAddress?.id) ||
     Boolean(companyAddress?.line1) ||
-    Boolean(companyAddress?.fullAddress);
+    Boolean(companyAddress?.fullAddress) ||
+    Boolean(companyAddress?.streetName) ||
+    Boolean(companyAddress?.city) ||
+    Boolean(companyAddress?.province);
 
   const isAddressMutationPending =
     createCompanyAddressMutation.isPending ||
     updateCompanyAddressMutation.isPending ||
     deleteCompanyAddressMutation.isPending;
+
+  const joinedDate = user?.joined ? new Date(user.joined) : null;
+  const isJoinedDateValid =
+    joinedDate instanceof Date && !Number.isNaN(joinedDate.getTime());
+  const joinedYear = isJoinedDateValid ? joinedDate.getFullYear() : "-";
+  const accountAgeDays = isJoinedDateValid
+    ? Math.max(
+        1,
+        Math.floor((Date.now() - joinedDate.getTime()) / (1000 * 60 * 60 * 24)),
+      )
+    : 0;
+
+  const sellerProfileFields = [
+    company?.businessName,
+    company?.businessEmail,
+    company?.businessRegistrationNumber,
+    company?.taxNumber,
+    user?.phone,
+    user?.email,
+    companyAddress?.line1 || companyAddress?.fullAddress,
+  ];
+  const completedSellerProfileFields = sellerProfileFields.filter(
+    (value) => Boolean(String(value || "").trim()),
+  ).length;
+  const sellerProfileCompletion = Math.round(
+    (completedSellerProfileFields / sellerProfileFields.length) * 100,
+  );
+
+  const sellerStats = [
+    {
+      label: "Profile Completion",
+      value: `${sellerProfileCompletion}%`,
+      sub: `${completedSellerProfileFields}/${sellerProfileFields.length} key fields complete`,
+    },
+    {
+      label: "Verification",
+      value: company?.verified ? "Verified" : "Pending",
+      sub: company?.verified
+        ? "Trusted seller profile"
+        : "Complete checks to verify",
+    },
+    {
+      label: "Address Setup",
+      value: hasCompanyAddress ? "Added" : "Missing",
+      sub: hasCompanyAddress ? "Business location configured" : "Add business location",
+    },
+    {
+      label: "Member Since",
+      value: String(joinedYear),
+      sub: accountAgeDays > 0 ? `${accountAgeDays} day(s) on platform` : "Join date unavailable",
+    },
+  ];
 
   const toDecimalOrNull = (value) => {
     if (value === undefined || value === null) return null;
@@ -504,14 +588,14 @@ export default function Profile() {
         sx={{
           background: gradientPrimary,
           color: "#fff",
-          py: { xs: 4, md: 8 },
+          py: { xs: 3, sm: 4, md: 8 },
           px: { xs: 2, md: 6 },
         }}
       >
         <Container maxWidth="xl">
           <Grid container spacing={2} alignItems="center">
             <Grid size={{ xs: 12, md: 8 }}>
-              <Typography variant="h3" sx={{ fontWeight: 700 }}>
+              <Typography variant="h3" sx={{ fontWeight: 700, fontSize: { xs: 28, sm: 38, md: 48 } }}>
                 {user?.name || "Profile"}
               </Typography>
               <Typography variant="body1" sx={{ opacity: 0.9, mt: 1 }}>
@@ -522,7 +606,7 @@ export default function Profile() {
                     year: "numeric",
                   })}
               </Typography>
-              <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+              <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: "wrap", rowGap: 1 }}>
                 <Chip
                   icon={<EmailIcon />}
                   label={user?.email || "-"}
@@ -535,7 +619,7 @@ export default function Profile() {
               <Box
                 sx={{
                   display: "flex",
-                  justifyContent: { xs: "flex-start", md: "flex-end" },
+                  justifyContent: { xs: "center", md: "flex-end" },
                 }}
               >
                 <Box sx={{ position: "relative", width: 120, height: 120 }}>
@@ -592,7 +676,7 @@ export default function Profile() {
         </Container>
       </Box>
 
-      <Container maxWidth="xl" sx={{ mt: -6 }}>
+      <Container maxWidth="xl" sx={{ mt: { xs: -2, sm: -3, md: -6 } }}>
         <ToastAlert
           open={toast.open}
           severity={toast.severity}
@@ -612,11 +696,11 @@ export default function Profile() {
                 {user?.email || ""}
               </Typography>
               <Divider sx={{ my: 2 }} />
-              <Stack direction="row" spacing={1} alignItems="center">
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }}>
                 <Button
                   variant="contained"
                   startIcon={<EditIcon />}
-                  onClick={() => setEditingUser(true)}
+                  onClick={() => setEditProfileModalOpen(true)}
                   sx={gradientButtonSx}
                 >
                   Edit Profile
@@ -625,12 +709,46 @@ export default function Profile() {
                   variant="outlined"
                   color="error"
                   startIcon={<LogoutIcon />}
-                  sx={{ mt: 1.5 }}
+                  sx={{ mt: { xs: 0, sm: 1.5 } }}
                   onClick={() => setConfirmOpen(true)}
                 >
                   Sign out
                 </Button>
               </Stack>
+            </Paper>
+
+            <Paper
+              sx={{ p: 2, borderRadius: 2, mt: 3, display: { xs: "block", md: "none" } }}
+              elevation={3}
+            >
+              <Typography variant="subtitle2" color="text.secondary">
+                Seller Stats
+              </Typography>
+              <Grid container spacing={1} sx={{ mt: 1 }}>
+                {sellerStats.map((stat) => (
+                  <Grid key={stat.label} size={{ xs: 6 }}>
+                    <Paper sx={{ p: 1, height: "100%", textAlign: "center" }}>
+                      <Typography variant="subtitle1" fontWeight={700}>
+                        {stat.value}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: "block" }}
+                      >
+                        {stat.label}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: "block", mt: 0.25 }}
+                      >
+                        {stat.sub}
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                ))}
+              </Grid>
             </Paper>
           </Grid>
 
@@ -645,7 +763,10 @@ export default function Profile() {
               >
                 <Typography variant="h6">User Details</Typography>
                 {!editingUser ? (
-                  <IconButton size="small" onClick={() => setEditingUser(true)}>
+                  <IconButton
+                    size="small"
+                    onClick={() => setEditProfileModalOpen(true)}
+                  >
                     <EditIcon />
                   </IconButton>
                 ) : (
@@ -1656,31 +1777,52 @@ export default function Profile() {
                 Quick Actions
               </Typography>
               <Stack spacing={1} sx={{ mt: 1 }}>
-                <Button variant="contained" sx={gradientButtonSx}>
-                  Manage Users
+                <Button
+                  variant="contained"
+                  sx={gradientButtonSx}
+                  onClick={() => navigate("/inventory/add")}
+                >
+                  Sell old items
                 </Button>
-                <Button variant="outlined">Company Settings</Button>
-                <Button variant="text">View Activity</Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => navigate("/advertisements/add")}
+                >
+                  Advertise
+                </Button>
+                <Button
+                  variant="text"
+                  onClick={() => setThemeMode?.((prev) => !prev)}
+                  startIcon={currentTheme ? <DarkModeIcon /> : <LightModeIcon />}
+                >
+                  Toggle Theme
+                </Button>
               </Stack>
             </Paper>
-            <Paper sx={{ p: 2, borderRadius: 2, mt: 3 }} elevation={3}>
+            <Paper
+              sx={{ p: 2, borderRadius: 2, mt: 3, display: { xs: "none", md: "block" } }}
+              elevation={3}
+            >
               <Typography variant="subtitle2" color="text.secondary">
-                Stats
+                Seller Stats
               </Typography>
-              <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
-                <Paper sx={{ p: 1, flex: 1, textAlign: "center" }}>
-                  <Typography variant="h6">24</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Active Listings
-                  </Typography>
-                </Paper>
-                <Paper sx={{ p: 1, flex: 1, textAlign: "center" }}>
-                  <Typography variant="h6">8</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Pending Ads
-                  </Typography>
-                </Paper>
-              </Box>
+              <Grid container spacing={1} sx={{ mt: 1 }}>
+                {sellerStats.map((stat) => (
+                  <Grid key={stat.label} size={{ xs: 6 }}>
+                    <Paper sx={{ p: 1, height: "100%", textAlign: "center" }}>
+                      <Typography variant="subtitle1" fontWeight={700}>
+                        {stat.value}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                        {stat.label}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
+                        {stat.sub}
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                ))}
+              </Grid>
             </Paper>
           </Grid>
         </Grid>
@@ -1698,6 +1840,207 @@ export default function Profile() {
           confirmText="Sign out"
           confirmColor="error"
         />
+
+        <Dialog
+          open={editProfileModalOpen}
+          onClose={() => setEditProfileModalOpen(false)}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{
+            sx: { borderRadius: 3, overflow: "hidden", position: "relative" },
+          }}
+        >
+          {updateUserMutation.isPending && (
+            <Box
+              sx={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                bgcolor: "rgba(0, 0, 0, 0.24)",
+                zIndex: 10,
+              }}
+            >
+              <Stack spacing={1.25} alignItems="center">
+                <CircularProgress size={28} />
+                <Typography variant="body2" color="common.white">
+                  Saving changes...
+                </Typography>
+              </Stack>
+            </Box>
+          )}
+
+          <Formik
+            initialValues={user}
+            enableReinitialize
+            onSubmit={async (values) => {
+              updateUserMutation.mutate({
+                name: values.name,
+                phone: values.phone,
+              });
+            }}
+          >
+            {({ resetForm, submitForm }) => (
+              <Form>
+                <Box
+                  sx={{
+                    background: gradientPrimary,
+                    color: "common.white",
+                    px: 3,
+                    py: 2.4,
+                  }}
+                >
+                  <Stack direction="row" spacing={1.5} alignItems="center">
+                    <Avatar
+                      sx={{
+                        bgcolor: "rgba(255,255,255,0.2)",
+                        color: "common.white",
+                      }}
+                    >
+                      <PersonAddRoundedIcon />
+                    </Avatar>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="h6" fontWeight={700}>
+                        Edit Profile
+                      </Typography>
+                      <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                        Update your account details and save changes.
+                      </Typography>
+                    </Box>
+                    <Stack direction="row" spacing={0.75}>
+                      <Tooltip title="Reset changes">
+                        <span>
+                          <IconButton
+                            onClick={() => resetForm()}
+                            disabled={updateUserMutation.isPending}
+                            sx={{
+                              color: "common.white",
+                              bgcolor: "rgba(255,255,255,0.12)",
+                              "&:hover": { bgcolor: "rgba(255,255,255,0.22)" },
+                            }}
+                          >
+                            <RefreshRoundedIcon />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                      <IconButton
+                        onClick={() => {
+                          resetForm();
+                          setEditProfileModalOpen(false);
+                        }}
+                        disabled={updateUserMutation.isPending}
+                        sx={{
+                          color: "common.white",
+                          bgcolor: "rgba(255,255,255,0.12)",
+                          "&:hover": { bgcolor: "rgba(255,255,255,0.22)" },
+                        }}
+                      >
+                        <CloseRoundedIcon />
+                      </IconButton>
+                    </Stack>
+                  </Stack>
+                </Box>
+
+                <DialogContent sx={{ pt: 3 }}>
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextFieldWrapper
+                        name="name"
+                        label="Full name"
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <PersonIcon fontSize="small" />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextFieldWrapper
+                        name="phone"
+                        label="Phone"
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <PhoneIcon fontSize="small" />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextFieldWrapper
+                        name="role"
+                        label="Role"
+                        disabled
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <WorkOutlineIcon fontSize="small" />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextFieldWrapper
+                        name="email"
+                        label="Email"
+                        disabled
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <EmailIcon fontSize="small" />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12 }}>
+                      <TextFieldWrapper
+                        name="idOrPassport"
+                        label="Identification / Passport"
+                        disabled
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <NumbersIcon fontSize="small" />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    </Grid>
+                  </Grid>
+                </DialogContent>
+
+                <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+                  <Button
+                    onClick={() => {
+                      resetForm();
+                      setEditProfileModalOpen(false);
+                    }}
+                    disabled={updateUserMutation.isPending}
+                    variant="outlined"
+                    color="inherit"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="contained"
+                    onClick={() => submitForm()}
+                    disabled={updateUserMutation.isPending}
+                    sx={gradientButtonSx}
+                  >
+                    Save Changes
+                  </Button>
+                </DialogActions>
+              </Form>
+            )}
+          </Formik>
+        </Dialog>
       </Container>
     </Box>
   );
