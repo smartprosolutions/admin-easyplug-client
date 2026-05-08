@@ -26,6 +26,13 @@ import InventoryModal from "../components/modals/InventoryModal";
 import { ListingTile } from "../components/listing/ListingTile";
 import { MobileListingItem } from "../components/listing/MobileListingItem";
 import { resolveListingImages } from "../utils/listingImages";
+import { useUserProfileQuery } from "../services/queries";
+import {
+  isOwnedByUser,
+  isSellerRole,
+  resolveUserId,
+  resolveUserRole,
+} from "../utils/accessControl";
 
 const formatDate = (value) =>
   value
@@ -98,10 +105,13 @@ const InfoCard = ({ label, value }) => (
 
 export default function AdvertisementDetails() {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const navigate = useNavigate();
   const { id } = useParams();
   const [isCatalogueOpen, setIsCatalogueOpen] = React.useState(false);
+  const { data: profileData } = useUserProfileQuery({ retry: false });
+  const currentUserId = resolveUserId(profileData);
+  const isSeller = isSellerRole(resolveUserRole(profileData));
 
   const { data, isPending, error } = useQuery({
     queryKey: ["advert", id],
@@ -118,15 +128,14 @@ export default function AdvertisementDetails() {
     data ||
     null;
 
+  const canViewAdvert = !isSeller || isOwnedByUser(advert, currentUserId);
+  const canManageAdvert = isOwnedByUser(advert, currentUserId);
+
   const catalogueItems = useMemo(
     () => advert?.catalogueItems || advert?.items || advert?.listings || [],
     [advert],
   );
 
-  const subscriptions = advert?.sellerSubscriptions || [];
-  const subscriptionName = subscriptions[0]?.subscription?.name || "-";
-  const subTier = subscriptions[0]?.subscription?.pricingTiers?.[0];
-  const tierUsers = subTier?.usersPerHour || "-";
   const advertUrl =
     advert?.url ||
     advert?.advertUrl ||
@@ -185,7 +194,7 @@ export default function AdvertisementDetails() {
   }, [catalogueItems, sellerEmail]);
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: { xs: 1.25, sm: 2, md: 3 } }}>
       <Stack
         direction={{ xs: "column", md: "row" }}
         justifyContent="space-between"
@@ -221,18 +230,30 @@ export default function AdvertisementDetails() {
             />
           </Stack>
         </Stack>
-        <Button
-          variant="contained"
-          startIcon={<EditIcon />}
-          onClick={() => navigate(`/advertisements/${id}/edit`)}
-          sx={{
-            background: gradientPrimary,
-            color: "#fff",
-            "&:hover": { opacity: 0.92 },
-          }}
-        >
-          Edit Advert
-        </Button>
+        {canManageAdvert ? (
+          <Button
+            variant="contained"
+            startIcon={<EditIcon />}
+            onClick={() => navigate(`/advertisements/${id}/edit`)}
+            sx={{
+              backgroundImage: gradientPrimary,
+              color: "#fff",
+              boxShadow: "none",
+              borderRadius: { xs: 3, sm: 1.5 },
+              py: { xs: 1.15, sm: 0.7 },
+              fontSize: { xs: 16, sm: 14 },
+              fontWeight: { xs: 800, sm: 600 },
+              letterSpacing: { xs: 1, sm: 0 },
+              width: { xs: "100%", sm: "auto" },
+              "&:hover": {
+                opacity: { xs: 0.95, sm: 0.92 },
+                boxShadow: "none",
+              },
+            }}
+          >
+            Edit Advert
+          </Button>
+        ) : null}
       </Stack>
 
       {error ? (
@@ -245,6 +266,10 @@ export default function AdvertisementDetails() {
         </Box>
       ) : !advert ? (
         <Alert severity="warning">Advert not found.</Alert>
+      ) : !canViewAdvert ? (
+        <Alert severity="warning">
+          You can only access adverts that belong to your seller account.
+        </Alert>
       ) : (
         <Grid container spacing={3}>
           <Grid size={{ xs: 12, md: 6 }}>
@@ -284,19 +309,10 @@ export default function AdvertisementDetails() {
                   WebkitTextFillColor: "transparent",
                 }}
               >
-                Subscription Information
+                Advert Information
               </Typography>
             </Stack>
             <Stack spacing={1.5}>
-              <InfoCard label="Subscription" value={subscriptionName} />
-              <InfoCard
-                label="Tier"
-                value={
-                  tierUsers !== "-"
-                    ? `${Number(tierUsers).toLocaleString("en-ZA")} users/hr`
-                    : "-"
-                }
-              />
               <InfoCard label="Status" value={advert.status} />
               <InfoCard label="Views" value={advert.views} />
               <InfoCard label="Price" value={advert.price} />
@@ -396,7 +412,7 @@ export default function AdvertisementDetails() {
                         : "No items linked"}
                     </Typography>
                   </Box>
-                  {!hasAdvertUrl && (
+                  {!hasAdvertUrl && canManageAdvert ? (
                     <Button
                       variant="contained"
                       startIcon={<AddIcon />}
@@ -409,7 +425,7 @@ export default function AdvertisementDetails() {
                     >
                       Add Catalogue Item
                     </Button>
-                  )}
+                  ) : null}
                 </Stack>
                 <Divider sx={{ my: 2 }} />
                 {formattedCatalogueItems.length > 0 ? (
