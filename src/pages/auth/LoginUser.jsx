@@ -1,12 +1,11 @@
 import Box from "@mui/material/Box";
-import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Avatar from "@mui/material/Avatar";
 import Typography from "@mui/material/Typography";
-import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
 import Checkbox from "@mui/material/Checkbox";
+import { alpha } from "@mui/material/styles";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import { gradientPrimary } from "../../theme/theme";
 import logo from "../../assets/images/Sample Logo 1 (3).png";
@@ -82,52 +81,105 @@ export default function LoginUser() {
       sx={{
         minHeight: "100vh",
         width: "100vw",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
         background: (theme) =>
-          theme.palette.mode === "light"
-            ? "radial-gradient(circle at top, rgba(102,126,234,0.16), rgba(247,247,247,1) 45%)"
-            : "radial-gradient(circle at top, rgba(102,126,234,0.18), rgba(15,17,21,1) 45%)",
-        p: 2
+          `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.2)} 0%, ${alpha(theme.palette.secondary.main, 0.1)} 36%, ${theme.palette.background.default} 100%)`,
+        pt: 0,
+        pb: { xs: 2.5, sm: 3.5 },
+        px: 0,
+        position: "relative",
+        overflow: "hidden",
       }}
     >
-      <Paper
-        elevation={0}
+      <Box
         sx={{
-          maxWidth: 500,
           width: "100%",
-          borderRadius: 4,
-          border: "1px solid",
-          borderColor: "divider",
-          boxShadow: (theme) =>
-            theme.palette.mode === "light"
-              ? "0 18px 48px rgba(15, 23, 42, 0.14)"
-              : "0 18px 48px rgba(0, 0, 0, 0.5)",
-          backdropFilter: "blur(6px)",
-          backgroundColor: "background.paper"
+          minHeight: { xs: 240, sm: 300 },
+          bgcolor: (theme) => alpha(theme.palette.primary.main, 0.18),
+          backgroundImage: (theme) =>
+            `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.24)} 0%, ${alpha(theme.palette.primary.main, 0.14)} 100%)`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          position: "relative",
+          overflow: "hidden",
+          borderBottomLeftRadius: "46% 20%",
+          borderBottomRightRadius: "46% 20%",
+          "&::after": {
+            content: '""',
+            position: "absolute",
+            left: -40,
+            right: -40,
+            bottom: -22,
+            height: 56,
+            background: (theme) =>
+              `radial-gradient(70% 40px at 50% 0%, ${alpha(theme.palette.common.black, theme.palette.mode === "light" ? 0.14 : 0.3)} 0%, ${alpha(theme.palette.common.black, 0)} 72%)`,
+            pointerEvents: "none",
+          },
         }}
       >
-        <Stack spacing={3} sx={{ p: { xs: 3, sm: 4 } }}>
-          <Stack alignItems="center" justifyContent="center">
-            <Avatar
-              src={logo}
-              alt="Logo"
+        <Avatar
+          src={logo}
+          alt="Logo"
+          sx={{
+            width: { xs: 185, sm: 235 },
+            height: { xs: 185, sm: 235 },
+            bgcolor: "transparent",
+          }}
+        />
+      </Box>
+
+      <Box
+        sx={{
+          maxWidth: 470,
+          width: "100%",
+          mx: "auto",
+          px: { xs: 2.25, sm: 4 },
+        }}
+      >
+        <Stack spacing={2.25} sx={{ pb: { xs: 3, sm: 4 }, pt: { xs: 3, sm: 4 } }}>
+          <Box sx={{ textAlign: "center" }}>
+            <Typography
               sx={{
-                width: { xs: 110, sm: 140 },
-                height: { xs: 110, sm: 140 },
-                border: "1px solid",
-                borderColor: "divider",
-                bgcolor: "background.paper"
+                fontSize: { xs: 11, sm: 12 },
+                letterSpacing: { xs: 2.8, sm: 4 },
+                color: "primary.main",
+                fontWeight: 700,
+                textTransform: "uppercase",
+              }}
+            >
+              Powering Easyplug Commerce
+            </Typography>
+            <Typography
+              variant="h3"
+              sx={{ fontWeight: 800, lineHeight: 1.05, mt: 0.5, fontSize: { xs: 36, sm: 50 } }}
+            >
+              Welcome
+            </Typography>
+            <Typography
+              variant="h3"
+              sx={{
+                fontWeight: 800,
+                lineHeight: 1.05,
+                fontSize: { xs: 36, sm: 50 },
+                color: "secondary.main",
+              }}
+            >
+              Back
+            </Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
+              Sign in to continue building your African prosperity.
+            </Typography>
+            <Box
+              sx={{
+                width: 56,
+                height: 3,
+                borderRadius: 99,
+                bgcolor: "secondary.main",
+                mt: 2,
+                mx: "auto",
               }}
             />
-          </Stack>
-          <Typography
-            variant="h5"
-            sx={{ fontWeight: 800, textAlign: "center", letterSpacing: 0.2 }}
-          >
-            Welcome back
-          </Typography>
+          </Box>
 
           <Formik
             initialValues={{ email: "", password: "", remember: false }}
@@ -138,8 +190,6 @@ export default function LoginUser() {
                 .required("Required")
             })}
             onSubmit={async (values, { setSubmitting }) => {
-
-              console.log(mutation)
               try {
                 await mutation.mutateAsync({
                   email: values.email,
@@ -155,10 +205,23 @@ export default function LoginUser() {
             {({ setFieldValue, isSubmitting }) => (
               <Form>
                 <Stack spacing={2}>
-                  <TextFieldWrapper name="email" label="Email" size="medium" />
+                  <Typography
+                    variant="caption"
+                    sx={{ letterSpacing: { xs: 2.2, sm: 3 }, fontWeight: 700, color: "secondary.main" }}
+                  >
+                    EMAIL ADDRESS
+                  </Typography>
+                  <TextFieldWrapper name="email" label="" placeholder="you@example.com" size="medium" />
+                  <Typography
+                    variant="caption"
+                    sx={{ letterSpacing: { xs: 2.2, sm: 3 }, fontWeight: 700, color: "secondary.main", mt: 0.5 }}
+                  >
+                    PASSWORD
+                  </Typography>
                   <TextFieldWrapper
                     name="password"
-                    label="Password"
+                    label=""
+                    placeholder="Enter your password"
                     {...passwordInputProps}
                     size="medium"
                   />
@@ -191,6 +254,11 @@ export default function LoginUser() {
                       color: "#fff",
                       backgroundImage: gradientPrimary,
                       boxShadow: "none",
+                      borderRadius: 3,
+                      py: { xs: 1.15, sm: 1.3 },
+                      fontSize: { xs: 16, sm: 18 },
+                      fontWeight: 800,
+                      letterSpacing: { xs: 1, sm: 1.4 },
                       "&:hover": { opacity: 0.95, boxShadow: "none" }
                     }}
                   >
@@ -205,7 +273,7 @@ export default function LoginUser() {
                         <span>Signing in...</span>
                       </Stack>
                     ) : (
-                      "Sign in"
+                      "SIGN IN"
                     )}
                   </Button>
                 </Stack>
@@ -216,11 +284,11 @@ export default function LoginUser() {
           <Typography variant="body2" color="text.secondary" textAlign="center">
             Don’t have an account?{" "}
             <Button size="small" onClick={() => navigate("/register")}>
-              Create one
+              Create Account
             </Button>
           </Typography>
         </Stack>
-      </Paper>
+      </Box>
       <ToastAlert
         open={authToast.open}
         severity={authToast.severity}
