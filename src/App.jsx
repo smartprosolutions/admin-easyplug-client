@@ -12,8 +12,6 @@ import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
 import Advertisements from "./pages/Advertisements";
 import AdvertisementDetails from "./pages/AdvertisementDetails";
-import Subscriptions from "./pages/Subscriptions";
-import SubscriptionModal from "./components/modals/SubscriptionModal";
 import InventoryModal from "./components/modals/InventoryModal";
 import ListingAdvModal from "./components/modals/ListingAdvModal";
 import NotFound from "./pages/NotFound";
@@ -28,12 +26,36 @@ import ForgotPassword from "./pages/auth/ForgotPassword";
 import ResetPassword from "./pages/auth/ResetPassword";
 import PublicRoute from "./components/route/PublicRoute";
 import PrivateRoute from "./components/route/PrivateRoute";
-import { useState } from "react";
+import RoleRoute from "./components/route/RoleRoute";
+import { useEffect, useState } from "react";
 import { UnreadCountsProvider } from "./context/UnreadCountsContext";
 
+const THEME_STORAGE_KEY = "admin_easyplug_theme_mode";
+
+const getStoredThemeMode = () => {
+  try {
+    const rawValue = localStorage.getItem(THEME_STORAGE_KEY);
+    if (rawValue === "dark") return false;
+    if (rawValue === "light") return true;
+    if (rawValue === "false") return false;
+    if (rawValue === "true") return true;
+  } catch {
+    // Ignore storage access errors and use default theme mode.
+  }
+  return true;
+};
+
 const App = () => {
-  const [themeMode, setThemeMode] = useState(true); // true => light, false => dark
+  const [themeMode, setThemeMode] = useState(getStoredThemeMode); // true => light, false => dark
   const theme = themeMode ? lightTheme : darkTheme;
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, themeMode ? "light" : "dark");
+    } catch {
+      // Ignore storage write errors.
+    }
+  }, [themeMode]);
 
   return (
     <ThemeProvider theme={theme}>
@@ -93,8 +115,15 @@ const App = () => {
                 </PrivateRoute>
               }
             >
-              <Route index element={<Dashboard />} />
-              <Route path="dashboard" element={<Dashboard />} />
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route
+                path="dashboard"
+                element={
+                  <RoleRoute allow={["admin", "seller"]} fallbackTo="/inventory">
+                    <Dashboard />
+                  </RoleRoute>
+                }
+              />
               <Route path="inventory" element={<Inventory />}>
                 <Route path="add" element={<InventoryModal />} />
                 <Route path=":id/edit" element={<InventoryModal />} />
@@ -107,17 +136,43 @@ const App = () => {
                 path="advertisements/:id"
                 element={<AdvertisementDetails />}
               />
-              <Route path="subscriptions" element={<Subscriptions />}>
-                <Route path="add" element={<SubscriptionModal />} />
-                <Route path=":id/edit" element={<SubscriptionModal />} />
-              </Route>
-              <Route path="transactions" element={<Transactions />} />
+              <Route
+                path="subscriptions/*"
+                element={<Navigate to="/inventory" replace />}
+              />
+              <Route
+                path="transactions"
+                element={
+                  <RoleRoute allow={["admin"]} fallbackTo="/inventory">
+                    <Transactions />
+                  </RoleRoute>
+                }
+              />
               <Route path="messages" element={<Messages />} />
-              <Route path="profile" element={<Profile />} />
-              <Route path="userManagement" element={<UserManagement />} />
+              <Route
+                path="profile"
+                element={
+                  <Profile
+                    currentTheme={themeMode}
+                    setThemeMode={setThemeMode}
+                  />
+                }
+              />
+              <Route
+                path="userManagement"
+                element={
+                  <RoleRoute allow={["admin"]} fallbackTo="/inventory">
+                    <UserManagement />
+                  </RoleRoute>
+                }
+              />
               <Route
                 path="sellers"
-                element={<Navigate to="/userManagement" replace />}
+                element={
+                  <RoleRoute allow={["admin"]} fallbackTo="/inventory">
+                    <Navigate to="/userManagement" replace />
+                  </RoleRoute>
+                }
               />
               <Route path="notifications" element={<Notifications />} />
             </Route>
