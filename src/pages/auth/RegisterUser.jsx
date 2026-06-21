@@ -99,18 +99,16 @@ function getProgressLabel(percent) {
 }
 
 function isAddressStepComplete(values) {
+  // streetNumber, streetName, suburb and postalCode are optional
+  // (rural/village areas like parts of Limpopo may not have these)
   const requiredFields = [
     "latitude",
     "longitude",
     "accuracy",
     "radius",
-    "streetNumber",
-    "streetName",
-    "suburb",
     "city",
     "province",
     "country",
-    "postalCode",
   ];
 
   return requiredFields.every((field) => {
@@ -614,6 +612,11 @@ function StepAddressFields({ setFieldValue, values }) {
         onCurrentLocationLoadingChange={setIsCurrentLocationLoading}
       />
 
+      <Typography variant="caption" color="text.secondary">
+        Rural or village address? Street number, street name, suburb, and postal
+        code are optional — you can leave them blank or fill them in manually.
+      </Typography>
+
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
         <TextFieldWrapper
           name="latitude"
@@ -641,21 +644,23 @@ function StepAddressFields({ setFieldValue, values }) {
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
         <TextFieldWrapper
           name="streetNumber"
-          label="Street Number"
+          label="Street Number (optional)"
           size="medium"
-          disabled
         />
         <TextFieldWrapper
           name="streetName"
-          label="Street Name"
+          label="Street Name (optional)"
           size="medium"
-          disabled
         />
       </Stack>
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-        <TextFieldWrapper name="suburb" label="Suburb" size="medium" disabled />
-        <TextFieldWrapper name="city" label="City" size="medium" disabled />
+        <TextFieldWrapper
+          name="suburb"
+          label="Suburb (optional)"
+          size="medium"
+        />
+        <TextFieldWrapper name="city" label="City / Town" size="medium" disabled />
       </Stack>
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
@@ -675,9 +680,8 @@ function StepAddressFields({ setFieldValue, values }) {
 
       <TextFieldWrapper
         name="postalCode"
-        label="Postal Code"
+        label="Postal Code (optional)"
         size="medium"
-        disabled
       />
     </StepCard>
   );
@@ -1066,13 +1070,13 @@ export default function RegisterUser() {
                   .min(5, "Radius must be at least 5 km")
                   .max(50, "Radius must be at most 50 km")
                   .required("Required"),
-                streetNumber: Yup.string().required("Required"),
-                streetName: Yup.string().required("Required"),
-                suburb: Yup.string().required("Required"),
+                streetNumber: Yup.string(),
+                streetName: Yup.string(),
+                suburb: Yup.string(),
                 city: Yup.string().required("Required"),
                 province: Yup.string().required("Required"),
                 country: Yup.string().required("Required"),
-                postalCode: Yup.string().required("Required"),
+                postalCode: Yup.string(),
               }),
             )}
             onSubmit={async (values, { setSubmitting }) => {
