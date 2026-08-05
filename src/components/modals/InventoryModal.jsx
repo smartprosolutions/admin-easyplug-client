@@ -414,7 +414,7 @@ export default function InventoryModal({
                         label="Type"
                         options={[
                           { value: "SERVICES", label: "Services" },
-                          { value: "PRODUCTS", label: "Products" },
+                          { value: "PRODUCTS", label: "For Sale" },
                         ]}
                         disabled={isTypeCategoryLocked}
                       />

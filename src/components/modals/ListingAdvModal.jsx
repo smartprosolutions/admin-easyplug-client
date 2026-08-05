@@ -548,7 +548,7 @@ export default function ListingAdvModal() {
                         label="Type"
                         options={[
                           { value: "SERVICES", label: "Services" },
-                          { value: "PRODUCTS", label: "Products" },
+                          { value: "PRODUCTS", label: "For Sale" },
                         ]}
                       />
                       <SelectFieldWrapper

@@ -20,6 +20,7 @@ import NotFound from "./pages/NotFound";
 import Transactions from "./pages/Transactions";
 import UserManagement from "./pages/UserManagement";
 import Notifications from "./pages/Notifications";
+import SupportTickets from "./pages/SupportTickets";
 import Profile from "./pages/Profile";
 import Messages from "./pages/Messages";
 import LoginUser from "./pages/auth/LoginUser";
@@ -115,6 +116,7 @@ const App = () => {
               <Route path="messages" element={<Messages />} />
               <Route path="profile" element={<Profile />} />
               <Route path="userManagement" element={<UserManagement />} />
+              <Route path="tickets" element={<SupportTickets />} />
               <Route
                 path="sellers"
                 element={<Navigate to="/userManagement" replace />}

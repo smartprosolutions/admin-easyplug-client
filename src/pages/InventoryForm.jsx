@@ -621,8 +621,8 @@ export default function InventoryForm() {
                           name="type"
                           label="Type"
                           options={[
-                            { value: "SERVICES", label: "Services" },
-                            { value: "PRODUCTS", label: "Products" },
+                          { value: "SERVICES", label: "Services" },
+                          { value: "PRODUCTS", label: "For Sale" },
                           ]}
                         />
                         <SelectFieldWrapper
