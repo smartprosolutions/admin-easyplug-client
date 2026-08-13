@@ -11,6 +11,9 @@ import {
   Typography,
   Grid,
   Avatar,
+  Autocomplete,
+  TextField,
+  Chip,
 } from "@mui/material";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { alpha, useTheme } from "@mui/material/styles";
@@ -22,7 +25,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import SelectFieldWrapper from "../../components/forms/SelectFieldWrapper";
 import TextFieldWrapper from "../../components/forms/TextFieldWrapper";
 import RichTextEditor from "../../components/forms/RichTextEditor";
-import { SERVICES, PRODUCTS, toOptions } from "../../constants/categories";
 import ToastAlert from "../../components/alerts/ToastAlert";
 import DeleteIcon from "@mui/icons-material/Delete";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
@@ -32,21 +34,25 @@ import {
   getAdvert,
   updateAdvert,
 } from "../../services/advertService";
+import {
+  getMyListings,
+} from "../../services/listingService";
 import { resolveListingImagePath } from "../../utils/listingImages";
 import { useUserProfileQuery } from "../../services/queries";
 import {
+  canManageRecord,
+  needsAdminPasswordForRecord,
   isOwnedByUser,
   resolveUserId,
+  resolveUserRole,
 } from "../../utils/accessControl";
+import AdminPasswordDialog from "../../components/modals/AdminPasswordDialog";
+import CheckBoxOutlineBlankIcon from "@mui/icons-material/CheckBoxOutlineBlank";
+import CheckBoxIcon from "@mui/icons-material/CheckBox";
+import Checkbox from "@mui/material/Checkbox";
 
-const formatCurrency = (val) => {
-  try {
-    const n = Number(val);
-    return `R ${Number.isFinite(n) ? n.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0.00"}`;
-  } catch {
-    return val;
-  }
-};
+const checkboxIcon = <CheckBoxOutlineBlankIcon fontSize="small" />;
+const checkboxCheckedIcon = <CheckBoxIcon fontSize="small" />;
 
 const getImageRef = (img) => {
   if (!img) return "";
@@ -56,6 +62,14 @@ const getImageRef = (img) => {
 };
 
 const unique = (arr = []) => [...new Set(arr.filter(Boolean))];
+
+const toDateInputValue = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
 
 const appendAdvertToCachedList = (cached, advert) => {
   if (!advert) return cached;
@@ -102,6 +116,12 @@ export default function ListingAdvModal() {
     retry: false,
   });
   const currentUserId = resolveUserId(profileData);
+  const userRole = resolveUserRole(profileData);
+  const [adminPasswordOpen, setAdminPasswordOpen] = React.useState(false);
+  const [adminPasswordError, setAdminPasswordError] = React.useState("");
+  const pendingPayloadRef = React.useRef(null);
+  const submitLockRef = React.useRef(false);
+  const [saving, setSaving] = React.useState(false);
 
   const { data: existing, isPending: isFetching } = useQuery({
     queryKey: ["advertisementItem", id],
@@ -110,6 +130,27 @@ export default function ListingAdvModal() {
     retry: false,
   });
 
+  const { data: inventoryData, isPending: isInventoryLoading } = useQuery({
+    queryKey: ["myInventoryForFeature", currentUserId],
+    queryFn: () => getMyListings(),
+    enabled: Boolean(currentUserId),
+    retry: false,
+  });
+
+  const inventoryOptions = React.useMemo(() => {
+    const rows =
+      inventoryData?.listings ||
+      inventoryData?.data ||
+      inventoryData?.items ||
+      (Array.isArray(inventoryData) ? inventoryData : []);
+    return (rows || [])
+      .filter((row) => !row?.isAdvertisement)
+      .filter((row) => isOwnedByUser(row, currentUserId))
+      .sort((a, b) =>
+        String(a?.title || "").localeCompare(String(b?.title || "")),
+      );
+  }, [inventoryData, currentUserId]);
+
   const itemData =
     existing?.advert ||
     existing?.advertisement ||
@@ -117,7 +158,12 @@ export default function ListingAdvModal() {
     existing?.data ||
     existing ||
     null;
-  const canEditAdvert = isOwnedByUser(itemData, currentUserId);
+  const canEditAdvert = canManageRecord(itemData, currentUserId, userRole);
+  const needsAdminPassword = needsAdminPasswordForRecord(
+    itemData,
+    currentUserId,
+    userRole,
+  );
 
   const previewSellerEmail =
     itemData?.seller?.email || itemData?.sellerEmail || "";
@@ -217,7 +263,7 @@ export default function ListingAdvModal() {
       setToast({
         open: true,
         severity: "success",
-        message: "Advertisement created",
+        message: "Campaign created",
       });
       setTimeout(() => navigate("/advertisements"), 700);
     },
@@ -236,25 +282,47 @@ export default function ListingAdvModal() {
         await queryClient.invalidateQueries({ queryKey: ["advertCatalogue"] });
         await queryClient.invalidateQueries({ queryKey: ["adverts"] });
         await queryClient.invalidateQueries({ queryKey: ["advert", id] });
+        await queryClient.invalidateQueries({
+          queryKey: ["advertisementItem", id],
+        });
       } catch {
         // ignore
       }
+      setAdminPasswordOpen(false);
+      setAdminPasswordError("");
+      pendingPayloadRef.current = null;
       setToast({
         open: true,
         severity: "success",
-        message: "Advertisement updated",
+        message: "Campaign updated",
       });
       setTimeout(() => navigate("/advertisements"), 700);
     },
-    onError: (err) =>
+    onError: (err) => {
+      const message =
+        err?.response?.data?.message || err.message || "Update failed";
+      const code = err?.response?.data?.code;
+      if (
+        code === "ADMIN_PASSWORD_REQUIRED" ||
+        code === "ADMIN_PASSWORD_INVALID" ||
+        /admin password/i.test(message)
+      ) {
+        setAdminPasswordError(message);
+        setAdminPasswordOpen(true);
+        submitLockRef.current = false;
+        setSaving(false);
+        return;
+      }
       setToast({
         open: true,
         severity: "error",
-        message: err?.response?.data?.message || err.message || "Update failed",
-      }),
+        message,
+      });
+    },
   });
 
   const isSaving = createMut.isPending || updateMut.isPending;
+  const isBusy = saving || isSaving;
 
   const initialUrl =
     itemData?.url ||
@@ -268,15 +336,30 @@ export default function ListingAdvModal() {
     [itemData?.images],
   );
 
+  const initialFeaturedIds = React.useMemo(() => {
+    if (Array.isArray(itemData?.featuredListingIds)) {
+      return itemData.featuredListingIds.map(String);
+    }
+    if (Array.isArray(existing?.featuredListings)) {
+      return existing.featuredListings
+        .map((row) => row?.listingId || row?.id)
+        .filter(Boolean)
+        .map(String);
+    }
+    return [];
+  }, [itemData?.featuredListingIds, existing?.featuredListings]);
+
   const initialValues = {
+    title: itemData?.title || "",
     description: itemData?.description || "",
-    category: itemData?.category || "",
-    type: itemData?.type || "PRODUCTS",
-    advertSourceType: initialUrl ? "URL" : "CATALOGUE",
     url: initialUrl,
     images: initialImages,
     status: itemData?.status || "active",
-    expires_at: itemData?.expires_at || "",
+    startsAt: toDateInputValue(itemData?.startsAt || itemData?.starts_at),
+    expiresAt: toDateInputValue(
+      itemData?.expiresAt || itemData?.expires_at,
+    ),
+    featuredListingIds: initialFeaturedIds,
   };
 
   const originalImageRefs = React.useMemo(
@@ -285,7 +368,6 @@ export default function ListingAdvModal() {
   );
 
   const submitRef = React.useRef(null);
-  const submittingRef = React.useRef(false);
   const [previews, setPreviews] = React.useState([]);
   const inputRef = React.useRef(null);
   const [imageHelper, setImageHelper] = React.useState("");
@@ -338,7 +420,7 @@ export default function ListingAdvModal() {
   return (
     <Dialog
       open
-      onClose={handleClose}
+      onClose={isBusy ? undefined : handleClose}
       fullScreen={fullScreen}
       fullWidth
       scroll="paper"
@@ -359,7 +441,7 @@ export default function ListingAdvModal() {
         paddingRight: "env(safe-area-inset-right)",
       }}
     >
-      {isSaving && (
+      {isBusy && (
         <Box
           sx={{
             position: "absolute",
@@ -386,9 +468,9 @@ export default function ListingAdvModal() {
       <Box sx={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
         <Box
           sx={{
-            background: (theme) =>
-              `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
-            color: "common.white",
+            background: (t) =>
+              `linear-gradient(120deg, ${t.palette.primary.main} 0%, ${t.palette.secondary.main} 100%)`,
+            color: "#fff",
             p: 3,
           }}
         >
@@ -396,26 +478,41 @@ export default function ListingAdvModal() {
             <Avatar
               sx={{
                 background: alpha("#fff", 0.2),
-                color: "common.white",
+                color: "#fff",
               }}
             >
               <CloudUploadIcon />
             </Avatar>
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="h5" fontWeight={700}>
-                {isEdit ? "Edit Advertisement" : "Add Advertisement"}
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography
+                variant="h5"
+                fontWeight={700}
+                sx={{
+                  color: "#fff !important",
+                  WebkitTextFillColor: "#fff",
+                  textShadow: "0 1px 2px rgba(0,0,0,0.35)",
+                }}
+              >
+                {isEdit ? "Edit Campaign" : "Create Campaign"}
               </Typography>
-              <Typography variant="body2" sx={{ opacity: 0.9, mt: 0.5 }}>
-                {isEdit
-                  ? "Update advertisement listing details"
-                  : "Create a new advertisement listing"}
+              <Typography
+                variant="body2"
+                sx={{
+                  mt: 0.5,
+                  color: "#fff !important",
+                  WebkitTextFillColor: "#fff",
+                  opacity: 0.95,
+                  textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+                }}
+              >
+                Promote inventory items and/or link to your website
               </Typography>
             </Box>
             <IconButton
               onClick={handleClose}
-              disabled={isSaving}
+              disabled={isBusy}
               sx={{
-                color: "common.white",
+                color: "#fff",
                 background: alpha("#fff", 0.1),
                 "&:hover": {
                   background: alpha("#fff", 0.2),
@@ -438,7 +535,7 @@ export default function ListingAdvModal() {
             minHeight: 0,
           }}
         >
-          {isSaving && (
+          {isBusy && (
             <Box sx={{ position: "absolute", top: 0, left: 0, right: 0 }}>
               <Box sx={{ px: 0.5, py: 0.5 }}>
                 <Typography
@@ -469,24 +566,45 @@ export default function ListingAdvModal() {
               enableReinitialize
               initialValues={initialValues}
               validationSchema={Yup.object({
+                title: Yup.string().trim().required("Campaign title is required"),
                 images: Yup.array().max(6, "Maximum 6 images allowed"),
                 description: Yup.string(),
-                advertSourceType: Yup.string()
-                  .oneOf(["CATALOGUE", "URL"])
-                  .required("Required"),
-                url: Yup.string().when("advertSourceType", {
-                  is: "URL",
-                  then: (schema) =>
-                    schema
-                      .trim()
-                      .required("URL is required")
-                      .url("Enter a valid URL, e.g. https://example.com"),
-                  otherwise: (schema) => schema.notRequired().nullable(),
-                }),
+                url: Yup.string()
+                  .trim()
+                  .nullable()
+                  .test(
+                    "is-url",
+                    "Enter a valid URL, e.g. https://example.com",
+                    (value) => {
+                      if (!value) return true;
+                      try {
+                        // eslint-disable-next-line no-new
+                        new URL(value);
+                        return true;
+                      } catch {
+                        return false;
+                      }
+                    },
+                  ),
+                startsAt: Yup.string().nullable(),
+                expiresAt: Yup.string()
+                  .nullable()
+                  .test(
+                    "after-start",
+                    "End date must be after start date",
+                    function afterStart(value) {
+                      const { startsAt } = this.parent;
+                      if (!value || !startsAt) return true;
+                      return new Date(value) > new Date(startsAt);
+                    },
+                  ),
+                featuredListingIds: Yup.array().of(Yup.string()),
               })}
               onSubmit={async (values, { setSubmitting }) => {
+                if (submitLockRef.current) return;
+                submitLockRef.current = true;
+                setSaving(true);
                 try {
-                  const isUrlSource = values.advertSourceType === "URL";
                   const currentExistingRefs = unique(
                     (values.images || [])
                       .filter((img) => !(img instanceof File))
@@ -496,8 +614,16 @@ export default function ListingAdvModal() {
                     (img) => !currentExistingRefs.includes(img),
                   );
                   const toSend = {
-                    ...values,
-                    url: isUrlSource ? String(values.url || "").trim() : "",
+                    title: String(values.title || "").trim(),
+                    description: values.description || "",
+                    url: String(values.url || "").trim(),
+                    status: values.status || "active",
+                    startsAt: values.startsAt || null,
+                    expiresAt: values.expiresAt || null,
+                    featuredListingIds: Array.isArray(values.featuredListingIds)
+                      ? values.featuredListingIds
+                      : [],
+                    images: values.images,
                   };
 
                   if (isEdit) {
@@ -508,15 +634,28 @@ export default function ListingAdvModal() {
 
                   const payload = buildFormData(toSend);
                   setUploadProgress(0);
-                  if (isEdit) await updateMut.mutateAsync(payload);
-                  else await createMut.mutateAsync(payload);
+                  if (isEdit) {
+                    if (needsAdminPassword) {
+                      pendingPayloadRef.current = payload;
+                      setAdminPasswordError("");
+                      setAdminPasswordOpen(true);
+                      submitLockRef.current = false;
+                      setSaving(false);
+                      return;
+                    }
+                    await updateMut.mutateAsync(payload);
+                  } else {
+                    await createMut.mutateAsync(payload);
+                  }
+                } catch {
+                  submitLockRef.current = false;
+                  setSaving(false);
                 } finally {
                   setSubmitting(false);
                 }
               }}
             >
               {({
-                isSubmitting,
                 submitForm,
                 values,
                 setFieldValue,
@@ -525,50 +664,22 @@ export default function ListingAdvModal() {
                 setFieldTouched,
               }) => {
                 submitRef.current = submitForm;
-                submittingRef.current = isSubmitting;
+                const selectedFeatured = inventoryOptions.filter((row) =>
+                  (values.featuredListingIds || []).includes(
+                    String(row.listingId || row.id),
+                  ),
+                );
 
                 return (
                   <Form>
                     <Stack spacing={2} sx={{ pt: 1 }}>
-                      <SelectFieldWrapper
-                        name="advertSourceType"
-                        label="Advert Source"
-                        options={[
-                          { value: "CATALOGUE", label: "Catalogue" },
-                          { value: "URL", label: "URL" },
-                        ]}
-                      />
-                      {values.advertSourceType === "URL" ? (
-                        <TextFieldWrapper
-                          name="url"
-                          label="URL"
-                          placeholder="https://example.com"
-                        />
-                      ) : (
-                        <Typography variant="caption" color="text.secondary">
-                          Create this advert now, then add catalogue items on
-                          the details page.
-                        </Typography>
-                      )}
-                      <SelectFieldWrapper
-                        name="type"
-                        label="Type"
-                        options={[
-                          { value: "SERVICES", label: "Services" },
-                          { value: "PRODUCTS", label: "Products" },
-                        ]}
-                      />
-                      <SelectFieldWrapper
-                        name="category"
-                        label="Category"
-                        options={
-                          values.type === "SERVICES"
-                            ? toOptions(SERVICES)
-                            : toOptions(PRODUCTS)
-                        }
+                      <TextFieldWrapper
+                        name="title"
+                        label="Campaign title"
+                        placeholder="e.g. Summer sale"
                       />
                       <RichTextEditor
-                        label="Description"
+                        label="Promo copy"
                         value={values.description || ""}
                         onChange={(nextValue) =>
                           setFieldValue("description", nextValue)
@@ -584,174 +695,277 @@ export default function ListingAdvModal() {
                         }
                         minHeight={180}
                       />
+                      <Stack
+                        direction={{ xs: "column", sm: "row" }}
+                        spacing={2}
+                      >
+                        <TextFieldWrapper
+                          name="startsAt"
+                          label="Start date"
+                          type="datetime-local"
+                          InputLabelProps={{ shrink: true }}
+                        />
+                        <TextFieldWrapper
+                          name="expiresAt"
+                          label="End date"
+                          type="datetime-local"
+                          InputLabelProps={{ shrink: true }}
+                        />
+                      </Stack>
+                      <TextFieldWrapper
+                        name="url"
+                        label="Website URL (optional)"
+                        placeholder="https://example.com"
+                      />
+                      <Autocomplete
+                        multiple
+                        disableCloseOnSelect
+                        options={inventoryOptions}
+                        loading={isInventoryLoading}
+                        value={selectedFeatured}
+                        noOptionsText={
+                          isInventoryLoading
+                            ? "Loading inventory..."
+                            : "No inventory items available to promote"
+                        }
+                        getOptionLabel={(option) =>
+                          option?.title ||
+                          option?.name ||
+                          String(option?.listingId || option?.id || "")
+                        }
+                        isOptionEqualToValue={(option, value) =>
+                          String(option?.listingId || option?.id) ===
+                          String(value?.listingId || value?.id)
+                        }
+                        onChange={(_, selected) => {
+                          setFieldValue(
+                            "featuredListingIds",
+                            selected.map((row) =>
+                              String(row.listingId || row.id),
+                            ),
+                          );
+                        }}
+                        renderOption={(props, option, { selected }) => {
+                          const { key, ...optionProps } = props;
+                          return (
+                            <li key={key} {...optionProps}>
+                              <Checkbox
+                                icon={checkboxIcon}
+                                checkedIcon={checkboxCheckedIcon}
+                                style={{ marginRight: 8 }}
+                                checked={selected}
+                              />
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography variant="body2" noWrap>
+                                  {option?.title || option?.name || "Untitled"}
+                                </Typography>
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  noWrap
+                                >
+                                  {[option?.category, option?.type]
+                                    .filter(Boolean)
+                                    .join(" · ") || "Inventory item"}
+                                </Typography>
+                              </Box>
+                            </li>
+                          );
+                        }}
+                        renderTags={(tagValue, getTagProps) =>
+                          tagValue.map((option, index) => (
+                            <Chip
+                              {...getTagProps({ index })}
+                              key={option.listingId || option.id}
+                              label={option.title || option.name}
+                              size="small"
+                            />
+                          ))
+                        }
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Items to promote"
+                            placeholder={
+                              selectedFeatured.length
+                                ? "Add another item..."
+                                : "Pick one or more inventory items"
+                            }
+                            helperText={
+                              inventoryOptions.length
+                                ? `${selectedFeatured.length} selected · Optional — leave empty for website/brand-only`
+                                : isInventoryLoading
+                                  ? "Loading your inventory..."
+                                  : "Create inventory items first, then you can promote them here"
+                            }
+                          />
+                        )}
+                      />
                       <SelectFieldWrapper
                         name="status"
                         label="Status"
                         options={[
                           { value: "active", label: "Active" },
                           { value: "draft", label: "Draft" },
-                          { value: "sold", label: "Sold" },
                           { value: "expired", label: "Expired" },
                         ]}
                       />
                       <div>
-                        <div>
-                          <input
-                            ref={inputRef}
-                            id="images"
-                            name="images"
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            style={{ display: "none" }}
-                            onChange={(e) => {
-                              const picked = Array.from(e.target.files || []);
-                              const pickedPreviewItems = picked.map(
-                                (file, idx) =>
-                                  toPreviewItem(file, idx + previews.length),
+                        <input
+                          ref={inputRef}
+                          id="images"
+                          name="images"
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          style={{ display: "none" }}
+                          onChange={(e) => {
+                            const picked = Array.from(e.target.files || []);
+                            const pickedPreviewItems = picked.map(
+                              (file, idx) =>
+                                toPreviewItem(file, idx + previews.length),
+                            );
+                            const combined =
+                              previews.concat(pickedPreviewItems);
+                            const limited = combined.slice(0, MAX_IMAGES);
+
+                            if (combined.length > MAX_IMAGES) {
+                              setImageHelper(
+                                `Maximum ${MAX_IMAGES} images allowed`,
                               );
-                              const combined =
-                                previews.concat(pickedPreviewItems);
-                              const limited = combined.slice(0, MAX_IMAGES);
-
-                              if (combined.length > MAX_IMAGES) {
-                                setImageHelper(
-                                  `Maximum ${MAX_IMAGES} images allowed`,
-                                );
-                              } else {
-                                setImageHelper("");
-                              }
-
-                              setPreviews(limited);
-                              setFieldValue(
-                                "images",
-                                limited.map((item) => item.file || item.raw),
-                              );
-
-                              if (combined.length > MAX_IMAGES) {
-                                combined.slice(MAX_IMAGES).forEach((item) => {
-                                  if (item?.isObjectUrl && item?.url) {
-                                    try {
-                                      URL.revokeObjectURL(item.url);
-                                    } catch {
-                                      /* ignore */
-                                    }
-                                  }
-                                });
-                              }
-
-                              if (inputRef.current) inputRef.current.value = "";
-                            }}
-                          />
-
-                          <Button
-                            variant="outlined"
-                            fullWidth
-                            sx={{ height: 40 }}
-                            startIcon={<CloudUploadIcon />}
-                            onClick={() =>
-                              inputRef.current && inputRef.current.click()
+                            } else {
+                              setImageHelper("");
                             }
-                          >
-                            Upload images
-                          </Button>
 
-                          {previews && previews.length > 0 && (
-                            <Grid container spacing={1} sx={{ mt: 1 }}>
-                              {previews.map((p, idx) => (
-                                <Grid item key={p.key || idx}>
-                                  <Box component="div">
-                                    <Box
-                                      component="div"
-                                      sx={{
-                                        width: 100,
-                                        height: 100,
-                                        borderRadius: 1,
-                                        overflow: "hidden",
-                                        position: "relative",
-                                        boxShadow: 1,
+                            setPreviews(limited);
+                            setFieldValue(
+                              "images",
+                              limited.map((item) => item.file || item.raw),
+                            );
+
+                            if (combined.length > MAX_IMAGES) {
+                              combined.slice(MAX_IMAGES).forEach((item) => {
+                                if (item?.isObjectUrl && item?.url) {
+                                  try {
+                                    URL.revokeObjectURL(item.url);
+                                  } catch {
+                                    /* ignore */
+                                  }
+                                }
+                              });
+                            }
+
+                            if (inputRef.current) inputRef.current.value = "";
+                          }}
+                        />
+
+                        <Button
+                          variant="outlined"
+                          fullWidth
+                          sx={{ height: 40 }}
+                          startIcon={<CloudUploadIcon />}
+                          onClick={() =>
+                            inputRef.current && inputRef.current.click()
+                          }
+                        >
+                          Upload campaign images
+                        </Button>
+
+                        {previews && previews.length > 0 && (
+                          <Grid container spacing={1} sx={{ mt: 1 }}>
+                            {previews.map((p, idx) => (
+                              <Grid item key={p.key || idx}>
+                                <Box component="div">
+                                  <Box
+                                    component="div"
+                                    sx={{
+                                      width: 100,
+                                      height: 100,
+                                      borderRadius: 1,
+                                      overflow: "hidden",
+                                      position: "relative",
+                                      boxShadow: 1,
+                                    }}
+                                  >
+                                    <img
+                                      src={p.url}
+                                      alt={`preview-${idx}`}
+                                      style={{
+                                        width: "100%",
+                                        height: "100%",
+                                        objectFit: "cover",
                                       }}
-                                    >
-                                      <img
-                                        src={p.url}
-                                        alt={`preview-${idx}`}
-                                        style={{
-                                          width: "100%",
-                                          height: "100%",
-                                          objectFit: "cover",
-                                        }}
-                                      />
-                                      <IconButton
-                                        size="small"
-                                        onClick={() => {
-                                          const remaining = previews.filter(
-                                            (_, i) => i !== idx,
-                                          );
-                                          const removed = previews[idx];
-                                          if (
-                                            removed?.isObjectUrl &&
-                                            removed?.url
-                                          ) {
-                                            try {
-                                              URL.revokeObjectURL(removed.url);
-                                            } catch {
-                                              /* ignore */
-                                            }
+                                    />
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => {
+                                        const remaining = previews.filter(
+                                          (_, i) => i !== idx,
+                                        );
+                                        const removed = previews[idx];
+                                        if (
+                                          removed?.isObjectUrl &&
+                                          removed?.url
+                                        ) {
+                                          try {
+                                            URL.revokeObjectURL(removed.url);
+                                          } catch {
+                                            /* ignore */
                                           }
-                                          setPreviews(remaining);
-                                          setFieldValue(
-                                            "images",
-                                            remaining.map(
-                                              (item) => item.file || item.raw,
-                                            ),
-                                          );
-                                          setImageHelper("");
-                                        }}
-                                        sx={{
-                                          position: "absolute",
-                                          top: 4,
-                                          right: 4,
-                                          bgcolor: "rgba(0,0,0,0.5)",
-                                          color: "#fff",
-                                        }}
-                                      >
-                                        <DeleteIcon fontSize="small" />
-                                      </IconButton>
-                                    </Box>
-                                    <Typography
-                                      variant="caption"
+                                        }
+                                        setPreviews(remaining);
+                                        setFieldValue(
+                                          "images",
+                                          remaining.map(
+                                            (item) => item.file || item.raw,
+                                          ),
+                                        );
+                                        setImageHelper("");
+                                      }}
                                       sx={{
-                                        display: "block",
-                                        mt: 0.5,
-                                        maxWidth: 100,
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                        whiteSpace: "nowrap",
+                                        position: "absolute",
+                                        top: 4,
+                                        right: 4,
+                                        bgcolor: "rgba(0,0,0,0.5)",
+                                        color: "#fff",
                                       }}
                                     >
-                                      {p.name || "image"}
-                                    </Typography>
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
                                   </Box>
-                                </Grid>
-                              ))}
-                            </Grid>
-                          )}
-                          {imageHelper ? (
-                            <Typography
-                              variant="caption"
-                              sx={{ color: "warning.main", mt: 0.5 }}
-                            >
-                              {imageHelper}
-                            </Typography>
-                          ) : errors.images ? (
-                            <Typography
-                              variant="caption"
-                              sx={{ color: "error.main", mt: 0.5 }}
-                            >
-                              {errors.images}
-                            </Typography>
-                          ) : null}
-                        </div>
+                                  <Typography
+                                    variant="caption"
+                                    sx={{
+                                      display: "block",
+                                      mt: 0.5,
+                                      maxWidth: 100,
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    {p.name || "image"}
+                                  </Typography>
+                                </Box>
+                              </Grid>
+                            ))}
+                          </Grid>
+                        )}
+                        {imageHelper ? (
+                          <Typography
+                            variant="caption"
+                            sx={{ color: "warning.main", mt: 0.5 }}
+                          >
+                            {imageHelper}
+                          </Typography>
+                        ) : errors.images ? (
+                          <Typography
+                            variant="caption"
+                            sx={{ color: "error.main", mt: 0.5 }}
+                          >
+                            {errors.images}
+                          </Typography>
+                        ) : null}
                       </div>
                     </Stack>
                   </Form>
@@ -771,13 +985,16 @@ export default function ListingAdvModal() {
             flexWrap: "wrap",
           }}
         >
-          <Button onClick={handleClose} color="inherit">
+          <Button onClick={handleClose} color="inherit" disabled={isBusy}>
             Cancel
           </Button>
           <Button
             variant="contained"
-            onClick={() => submitRef.current && submitRef.current()}
-            disabled={isSaving || submittingRef.current}
+            onClick={() => {
+              if (isBusy || !submitRef.current) return;
+              submitRef.current();
+            }}
+            disabled={isBusy}
             sx={{
               color: "#fff",
               background: gradientPrimary,
@@ -787,7 +1004,7 @@ export default function ListingAdvModal() {
               },
             }}
           >
-            {isSaving
+            {isBusy
               ? `${isEdit ? "Updating" : "Creating"}... ${uploadProgress || 0}%`
               : isEdit
                 ? "Save"
@@ -800,6 +1017,34 @@ export default function ListingAdvModal() {
           severity={toast.severity}
           message={toast.message}
           onClose={() => setToast((s) => ({ ...s, open: false }))}
+        />
+        <AdminPasswordDialog
+          open={adminPasswordOpen}
+          title="Save campaign changes"
+          description="Enter your admin password to edit this campaign."
+          confirmText="Save changes"
+          loading={updateMut.isPending}
+          error={adminPasswordError}
+          onClose={() => {
+            setAdminPasswordOpen(false);
+            setAdminPasswordError("");
+            pendingPayloadRef.current = null;
+            submitLockRef.current = false;
+            setSaving(false);
+          }}
+          onConfirm={async (adminPassword) => {
+            const payload = pendingPayloadRef.current;
+            if (!payload) return;
+            payload.append("adminPassword", adminPassword);
+            submitLockRef.current = true;
+            setSaving(true);
+            try {
+              await updateMut.mutateAsync(payload);
+            } catch {
+              submitLockRef.current = false;
+              setSaving(false);
+            }
+          }}
         />
       </Box>
     </Dialog>

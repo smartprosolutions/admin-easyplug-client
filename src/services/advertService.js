@@ -10,6 +10,18 @@ export async function updateAdvert(advertId, payload) {
   return resp.data;
 }
 
+export async function setAdvertFeatured(
+  advertId,
+  featuredListingIds,
+  { adminPassword } = {},
+) {
+  const resp = await axiosClient.put(`/listings/advert/${advertId}/featured`, {
+    featuredListingIds,
+    ...(adminPassword ? { adminPassword } : {}),
+  });
+  return resp.data;
+}
+
 export async function addListingToAdvert(advertId, payload, onProgress) {
   const config = {};
   if (typeof onProgress === "function") {
@@ -42,7 +54,14 @@ export async function getCatalogue(params) {
   return resp.data;
 }
 
-export async function getAds(params) {
+export async function getAds(params = {}) {
+  const resp = await axiosClient.get("/listings/ads", {
+    params: { all: 1, ...params },
+  });
+  return resp.data;
+}
+
+export async function getLiveAds(params) {
   const resp = await axiosClient.get("/listings/ads", { params });
   return resp.data;
 }

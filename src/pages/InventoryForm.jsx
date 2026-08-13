@@ -17,7 +17,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import TextFieldWrapper from "../components/forms/TextFieldWrapper";
 import SelectFieldWrapper from "../components/forms/SelectFieldWrapper";
-import { SERVICES, PRODUCTS, toOptions } from "../constants/categories";
+import { SERVICES, PRODUCTS, toOptions, OTHER_CATEGORY, resolveCategoryFormValues, resolveCategoryForSubmit } from "../constants/categories";
 import ToastAlert from "../components/alerts/ToastAlert";
 import DeleteIcon from "@mui/icons-material/Delete";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
@@ -251,12 +251,18 @@ export default function InventoryForm() {
     ? itemData.keyFeatures.join(", ")
     : itemData?.keyFeatures || "";
 
+  const initialCategory = resolveCategoryFormValues(
+    itemData?.category || "",
+    itemData?.type || "PRODUCTS",
+  );
+
   const initialValues = {
     title: itemData?.title || "",
     description: itemData?.description || "",
     keyFeatures: initialKeyFeatures,
     price: itemData?.price || "",
-    category: itemData?.category || "",
+    category: initialCategory.category,
+    customCategory: initialCategory.customCategory,
     type: itemData?.type || "PRODUCTS",
     images: itemData?.images || [],
     subscriptionId: itemData?.subscriptionId || "",
@@ -452,6 +458,17 @@ export default function InventoryForm() {
             enableReinitialize
             initialValues={initialValues}
             validationSchema={Yup.object({
+              category: Yup.string().required("Required"),
+              customCategory: Yup.string().when("category", {
+                is: OTHER_CATEGORY,
+                then: (schema) =>
+                  schema
+                    .trim()
+                    .required("Please specify the product category")
+                    .min(2, "Category must be at least 2 characters")
+                    .max(80, "Category must be at most 80 characters"),
+                otherwise: (schema) => schema.notRequired(),
+              }),
               title: Yup.string()
                 .required("Required")
                 .test(
@@ -500,9 +517,14 @@ export default function InventoryForm() {
                       .split(",")
                       .map((item) => item.trim())
                       .filter(Boolean);
+                const { customCategory, ...rest } = values;
                 const toSend = {
-                  ...values,
+                  ...rest,
                   keyFeatures: normalizedKeyFeatures,
+                  category: resolveCategoryForSubmit(
+                    values.category,
+                    customCategory,
+                  ),
                 };
 
                 const payload = buildFormData(toSend);
@@ -634,6 +656,14 @@ export default function InventoryForm() {
                               : toOptions(PRODUCTS)
                           }
                         />
+                        {values.category === OTHER_CATEGORY && (
+                          <TextFieldWrapper
+                            name="customCategory"
+                            label="Specify category"
+                            placeholder="e.g. Handmade crafts"
+                            helperText="Enter the product or service category"
+                          />
+                        )}
                         <SelectFieldWrapper
                           name="subscriptionId"
                           label="Subscription"

@@ -3,18 +3,31 @@ import { Navigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
 import { useUserProfileQuery } from "../../services/queries";
-import { isAdminRole, isSellerRole, resolveUserRole } from "../../utils/accessControl";
+import {
+  canAccessAdminApp,
+  isAdminRole,
+  isSellerRole,
+  resolveUserRole,
+} from "../../utils/accessControl";
 
 const roleChecks = {
   admin: isAdminRole,
   seller: isSellerRole,
 };
 
-export default function RoleRoute({ children, allow = ["admin"], fallbackTo = "/inventory" }) {
-  const { data: profileData, isLoading } = useUserProfileQuery({ retry: false });
-  const role = resolveUserRole(profileData);
+export default function RoleRoute({
+  children,
+  allow = ["admin"],
+  fallbackTo = "/inventory",
+}) {
+  const {
+    data: profileData,
+    isLoading,
+    isError,
+    isFetching,
+  } = useUserProfileQuery({ retry: false });
 
-  if (isLoading) {
+  if (isLoading || (isFetching && !profileData)) {
     return (
       <Box
         sx={{
@@ -29,13 +42,36 @@ export default function RoleRoute({ children, allow = ["admin"], fallbackTo = "/
     );
   }
 
+  if (isError || !profileData) {
+    try {
+      localStorage.removeItem("access_token");
+    } catch {
+      // ignore
+    }
+    return <Navigate to="/login" replace />;
+  }
+
+  const role = resolveUserRole(profileData);
+
+  if (!canAccessAdminApp(role)) {
+    try {
+      localStorage.removeItem("access_token");
+    } catch {
+      // ignore
+    }
+    return <Navigate to="/login" replace />;
+  }
+
   const canAccess = allow.some((allowedRole) => {
     const check = roleChecks[allowedRole];
     return typeof check === "function" ? check(role) : false;
   });
 
   if (!canAccess) {
-    return <Navigate to={fallbackTo} replace />;
+    // Sellers trying to open admin-only pages land on inventory.
+    // Admins denied from a seller-only route (none today) go to dashboard.
+    const redirectTo = isAdminRole(role) ? "/dashboard" : fallbackTo;
+    return <Navigate to={redirectTo} replace />;
   }
 
   return children;

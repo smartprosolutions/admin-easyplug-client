@@ -33,6 +33,7 @@ function resolvePictureUrl(value, ownerEmail) {
   )}/uploads/pictures${emailSeg}/${v.replace(/^\//, "")}`;
 }
 import { Formik, Form } from "formik";
+import * as Yup from "yup";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Box,
@@ -42,7 +43,6 @@ import {
   Avatar,
   Typography,
   Button,
-  Divider,
   IconButton,
   Stack,
   Chip,
@@ -77,14 +77,28 @@ import LanguageIcon from "@mui/icons-material/Language";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import VerifiedIcon from "@mui/icons-material/Verified";
-import LogoutIcon from "@mui/icons-material/Logout";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
+import ExploreOutlinedIcon from "@mui/icons-material/ExploreOutlined";
 import LightModeIcon from "@mui/icons-material/LightMode";
+import LockResetIcon from "@mui/icons-material/LockReset";
+import Visibility from "@mui/icons-material/Visibility";
+import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import TextFieldWrapper from "../components/forms/TextFieldWrapper";
+import SelectFieldWrapper from "../components/forms/SelectFieldWrapper";
+import {
+  createNameFieldSchema,
+  sanitizeNameInput,
+} from "../utils/nameValidation";
+import {
+  createPhoneFieldSchema,
+  sanitizePhoneInput,
+} from "../utils/phoneValidation";
+import { createPasswordSchema } from "../utils/passwordValidation";
 import {
   getUserProfileInfo,
   updateUser,
   uploadProfilePicture,
+  changePassword as changePasswordRequest,
 } from "../services/authService";
 import {
   updateSellerInfo,
@@ -97,7 +111,6 @@ import {
 import ToastAlert from "../components/alerts/ToastAlert";
 import { gradientPrimary } from "../theme/theme";
 import { useUserProfileQuery } from "../services/queries";
-import ConfirmDialog from "../components/modals/ConfirmDialog";
 import LocationAutoComplete from "../components/form-components/LocationAutoComplete";
 import { useNavigate } from "react-router-dom";
 
@@ -117,6 +130,87 @@ const gradientButtonSx = {
   color: "#fff",
   boxShadow: "none",
   "&:hover": { background: gradientPrimary, filter: "brightness(0.95)" },
+};
+
+const TITLE_OPTIONS = [
+  { value: "Mr", label: "Mr" },
+  { value: "Mrs", label: "Mrs" },
+  { value: "Ms", label: "Ms" },
+  { value: "Dr", label: "Dr" },
+  { value: "Prof", label: "Prof" },
+];
+
+const editUserValidationSchema = Yup.object({
+  title: Yup.string().required("Title is required"),
+  firstName: createNameFieldSchema("First name"),
+  lastName: createNameFieldSchema("Last name"),
+  phone: createPhoneFieldSchema({ required: true, label: "Cellphone" }),
+});
+
+const optionalUrlSchema = Yup.string()
+  .transform((v) => {
+    const trimmed = typeof v === "string" ? v.trim() : v;
+    return trimmed === "" ? null : trimmed;
+  })
+  .nullable()
+  .notRequired()
+  .url("Enter a valid URL (include https://)");
+
+const editCompanyValidationSchema = Yup.object({
+  businessName: Yup.string()
+    .transform((v) => (typeof v === "string" ? v.trim() : v))
+    .required("Business name is required")
+    .min(2, "Business name must be at least 2 characters")
+    .max(120, "Business name must be at most 120 characters"),
+  businessEmail: Yup.string()
+    .transform((v) => (typeof v === "string" ? v.trim() : v))
+    .email("Invalid email")
+    .required("Business email is required"),
+  websiteURL: optionalUrlSchema,
+  facebookURL: optionalUrlSchema,
+  instagramURL: optionalUrlSchema,
+  twitterURL: optionalUrlSchema,
+  linkedInURL: optionalUrlSchema,
+});
+
+const editAddressValidationSchema = Yup.object({
+  latitude: Yup.number()
+    .typeError("Latitude must be a number")
+    .required("Required"),
+  longitude: Yup.number()
+    .typeError("Longitude must be a number")
+    .required("Required"),
+  accuracy: Yup.number()
+    .typeError("Accuracy must be a number")
+    .required("Required"),
+  radius: Yup.number()
+    .typeError("Radius must be a number")
+    .min(5, "Radius must be at least 5 km")
+    .max(50, "Radius must be at most 50 km")
+    .required("Required"),
+  city: Yup.string().required("Required"),
+  province: Yup.string().required("Required"),
+  country: Yup.string().required("Required"),
+});
+
+const changePasswordValidationSchema = Yup.object({
+  currentPassword: Yup.string().required("Current password is required"),
+  newPassword: createPasswordSchema({ emailField: "email" }).test(
+    "different-from-current",
+    "New password must be different from the current password",
+    function (value) {
+      if (!value) return true;
+      return value !== this.parent.currentPassword;
+    },
+  ),
+  confirmPassword: Yup.string()
+    .oneOf([Yup.ref("newPassword")], "Passwords must match")
+    .required("Confirm your new password"),
+});
+
+const normalizeOptionalUrl = (value) => {
+  const trimmed = String(value || "").trim();
+  return trimmed || undefined;
 };
 
 const normalizeCompanyAddress = (sellerInfo, user) => {
@@ -230,6 +324,9 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
 
     const userVM = {
       name: fullName,
+      title: u?.title || "",
+      firstName: u?.firstName || "",
+      lastName: u?.lastName || "",
       avatarInitials: initials,
       email: u?.email || "",
       phone: u?.phone || "",
@@ -242,7 +339,7 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
         "",
       joined: u?.createdAt || new Date().toISOString(),
       profilePicture: u?.profilePicture || u?.avatarUrl || "",
-      id: u?.id || u?._id,
+      id: u?.id || u?._id || u?.userId,
     };
 
     const companyVM = {
@@ -273,6 +370,10 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
   }, [meData]);
   const [editingUser, setEditingUser] = useState(false);
   const [editProfileModalOpen, setEditProfileModalOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [editingCompany, setEditingCompany] = useState(false);
   const [editingCompanyAddress, setEditingCompanyAddress] = useState(false);
   const [isAddressLocationLoading, setIsAddressLocationLoading] =
@@ -282,7 +383,6 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
     severity: "info",
     message: "",
   });
-  const [confirmOpen, setConfirmOpen] = useState(false);
   // Mutations: update user, update company, upload pictures
   const updateUserMutation = useMutation({
     mutationFn: async (payload) => {
@@ -312,7 +412,8 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
       setToast({
         open: true,
         severity: "error",
-        message: "Failed to update user",
+        message:
+          e?.response?.data?.message || e?.message || "Failed to update user",
       });
     },
     onSettled: () => setEditingUser(false),
@@ -348,7 +449,10 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
       setToast({
         open: true,
         severity: "error",
-        message: "Failed to update company",
+        message:
+          e?.response?.data?.message ||
+          e?.message ||
+          "Failed to update company",
       });
     },
     onSettled: () => setEditingCompany(false),
@@ -442,6 +546,31 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
         open: true,
         severity: "error",
         message: "Failed to update profile picture",
+      });
+    },
+  });
+
+  const changePasswordMutation = useMutation({
+    mutationFn: (payload) => changePasswordRequest(payload),
+    onSuccess: (data) => {
+      setChangePasswordOpen(false);
+      setShowCurrentPassword(false);
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
+      setToast({
+        open: true,
+        severity: "success",
+        message: data?.message || "Password changed successfully",
+      });
+    },
+    onError: (e) => {
+      setToast({
+        open: true,
+        severity: "error",
+        message:
+          e?.response?.data?.message ||
+          e?.message ||
+          "Failed to change password",
       });
     },
   });
@@ -613,6 +742,24 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                   color="secondary"
                 />
                 <Chip icon={<PhoneIcon />} label={user?.phone || "-"} />
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<ExploreOutlinedIcon />}
+                  onClick={() =>
+                    window.dispatchEvent(new Event("easyplug:start-tour"))
+                  }
+                  sx={{
+                    color: "#fff",
+                    borderColor: "rgba(255,255,255,0.55)",
+                    "&:hover": {
+                      borderColor: "#fff",
+                      bgcolor: "rgba(255,255,255,0.1)",
+                    },
+                  }}
+                >
+                  Take a tour
+                </Button>
               </Stack>
             </Grid>
             <Grid size={{ xs: 12, md: 4 }}>
@@ -684,43 +831,8 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
           onClose={() => setToast((t) => ({ ...t, open: false }))}
         />
         <Grid container spacing={3}>
-          <Grid size={{ xs: 12, md: 3 }}>
+          <Grid size={{ xs: 12 }} sx={{ display: { xs: "block", md: "none" } }}>
             <Paper sx={{ p: 2, borderRadius: 2 }} elevation={3}>
-              <Typography variant="subtitle2" color="text.secondary">
-                Account
-              </Typography>
-              <Typography variant="h6" sx={{ mt: 1 }}>
-                {user?.name || ""}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {user?.email || ""}
-              </Typography>
-              <Divider sx={{ my: 2 }} />
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }}>
-                <Button
-                  variant="contained"
-                  startIcon={<EditIcon />}
-                  onClick={() => setEditProfileModalOpen(true)}
-                  sx={gradientButtonSx}
-                >
-                  Edit Profile
-                </Button>
-                <Button
-                  variant="outlined"
-                  color="error"
-                  startIcon={<LogoutIcon />}
-                  sx={{ mt: { xs: 0, sm: 1.5 } }}
-                  onClick={() => setConfirmOpen(true)}
-                >
-                  Sign out
-                </Button>
-              </Stack>
-            </Paper>
-
-            <Paper
-              sx={{ p: 2, borderRadius: 2, mt: 3, display: { xs: "block", md: "none" } }}
-              elevation={3}
-            >
               <Typography variant="subtitle2" color="text.secondary">
                 Seller Stats
               </Typography>
@@ -752,23 +864,35 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
             </Paper>
           </Grid>
 
-          <Grid size={{ xs: 12, md: 6 }}>
+          <Grid size={{ xs: 12, md: 9 }}>
             <Paper sx={{ p: 3, borderRadius: 2 }} elevation={3}>
               <Box
                 sx={{
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
+                  gap: 1,
+                  flexWrap: "wrap",
                 }}
               >
                 <Typography variant="h6">User Details</Typography>
                 {!editingUser ? (
-                  <IconButton
-                    size="small"
-                    onClick={() => setEditProfileModalOpen(true)}
-                  >
-                    <EditIcon />
-                  </IconButton>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<LockResetIcon />}
+                      onClick={() => setChangePasswordOpen(true)}
+                    >
+                      Change password
+                    </Button>
+                    <IconButton
+                      size="small"
+                      onClick={() => setEditProfileModalOpen(true)}
+                    >
+                      <EditIcon />
+                    </IconButton>
+                  </Stack>
                 ) : (
                   <Box>
                     <IconButton
@@ -799,8 +923,14 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
               <Formik
                 initialValues={user}
                 enableReinitialize
+                validationSchema={editUserValidationSchema}
                 onSubmit={async (v) => {
-                  updateUserMutation.mutate({ name: v.name, phone: v.phone });
+                  updateUserMutation.mutate({
+                    title: v.title,
+                    firstName: String(v.firstName || "").trim(),
+                    lastName: String(v.lastName || "").trim(),
+                    phone: sanitizePhoneInput(v.phone),
+                  });
                 }}
               >
                 {({ submitForm, resetForm }) => (
@@ -812,12 +942,41 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                           color="text.secondary"
                           sx={{ mb: 0.5, display: "block" }}
                         >
-                          Full name
+                          Title
+                        </Typography>
+                        {editingUser ? (
+                          <SelectFieldWrapper
+                            name="title"
+                            label="Title"
+                            options={TITLE_OPTIONS}
+                          />
+                        ) : (
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            alignItems="center"
+                          >
+                            <PersonIcon fontSize="small" />
+                            <Typography variant="body1">
+                              {user?.title || "-"}
+                            </Typography>
+                          </Stack>
+                        )}
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ mb: 0.5, display: "block" }}
+                        >
+                          First name
                         </Typography>
                         {editingUser ? (
                           <TextFieldWrapper
-                            name="name"
-                            label="Full name"
+                            name="firstName"
+                            label="First name"
+                            sanitize={sanitizeNameInput}
+                            blockDigits
                             InputProps={{
                               startAdornment: (
                                 <InputAdornment position="start">
@@ -834,7 +993,42 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                           >
                             <PersonIcon fontSize="small" />
                             <Typography variant="body1">
-                              {user?.name}
+                              {user?.firstName || "-"}
+                            </Typography>
+                          </Stack>
+                        )}
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ mb: 0.5, display: "block" }}
+                        >
+                          Last name
+                        </Typography>
+                        {editingUser ? (
+                          <TextFieldWrapper
+                            name="lastName"
+                            label="Last name"
+                            sanitize={sanitizeNameInput}
+                            blockDigits
+                            InputProps={{
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  <PersonIcon fontSize="small" />
+                                </InputAdornment>
+                              ),
+                            }}
+                          />
+                        ) : (
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            alignItems="center"
+                          >
+                            <PersonIcon fontSize="small" />
+                            <Typography variant="body1">
+                              {user?.lastName || "-"}
                             </Typography>
                           </Stack>
                         )}
@@ -913,12 +1107,14 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                           color="text.secondary"
                           sx={{ mb: 0.5, display: "block" }}
                         >
-                          Phone
+                          Cellphone
                         </Typography>
                         {editingUser ? (
                           <TextFieldWrapper
                             name="phone"
-                            label="Phone"
+                            label="Cellphone"
+                            sanitize={sanitizePhoneInput}
+                            inputMode="tel"
                             InputProps={{
                               startAdornment: (
                                 <InputAdornment position="start">
@@ -1104,6 +1300,7 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
               <Formik
                 initialValues={company}
                 enableReinitialize
+                validationSchema={editCompanyValidationSchema}
                 validate={(vals) => {
                   const errs = {};
                   if (
@@ -1116,14 +1313,14 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                 }}
                 onSubmit={async (v) => {
                   const payload = {
-                    businessName: v.businessName,
-                    businessEmail: v.businessEmail,
+                    businessName: String(v.businessName || "").trim(),
+                    businessEmail: String(v.businessEmail || "").trim(),
                     businessRegistrationNumber: v.businessRegistrationNumber,
-                    websiteURL: v.websiteURL,
-                    facebookURL: v.facebookURL,
-                    instagramURL: v.instagramURL,
-                    twitterURL: v.twitterURL,
-                    linkedInURL: v.linkedInURL,
+                    websiteURL: normalizeOptionalUrl(v.websiteURL),
+                    facebookURL: normalizeOptionalUrl(v.facebookURL),
+                    instagramURL: normalizeOptionalUrl(v.instagramURL),
+                    twitterURL: normalizeOptionalUrl(v.twitterURL),
+                    linkedInURL: normalizeOptionalUrl(v.linkedInURL),
                     taxNumber: v.taxNumber,
                   };
                   updateCompanyMutation.mutate(payload);
@@ -1540,6 +1737,7 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
               <Formik
                 initialValues={companyAddress}
                 enableReinitialize
+                validationSchema={editAddressValidationSchema}
                 onSubmit={(values) => {
                   handleSaveCompanyAddress(values);
                 }}
@@ -1826,20 +2024,6 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
             </Paper>
           </Grid>
         </Grid>
-        <ConfirmDialog
-          open={confirmOpen}
-          onClose={() => setConfirmOpen(false)}
-          onConfirm={() => {
-            setConfirmOpen(false);
-            localStorage.removeItem("access_token");
-            queryClient.clear();
-            navigate("/login", { replace: true });
-          }}
-          title="Sign out"
-          description="Are you sure you want to sign out?"
-          confirmText="Sign out"
-          confirmColor="error"
-        />
 
         <Dialog
           open={editProfileModalOpen}
@@ -1874,10 +2058,13 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
           <Formik
             initialValues={user}
             enableReinitialize
+            validationSchema={editUserValidationSchema}
             onSubmit={async (values) => {
               updateUserMutation.mutate({
-                name: values.name,
-                phone: values.phone,
+                title: values.title,
+                firstName: String(values.firstName || "").trim(),
+                lastName: String(values.lastName || "").trim(),
+                phone: sanitizePhoneInput(values.phone),
               });
             }}
           >
@@ -1945,9 +2132,33 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                 <DialogContent sx={{ pt: 3 }}>
                   <Grid container spacing={2}>
                     <Grid size={{ xs: 12, sm: 6 }}>
+                      <SelectFieldWrapper
+                        name="title"
+                        label="Title"
+                        options={TITLE_OPTIONS}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
                       <TextFieldWrapper
-                        name="name"
-                        label="Full name"
+                        name="firstName"
+                        label="First name"
+                        sanitize={sanitizeNameInput}
+                        blockDigits
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <PersonIcon fontSize="small" />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextFieldWrapper
+                        name="lastName"
+                        label="Last name"
+                        sanitize={sanitizeNameInput}
+                        blockDigits
                         InputProps={{
                           startAdornment: (
                             <InputAdornment position="start">
@@ -1960,7 +2171,9 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                     <Grid size={{ xs: 12, sm: 6 }}>
                       <TextFieldWrapper
                         name="phone"
-                        label="Phone"
+                        label="Cellphone"
+                        sanitize={sanitizePhoneInput}
+                        inputMode="tel"
                         InputProps={{
                           startAdornment: (
                             <InputAdornment position="start">
@@ -2035,6 +2248,228 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                     sx={gradientButtonSx}
                   >
                     Save Changes
+                  </Button>
+                </DialogActions>
+              </Form>
+            )}
+          </Formik>
+        </Dialog>
+
+        <Dialog
+          open={changePasswordOpen}
+          onClose={() => {
+            if (changePasswordMutation.isPending) return;
+            setChangePasswordOpen(false);
+          }}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{
+            sx: { borderRadius: 3, overflow: "hidden", position: "relative" },
+          }}
+        >
+          {changePasswordMutation.isPending && (
+            <Box
+              sx={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                bgcolor: "rgba(0, 0, 0, 0.24)",
+                zIndex: 10,
+              }}
+            >
+              <Stack spacing={1.25} alignItems="center">
+                <CircularProgress size={28} />
+                <Typography variant="body2" color="common.white">
+                  Updating password...
+                </Typography>
+              </Stack>
+            </Box>
+          )}
+
+          <Formik
+            initialValues={{
+              email: user?.email || "",
+              currentPassword: "",
+              newPassword: "",
+              confirmPassword: "",
+            }}
+            enableReinitialize
+            validationSchema={changePasswordValidationSchema}
+            onSubmit={async (values, { setSubmitting, resetForm }) => {
+              try {
+                await changePasswordMutation.mutateAsync({
+                  currentPassword: values.currentPassword,
+                  newPassword: values.newPassword,
+                  confirmPassword: values.confirmPassword,
+                });
+                resetForm();
+              } catch {
+                /* toast handled by mutation */
+              } finally {
+                setSubmitting(false);
+              }
+            }}
+          >
+            {({ resetForm, submitForm, isSubmitting }) => (
+              <Form>
+                <Box
+                  sx={{
+                    background: gradientPrimary,
+                    color: "common.white",
+                    px: 3,
+                    py: 2.4,
+                  }}
+                >
+                  <Stack direction="row" spacing={1.5} alignItems="center">
+                    <Avatar
+                      sx={{
+                        bgcolor: "rgba(255,255,255,0.2)",
+                        color: "common.white",
+                      }}
+                    >
+                      <LockResetIcon />
+                    </Avatar>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="h6" fontWeight={700}>
+                        Change Password
+                      </Typography>
+                      <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                        Enter your current password, then choose a new one.
+                      </Typography>
+                    </Box>
+                    <IconButton
+                      onClick={() => {
+                        resetForm();
+                        setChangePasswordOpen(false);
+                      }}
+                      disabled={changePasswordMutation.isPending}
+                      sx={{
+                        color: "common.white",
+                        bgcolor: "rgba(255,255,255,0.12)",
+                        "&:hover": { bgcolor: "rgba(255,255,255,0.22)" },
+                      }}
+                    >
+                      <CloseRoundedIcon />
+                    </IconButton>
+                  </Stack>
+                </Box>
+
+                <DialogContent sx={{ pt: 3 }}>
+                  <Stack spacing={2}>
+                    <TextFieldWrapper
+                      name="currentPassword"
+                      label="Current password"
+                      type={showCurrentPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton
+                              aria-label={
+                                showCurrentPassword
+                                  ? "Hide current password"
+                                  : "Show current password"
+                              }
+                              onClick={() =>
+                                setShowCurrentPassword((s) => !s)
+                              }
+                              edge="end"
+                            >
+                              {showCurrentPassword ? (
+                                <VisibilityOff />
+                              ) : (
+                                <Visibility />
+                              )}
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                    <TextFieldWrapper
+                      name="newPassword"
+                      label="New password"
+                      type={showNewPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton
+                              aria-label={
+                                showNewPassword
+                                  ? "Hide new password"
+                                  : "Show new password"
+                              }
+                              onClick={() => setShowNewPassword((s) => !s)}
+                              edge="end"
+                            >
+                              {showNewPassword ? (
+                                <VisibilityOff />
+                              ) : (
+                                <Visibility />
+                              )}
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                    <TextFieldWrapper
+                      name="confirmPassword"
+                      label="Confirm new password"
+                      type={showConfirmPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton
+                              aria-label={
+                                showConfirmPassword
+                                  ? "Hide confirm password"
+                                  : "Show confirm password"
+                              }
+                              onClick={() =>
+                                setShowConfirmPassword((s) => !s)
+                              }
+                              edge="end"
+                            >
+                              {showConfirmPassword ? (
+                                <VisibilityOff />
+                              ) : (
+                                <Visibility />
+                              )}
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                    <Typography variant="caption" color="text.secondary">
+                      Use at least 8 characters with uppercase, lowercase, a
+                      number, and a special character.
+                    </Typography>
+                  </Stack>
+                </DialogContent>
+
+                <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+                  <Button
+                    onClick={() => {
+                      resetForm();
+                      setChangePasswordOpen(false);
+                    }}
+                    disabled={changePasswordMutation.isPending || isSubmitting}
+                    variant="outlined"
+                    color="inherit"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="contained"
+                    onClick={() => submitForm()}
+                    disabled={changePasswordMutation.isPending || isSubmitting}
+                    sx={gradientButtonSx}
+                  >
+                    Update password
                   </Button>
                 </DialogActions>
               </Form>

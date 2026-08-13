@@ -42,6 +42,10 @@ export const isAdminRole = (roleValue) => {
   return role === "admin" || role === "superadmin";
 };
 
+/** Roles allowed to use this admin/seller dashboard app. */
+export const canAccessAdminApp = (roleValue) =>
+  isAdminRole(roleValue) || isSellerRole(roleValue);
+
 export const resolveOwnerUserId = (record) =>
   pickFirst(
     record?.sellerId,
@@ -62,3 +66,12 @@ export const isOwnedByUser = (record, userId) => {
   if (ownerId === undefined || ownerId === null || ownerId === "") return false;
   return String(ownerId) === String(userId);
 };
+
+/** Owner or admin/superadmin may manage (admin override still needs password server-side). */
+export const canManageRecord = (record, userId, roleValue) => {
+  if (isOwnedByUser(record, userId)) return true;
+  return isAdminRole(roleValue);
+};
+
+export const needsAdminPasswordForRecord = (record, userId, roleValue) =>
+  isAdminRole(roleValue) && !isOwnedByUser(record, userId);

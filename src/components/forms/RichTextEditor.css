@@ -1,6 +1,6 @@
 /* Custom styles for Tiptap editor */
 .rich-text-editor {
-  font-family: "Roboto", "Helvetica", "Arial", sans-serif;
+  font-family: "Inter", sans-serif;
 }
 
 .rich-text-editor__toolbar .MuiIconButton-root {

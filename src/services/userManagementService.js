@@ -9,3 +9,8 @@ export async function updateUserStatus(userId, status) {
   const resp = await axiosClient.patch(`/users/${userId}/status`, { status });
   return resp.data;
 }
+
+export async function createUserByAdmin(payload) {
+  const resp = await axiosClient.post("/users/admin/create", payload);
+  return resp.data;
+}

@@ -17,6 +17,9 @@ import ListingAdvModal from "./components/modals/ListingAdvModal";
 import NotFound from "./pages/NotFound";
 import Transactions from "./pages/Transactions";
 import UserManagement from "./pages/UserManagement";
+import Reports from "./pages/Reports";
+import SupportTickets from "./pages/SupportTickets";
+import SupportTicketDetail from "./pages/SupportTicketDetail";
 import Notifications from "./pages/Notifications";
 import Profile from "./pages/Profile";
 import Messages from "./pages/Messages";
@@ -27,6 +30,7 @@ import ResetPassword from "./pages/auth/ResetPassword";
 import PublicRoute from "./components/route/PublicRoute";
 import PrivateRoute from "./components/route/PrivateRoute";
 import RoleRoute from "./components/route/RoleRoute";
+import UiSwitchLanding from "./pages/UiSwitchLanding";
 import { useEffect, useState } from "react";
 import { UnreadCountsProvider } from "./context/UnreadCountsContext";
 
@@ -63,6 +67,7 @@ const App = () => {
       <Router>
         <UnreadCountsProvider>
           <Routes>
+            <Route path="/switch" element={<UiSwitchLanding />} />
             <Route
               path="/login"
               element={
@@ -124,17 +129,35 @@ const App = () => {
                   </RoleRoute>
                 }
               />
-              <Route path="inventory" element={<Inventory />}>
+              <Route
+                path="inventory"
+                element={
+                  <RoleRoute allow={["admin", "seller"]} fallbackTo="/login">
+                    <Inventory />
+                  </RoleRoute>
+                }
+              >
                 <Route path="add" element={<InventoryModal />} />
                 <Route path=":id/edit" element={<InventoryModal />} />
               </Route>
-              <Route path="advertisements" element={<Advertisements />}>
+              <Route
+                path="advertisements"
+                element={
+                  <RoleRoute allow={["admin", "seller"]} fallbackTo="/login">
+                    <Advertisements />
+                  </RoleRoute>
+                }
+              >
                 <Route path="add" element={<ListingAdvModal />} />
                 <Route path=":id/edit" element={<ListingAdvModal />} />
               </Route>
               <Route
                 path="advertisements/:id"
-                element={<AdvertisementDetails />}
+                element={
+                  <RoleRoute allow={["admin", "seller"]} fallbackTo="/login">
+                    <AdvertisementDetails />
+                  </RoleRoute>
+                }
               />
               <Route
                 path="subscriptions/*"
@@ -148,14 +171,47 @@ const App = () => {
                   </RoleRoute>
                 }
               />
-              <Route path="messages" element={<Messages />} />
+              <Route
+                path="reports"
+                element={
+                  <RoleRoute allow={["admin"]} fallbackTo="/inventory">
+                    <Reports />
+                  </RoleRoute>
+                }
+              />
+              <Route
+                path="support-tickets"
+                element={
+                  <RoleRoute allow={["admin"]} fallbackTo="/inventory">
+                    <SupportTickets />
+                  </RoleRoute>
+                }
+              />
+              <Route
+                path="support-tickets/:ticketId"
+                element={
+                  <RoleRoute allow={["admin"]} fallbackTo="/inventory">
+                    <SupportTicketDetail />
+                  </RoleRoute>
+                }
+              />
+              <Route
+                path="messages"
+                element={
+                  <RoleRoute allow={["admin", "seller"]} fallbackTo="/login">
+                    <Messages />
+                  </RoleRoute>
+                }
+              />
               <Route
                 path="profile"
                 element={
-                  <Profile
-                    currentTheme={themeMode}
-                    setThemeMode={setThemeMode}
-                  />
+                  <RoleRoute allow={["admin", "seller"]} fallbackTo="/login">
+                    <Profile
+                      currentTheme={themeMode}
+                      setThemeMode={setThemeMode}
+                    />
+                  </RoleRoute>
                 }
               />
               <Route
@@ -174,7 +230,14 @@ const App = () => {
                   </RoleRoute>
                 }
               />
-              <Route path="notifications" element={<Notifications />} />
+              <Route
+                path="notifications"
+                element={
+                  <RoleRoute allow={["admin", "seller"]} fallbackTo="/login">
+                    <Notifications />
+                  </RoleRoute>
+                }
+              />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

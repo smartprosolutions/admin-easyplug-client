@@ -24,12 +24,15 @@ import {
 } from "../services/listingService";
 import { gradientPrimary } from "../theme/theme";
 import ConfirmDialog from "../components/modals/ConfirmDialog";
+import AdminPasswordDialog from "../components/modals/AdminPasswordDialog";
 import ToastAlert from "../components/alerts/ToastAlert";
 import { useState } from "react";
 import { useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useUserProfileQuery } from "../services/queries";
 import {
+  canManageRecord,
+  needsAdminPasswordForRecord,
   isOwnedByUser,
   isSellerRole,
   resolveUserId,
@@ -66,13 +69,16 @@ export default function Inventory() {
   });
   const { data: profileData } = useUserProfileQuery({ retry: false });
   const currentUserId = resolveUserId(profileData);
-  const isSeller = isSellerRole(resolveUserRole(profileData));
+  const userRole = resolveUserRole(profileData);
+  const isSeller = isSellerRole(userRole);
   const listingsQueryKey = isSeller
     ? ["sellerListings", currentUserId]
     : ["adminListings"];
+  const [adminPasswordError, setAdminPasswordError] = useState("");
 
   const deleteMut = useMutation({
-    mutationFn: (id) => deleteListing(id),
+    mutationFn: ({ id, adminPassword }) =>
+      deleteListing(id, { adminPassword }),
     onSuccess: async () => {
       try {
         await queryClient.invalidateQueries({ queryKey: listingsQueryKey });
@@ -81,13 +87,26 @@ export default function Inventory() {
       }
       setToast({ open: true, severity: "success", message: "Item deleted" });
       setDeleteTarget(null);
+      setAdminPasswordError("");
     },
     onError: (err) => {
+      const message =
+        err?.response?.data?.message || err.message || "Delete failed";
+      const code = err?.response?.data?.code;
+      if (
+        code === "ADMIN_PASSWORD_REQUIRED" ||
+        code === "ADMIN_PASSWORD_INVALID" ||
+        /admin password/i.test(message)
+      ) {
+        setAdminPasswordError(message);
+        return;
+      }
       setToast({
         open: true,
         severity: "error",
-        message: err?.response?.data?.message || err.message || "Delete failed",
+        message,
       });
+      setDeleteTarget(null);
     },
   });
 
@@ -336,7 +355,16 @@ export default function Inventory() {
           <Stack spacing={1.25}>
             {rows.map((item) => {
               const rowId = item.listingId ?? item.listing_id ?? item.id;
-              const canManageItem = isOwnedByUser(item, currentUserId);
+              const canManageItem = canManageRecord(
+                item,
+                currentUserId,
+                userRole,
+              );
+              const needsPassword = needsAdminPasswordForRecord(
+                item,
+                currentUserId,
+                userRole,
+              );
               return (
                 <Paper
                   key={rowId}
@@ -397,6 +425,7 @@ export default function Inventory() {
                               setDeleteTarget({
                                 id: rowId,
                                 title: item.title,
+                                needsPassword,
                               })
                             }
                           >
@@ -426,7 +455,16 @@ export default function Inventory() {
                     params.row.listingId ??
                     params.row.listing_id ??
                     params.row.id;
-                  const canManageItem = isOwnedByUser(params.row, currentUserId);
+                  const canManageItem = canManageRecord(
+                    params.row,
+                    currentUserId,
+                    userRole,
+                  );
+                  const needsPassword = needsAdminPasswordForRecord(
+                    params.row,
+                    currentUserId,
+                    userRole,
+                  );
 
                   return (
                     <Stack direction="row" spacing={1} alignItems="center">
@@ -473,6 +511,7 @@ export default function Inventory() {
                                 setDeleteTarget({
                                   id: rowId,
                                   title: params.row.title,
+                                  needsPassword,
                                 });
                               }}
                             >
@@ -490,7 +529,7 @@ export default function Inventory() {
         )}
       </Box>
       <ConfirmDialog
-        open={Boolean(deleteTarget)}
+        open={Boolean(deleteTarget) && !deleteTarget?.needsPassword}
         title="Delete item"
         description={
           deleteTarget?.title
@@ -501,7 +540,29 @@ export default function Inventory() {
         confirmColor="error"
         loading={deleteMut.isPending}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget?.id && deleteMut.mutate(deleteTarget.id)}
+        onConfirm={() =>
+          deleteTarget?.id && deleteMut.mutate({ id: deleteTarget.id })
+        }
+      />
+      <AdminPasswordDialog
+        open={Boolean(deleteTarget?.needsPassword)}
+        title="Delete item"
+        description={
+          deleteTarget?.title
+            ? `Enter your admin password to delete "${deleteTarget.title}".`
+            : "Enter your admin password to delete this item."
+        }
+        confirmText="Delete"
+        loading={deleteMut.isPending}
+        error={adminPasswordError}
+        onClose={() => {
+          setDeleteTarget(null);
+          setAdminPasswordError("");
+        }}
+        onConfirm={(adminPassword) =>
+          deleteTarget?.id &&
+          deleteMut.mutate({ id: deleteTarget.id, adminPassword })
+        }
       />
       <ToastAlert
         open={toast.open}

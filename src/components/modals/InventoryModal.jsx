@@ -24,8 +24,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import TextFieldWrapper from "../../components/forms/TextFieldWrapper";
 import SelectFieldWrapper from "../../components/forms/SelectFieldWrapper";
 import RichTextEditor from "../../components/forms/RichTextEditor";
-import { SERVICES, PRODUCTS, toOptions } from "../../constants/categories";
+import { SERVICES, PRODUCTS, toOptions, OTHER_CATEGORY, resolveCategoryFormValues, resolveCategoryForSubmit } from "../../constants/categories";
 import ToastAlert from "../../components/alerts/ToastAlert";
+import AdminPasswordDialog from "../../components/modals/AdminPasswordDialog";
 import DeleteIcon from "@mui/icons-material/Delete";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import { gradientPrimary } from "../../theme/theme";
@@ -38,9 +39,28 @@ import {
 import { addListingToAdvert } from "../../services/advertService";
 import { useUserProfileQuery } from "../../services/queries";
 import {
-  isOwnedByUser,
+  canManageRecord,
+  needsAdminPasswordForRecord,
   resolveUserId,
+  resolveUserRole,
 } from "../../utils/accessControl";
+import { resolveListingImagePath } from "../../utils/listingImages";
+
+const getImageRef = (img) => {
+  if (!img) return "";
+  if (typeof img === "string") return img;
+  if (img instanceof File) return "";
+  return img?.url || img?.path || img?.name || "";
+};
+
+const unique = (arr = []) => [...new Set(arr.filter(Boolean))];
+
+const getImageName = (raw) => {
+  if (typeof raw !== "string") return "image";
+  const clean = raw.split("?")[0];
+  const parts = clean.split("/");
+  return parts[parts.length - 1] || "image";
+};
 
 export default function InventoryModal({
   onClose,
@@ -69,6 +89,10 @@ export default function InventoryModal({
     retry: false,
   });
   const currentUserId = resolveUserId(profileData);
+  const userRole = resolveUserRole(profileData);
+  const [adminPasswordOpen, setAdminPasswordOpen] = React.useState(false);
+  const [adminPasswordError, setAdminPasswordError] = React.useState("");
+  const pendingPayloadRef = React.useRef(null);
 
   const { data: existing, isPending: isFetching } = useQuery({
     queryKey: ["inventoryItem", id],
@@ -118,10 +142,7 @@ export default function InventoryModal({
       onClose();
       return;
     }
-    const target = resolveRedirect();
-    if (target) {
-      navigate(target);
-    }
+    navigate(resolveRedirect() || "/inventory");
   };
 
   const createMut = useMutation({
@@ -141,15 +162,12 @@ export default function InventoryModal({
       } catch {
         // ignore
       }
-      // keep success toast and return to inventory
       setToast({
         open: true,
         severity: "success",
         message: advertId ? "Catalogue item added" : "Item created",
       });
-      if (resolveRedirect() || onClose) {
-        setTimeout(() => closeAfterSuccess(), 700);
-      }
+      setTimeout(() => closeAfterSuccess(), 700);
     },
     onError: (err) =>
       setToast({
@@ -167,17 +185,33 @@ export default function InventoryModal({
       } catch {
         // ignore
       }
+      setAdminPasswordOpen(false);
+      setAdminPasswordError("");
+      pendingPayloadRef.current = null;
       setToast({ open: true, severity: "success", message: "Item updated" });
-      if (resolveRedirect() || onClose) {
-        setTimeout(() => closeAfterSuccess(), 700);
-      }
+      setTimeout(() => closeAfterSuccess(), 700);
     },
-    onError: (err) =>
+    onError: (err) => {
+      const message =
+        err?.response?.data?.message || err.message || "Update failed";
+      const code = err?.response?.data?.code;
+      if (
+        code === "ADMIN_PASSWORD_REQUIRED" ||
+        code === "ADMIN_PASSWORD_INVALID" ||
+        /admin password/i.test(message)
+      ) {
+        setAdminPasswordError(message);
+        setAdminPasswordOpen(true);
+        submitLockRef.current = false;
+        setSaving(false);
+        return;
+      }
       setToast({
         open: true,
         severity: "error",
-        message: err?.response?.data?.message || err.message || "Update failed",
-      }),
+        message,
+      });
+    },
   });
 
   const itemData = isEdit
@@ -187,38 +221,106 @@ export default function InventoryModal({
       (existing?.subscription ? existing.subscription : existing) ||
       null
     : null;
-  const canEditItem = isOwnedByUser(itemData, currentUserId);
+  const canEditItem = canManageRecord(itemData, currentUserId, userRole);
+  const needsAdminPassword = needsAdminPasswordForRecord(
+    itemData,
+    currentUserId,
+    userRole,
+  );
+
+  const previewSellerEmail =
+    itemData?.seller?.email || itemData?.sellerEmail || "";
+
+  const imageResolveOptions = React.useMemo(
+    () => ({
+      sellerEmail: previewSellerEmail,
+      isAdvertisement: Boolean(itemData?.isAdvertisement),
+    }),
+    [previewSellerEmail, itemData?.isAdvertisement],
+  );
+
+  const toPreviewItem = React.useCallback(
+    (img, index) => {
+      if (img instanceof File) {
+        return {
+          key: `file-${index}-${img.name}-${img.size}`,
+          file: img,
+          raw: img,
+          url: URL.createObjectURL(img),
+          isObjectUrl: true,
+          name: img.name,
+        };
+      }
+
+      const raw = typeof img === "string" ? img : img?.url || img?.path || "";
+      const resolved = resolveListingImagePath(raw, imageResolveOptions);
+
+      return {
+        key: `existing-${index}-${raw}`,
+        file: null,
+        raw,
+        url: resolved || raw,
+        isObjectUrl: false,
+        name: (typeof img === "object" && img?.name) || getImageName(raw),
+      };
+    },
+    [imageResolveOptions],
+  );
 
   const resolvedType = itemData?.type || presetType || "PRODUCTS";
-  const resolvedCategory = itemData?.category || presetCategory || "";
+  const resolvedCategoryRaw = itemData?.category || presetCategory || "";
+  const resolvedCategory = resolveCategoryFormValues(
+    resolvedCategoryRaw,
+    resolvedType,
+  );
   const isTypeCategoryLocked = Boolean(lockTypeCategory);
+
+  const initialImages = React.useMemo(
+    () => (Array.isArray(itemData?.images) ? itemData.images : []),
+    [itemData?.images],
+  );
 
   const initialValues = {
     title: itemData?.title || "",
     description: itemData?.description || "",
     keyFeatures: itemData?.keyFeatures || [],
     price: itemData?.price || "",
-    category: resolvedCategory,
+    category: resolvedCategory.category,
+    customCategory: resolvedCategory.customCategory,
     type: resolvedType,
-    images: itemData?.images || [],
+    images: initialImages,
     status: itemData?.status || "active",
-    expires_at: itemData?.expires_at || "",
+    expires_at: itemData?.expires_at || itemData?.expiresAt || "",
   };
 
+  const originalImageRefs = React.useMemo(
+    () => unique(initialImages.map((img) => getImageRef(img))),
+    [initialImages],
+  );
+
   const submitRef = React.useRef(null);
-  const submittingRef = React.useRef(false);
+  const submitLockRef = React.useRef(false);
+  const [saving, setSaving] = React.useState(false);
   const [previews, setPreviews] = React.useState([]);
   const inputRef = React.useRef(null);
   const [imageHelper, setImageHelper] = React.useState("");
+  const isBusy =
+    saving || createMut.isPending || updateMut.isPending;
+
+  React.useEffect(() => {
+    const next = initialImages.map((img, idx) => toPreviewItem(img, idx));
+    setPreviews(next);
+  }, [initialImages, toPreviewItem]);
 
   React.useEffect(() => {
     return () => {
-      // revoke created object URLs on unmount
       previews.forEach((p) => {
-        try {
-          URL.revokeObjectURL(p.url);
-        } catch {
-          /* ignore */
+        if (p?.isObjectUrl && p?.url) {
+          try {
+            URL.revokeObjectURL(p.url);
+          } catch {
+            /* ignore */
+          }
         }
       });
     };
@@ -276,7 +378,7 @@ export default function InventoryModal({
         paddingRight: "env(safe-area-inset-right)",
       }}
     >
-      {(createMut.isPending || updateMut.isPending) && (
+      {isBusy && (
         <Box
           sx={{
             position: "absolute",
@@ -305,7 +407,7 @@ export default function InventoryModal({
           sx={{
             background: (theme) =>
               `linear-gradient(120deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
-            color: "common.white",
+            color: "#fff",
             p: 3,
           }}
         >
@@ -313,16 +415,33 @@ export default function InventoryModal({
             <Avatar
               sx={{
                 background: alpha("#fff", 0.2),
-                color: "common.white",
+                color: "#fff",
               }}
             >
               <CloudUploadIcon />
             </Avatar>
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="h5" fontWeight={700}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography
+                variant="h5"
+                fontWeight={700}
+                sx={{
+                  color: "#fff !important",
+                  WebkitTextFillColor: "#fff",
+                  textShadow: "0 1px 2px rgba(0,0,0,0.35)",
+                }}
+              >
                 {isEdit ? "Edit Item" : "Add Item"}
               </Typography>
-              <Typography variant="body2" sx={{ opacity: 0.9, mt: 0.5 }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  mt: 0.5,
+                  color: "#fff !important",
+                  WebkitTextFillColor: "#fff",
+                  opacity: 0.95,
+                  textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+                }}
+              >
                 {isEdit
                   ? "Update inventory listing details"
                   : "Create a new inventory listing"}
@@ -330,9 +449,9 @@ export default function InventoryModal({
             </Box>
             <IconButton
               onClick={handleClose}
-              disabled={createMut.isPending || updateMut.isPending}
+              disabled={isBusy}
               sx={{
-                color: "common.white",
+                color: "#fff",
                 background: alpha("#fff", 0.1),
                 "&:hover": {
                   background: alpha("#fff", 0.2),
@@ -355,7 +474,7 @@ export default function InventoryModal({
             minHeight: 0,
           }}
         >
-          {(createMut.isPending || updateMut.isPending) && (
+          {isBusy && (
             <Box sx={{ position: "absolute", top: 0, left: 0, right: 0 }}>
               <Box sx={{ px: 0.5, py: 0.5 }}>
                 <Typography
@@ -387,6 +506,17 @@ export default function InventoryModal({
               initialValues={initialValues}
               validationSchema={Yup.object({
                 title: Yup.string().required("Required"),
+                category: Yup.string().required("Required"),
+                customCategory: Yup.string().when("category", {
+                  is: OTHER_CATEGORY,
+                  then: (schema) =>
+                    schema
+                      .trim()
+                      .required("Please specify the product category")
+                      .min(2, "Category must be at least 2 characters")
+                      .max(80, "Category must be at most 80 characters"),
+                  otherwise: (schema) => schema.notRequired(),
+                }),
                 price: Yup.number()
                   .typeError("Must be a number")
                   .min(0, "Must be >= 0")
@@ -395,6 +525,9 @@ export default function InventoryModal({
                 description: Yup.string(),
               })}
               onSubmit={async (values, { setSubmitting }) => {
+                if (submitLockRef.current) return;
+                submitLockRef.current = true;
+                setSaving(true);
                 try {
                   const normalizedKeyFeatures = Array.isArray(
                     values.keyFeatures,
@@ -404,23 +537,55 @@ export default function InventoryModal({
                         .split(",")
                         .map((item) => item.trim())
                         .filter(Boolean);
+                  const { customCategory, ...rest } = values;
+                  const currentExistingRefs = unique(
+                    (values.images || [])
+                      .filter((img) => !(img instanceof File))
+                      .map((img) => getImageRef(img)),
+                  );
+                  const removedImages = originalImageRefs.filter(
+                    (img) => !currentExistingRefs.includes(img),
+                  );
                   const toSend = {
-                    ...values,
+                    ...rest,
                     keyFeatures: normalizedKeyFeatures,
+                    category: resolveCategoryForSubmit(
+                      values.category,
+                      customCategory,
+                    ),
                   };
+
+                  if (isEdit) {
+                    toSend.existingImages = currentExistingRefs;
+                    toSend.retainedImages = currentExistingRefs;
+                    toSend.removedImages = removedImages;
+                  }
 
                   // convert values to FormData so files are sent correctly
                   const payload = buildFormData(toSend);
                   setUploadProgress(0);
-                  if (isEdit) await updateMut.mutateAsync(payload);
-                  else await createMut.mutateAsync(payload);
+                  if (isEdit) {
+                    if (needsAdminPassword) {
+                      pendingPayloadRef.current = payload;
+                      setAdminPasswordError("");
+                      setAdminPasswordOpen(true);
+                      submitLockRef.current = false;
+                      setSaving(false);
+                      return;
+                    }
+                    await updateMut.mutateAsync(payload);
+                  } else {
+                    await createMut.mutateAsync(payload);
+                  }
+                } catch {
+                  submitLockRef.current = false;
+                  setSaving(false);
                 } finally {
                   setSubmitting(false);
                 }
               }}
             >
               {({
-                isSubmitting,
                 submitForm,
                 values,
                 setFieldValue,
@@ -442,7 +607,6 @@ export default function InventoryModal({
                   setKeyFeatureInput("");
                 };
                 submitRef.current = submitForm;
-                submittingRef.current = isSubmitting;
                 return (
                   <Form>
                     <Stack spacing={2} sx={{ pt: 1 }}>
@@ -465,6 +629,15 @@ export default function InventoryModal({
                         }
                         disabled={isTypeCategoryLocked}
                       />
+                      {values.category === OTHER_CATEGORY && (
+                        <TextFieldWrapper
+                          name="customCategory"
+                          label="Specify category"
+                          placeholder="e.g. Handmade crafts"
+                          helperText="Enter the product or service category"
+                          disabled={isTypeCategoryLocked}
+                        />
+                      )}
                       <TextFieldWrapper name="title" label="Title" />
                       <RichTextEditor
                         label="Description"
@@ -563,27 +736,41 @@ export default function InventoryModal({
                             style={{ display: "none" }}
                             onChange={(e) => {
                               const picked = Array.from(e.target.files || []);
-                              const existingFiles =
-                                (values && values.images) || [];
-                              const combined = existingFiles.concat(picked);
+                              const pickedPreviewItems = picked.map(
+                                (file, idx) =>
+                                  toPreviewItem(file, idx + previews.length),
+                              );
+                              const combined =
+                                previews.concat(pickedPreviewItems);
                               const MAX = 6;
                               const limited = combined.slice(0, MAX);
+
                               if (combined.length > MAX) {
-                                setImageHelper(`Maximum ${MAX} images allowed`);
+                                setImageHelper(
+                                  `Maximum ${MAX} images allowed`,
+                                );
+                              } else {
+                                setImageHelper("");
                               }
-                              setFieldValue("images", limited);
-                              previews.forEach((p) => {
-                                try {
-                                  URL.revokeObjectURL(p.url);
-                                } catch {
-                                  /* ignore */
-                                }
-                              });
-                              const next = limited.map((f) => ({
-                                file: f,
-                                url: URL.createObjectURL(f),
-                              }));
-                              setPreviews(next);
+
+                              setPreviews(limited);
+                              setFieldValue(
+                                "images",
+                                limited.map((item) => item.file || item.raw),
+                              );
+
+                              if (combined.length > MAX) {
+                                combined.slice(MAX).forEach((item) => {
+                                  if (item?.isObjectUrl && item?.url) {
+                                    try {
+                                      URL.revokeObjectURL(item.url);
+                                    } catch {
+                                      /* ignore */
+                                    }
+                                  }
+                                });
+                              }
+
                               if (inputRef.current) inputRef.current.value = "";
                             }}
                           />
@@ -596,12 +783,7 @@ export default function InventoryModal({
                             onClick={() =>
                               inputRef.current && inputRef.current.click()
                             }
-                            disabled={
-                              ((values &&
-                                values.images &&
-                                values.images.length) ||
-                                previews.length) >= 6
-                            }
+                            disabled={previews.length >= 6}
                           >
                             Upload images
                           </Button>
@@ -609,7 +791,7 @@ export default function InventoryModal({
                           {previews && previews.length > 0 && (
                             <Grid container spacing={1} sx={{ mt: 1 }}>
                               {previews.map((p, idx) => (
-                                <Grid item key={idx}>
+                                <Grid item key={p.key || idx}>
                                   <Box component="div">
                                     <Box
                                       component="div"
@@ -637,17 +819,25 @@ export default function InventoryModal({
                                           const remaining = previews.filter(
                                             (_, i) => i !== idx,
                                           );
+                                          const removed = previews[idx];
+                                          if (
+                                            removed?.isObjectUrl &&
+                                            removed?.url
+                                          ) {
+                                            try {
+                                              URL.revokeObjectURL(removed.url);
+                                            } catch {
+                                              /* ignore */
+                                            }
+                                          }
                                           setPreviews(remaining);
                                           setFieldValue(
                                             "images",
-                                            remaining.map((r) => r.file),
+                                            remaining.map(
+                                              (item) => item.file || item.raw,
+                                            ),
                                           );
                                           setImageHelper("");
-                                          try {
-                                            URL.revokeObjectURL(p.url);
-                                          } catch {
-                                            /* ignore */
-                                          }
                                         }}
                                         sx={{
                                           position: "absolute",
@@ -671,7 +861,7 @@ export default function InventoryModal({
                                         whiteSpace: "nowrap",
                                       }}
                                     >
-                                      {p.file.name}
+                                      {p.name || p.file?.name || "image"}
                                     </Typography>
                                   </Box>
                                 </Grid>
@@ -713,17 +903,16 @@ export default function InventoryModal({
             flexWrap: "wrap",
           }}
         >
-          <Button onClick={handleClose} color="inherit">
+          <Button onClick={handleClose} color="inherit" disabled={isBusy}>
             Cancel
           </Button>
           <Button
             variant="contained"
-            onClick={() => submitRef.current && submitRef.current()}
-            disabled={
-              createMut.isPending ||
-              updateMut.isPending ||
-              submittingRef.current
-            }
+            onClick={() => {
+              if (isBusy || !submitRef.current) return;
+              submitRef.current();
+            }}
+            disabled={isBusy}
             sx={{
               color: "#fff",
               background: gradientPrimary,
@@ -733,7 +922,7 @@ export default function InventoryModal({
               },
             }}
           >
-            {createMut.isPending || updateMut.isPending
+            {isBusy
               ? `${isEdit ? "Updating" : "Creating"}... ${uploadProgress || 0}%`
               : isEdit
                 ? "Update"
@@ -746,6 +935,34 @@ export default function InventoryModal({
           severity={toast.severity}
           message={toast.message}
           onClose={() => setToast((s) => ({ ...s, open: false }))}
+        />
+        <AdminPasswordDialog
+          open={adminPasswordOpen}
+          title="Save item changes"
+          description="Enter your admin password to edit this inventory item."
+          confirmText="Save changes"
+          loading={updateMut.isPending}
+          error={adminPasswordError}
+          onClose={() => {
+            setAdminPasswordOpen(false);
+            setAdminPasswordError("");
+            pendingPayloadRef.current = null;
+            submitLockRef.current = false;
+            setSaving(false);
+          }}
+          onConfirm={async (adminPassword) => {
+            const payload = pendingPayloadRef.current;
+            if (!payload) return;
+            payload.append("adminPassword", adminPassword);
+            submitLockRef.current = true;
+            setSaving(true);
+            try {
+              await updateMut.mutateAsync(payload);
+            } catch {
+              submitLockRef.current = false;
+              setSaving(false);
+            }
+          }}
         />
       </Box>
     </Dialog>
