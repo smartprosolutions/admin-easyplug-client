@@ -71,6 +71,20 @@ const toDateInputValue = (value) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 
+const startOfLocalDay = (value = new Date()) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const isStartDayInPast = (value) => {
+  const startDay = startOfLocalDay(value);
+  const today = startOfLocalDay(new Date());
+  if (!startDay || !today) return false;
+  return startDay.getTime() < today.getTime();
+};
+
 const appendAdvertToCachedList = (cached, advert) => {
   if (!advert) return cached;
 
@@ -586,16 +600,59 @@ export default function ListingAdvModal() {
                       }
                     },
                   ),
-                startsAt: Yup.string().nullable(),
+                startsAt: Yup.string()
+                  .nullable()
+                  .test(
+                    "not-in-past",
+                    "Start date cannot be in the past",
+                    function notInPast(value) {
+                      if (!value) return true;
+                      if (!isStartDayInPast(value)) return true;
+                      // Keep an existing campaign's original start day when editing
+                      const originalStart = toDateInputValue(
+                        itemData?.startsAt || itemData?.starts_at,
+                      );
+                      return (
+                        isEdit &&
+                        Boolean(originalStart) &&
+                        toDateInputValue(value) === originalStart
+                      );
+                    },
+                  )
+                  .test(
+                    "not-after-end",
+                    "Start date cannot be greater than end date",
+                    function notAfterEnd(value) {
+                      const { expiresAt } = this.parent;
+                      if (!value || !expiresAt) return true;
+                      const start = new Date(value);
+                      const end = new Date(expiresAt);
+                      if (
+                        Number.isNaN(start.getTime()) ||
+                        Number.isNaN(end.getTime())
+                      ) {
+                        return true;
+                      }
+                      return start.getTime() <= end.getTime();
+                    },
+                  ),
                 expiresAt: Yup.string()
                   .nullable()
                   .test(
                     "after-start",
-                    "End date must be after start date",
+                    "End date cannot be earlier than start date",
                     function afterStart(value) {
                       const { startsAt } = this.parent;
                       if (!value || !startsAt) return true;
-                      return new Date(value) > new Date(startsAt);
+                      const start = new Date(startsAt);
+                      const end = new Date(value);
+                      if (
+                        Number.isNaN(start.getTime()) ||
+                        Number.isNaN(end.getTime())
+                      ) {
+                        return true;
+                      }
+                      return end.getTime() >= start.getTime();
                     },
                   ),
                 featuredListingIds: Yup.array().of(Yup.string()),
@@ -662,6 +719,7 @@ export default function ListingAdvModal() {
                 errors,
                 touched,
                 setFieldTouched,
+                validateField,
               }) => {
                 submitRef.current = submitForm;
                 const selectedFeatured = inventoryOptions.filter((row) =>
@@ -704,12 +762,33 @@ export default function ListingAdvModal() {
                           label="Start date"
                           type="datetime-local"
                           InputLabelProps={{ shrink: true }}
+                          inputProps={{
+                            min:
+                              isEdit &&
+                              isStartDayInPast(initialValues.startsAt)
+                                ? undefined
+                                : toDateInputValue(startOfLocalDay()),
+                            max: values.expiresAt || undefined,
+                          }}
+                          onChange={() => {
+                            window.setTimeout(() => {
+                              validateField("expiresAt");
+                            }, 0);
+                          }}
                         />
                         <TextFieldWrapper
                           name="expiresAt"
                           label="End date"
                           type="datetime-local"
                           InputLabelProps={{ shrink: true }}
+                          inputProps={{
+                            min: values.startsAt || undefined,
+                          }}
+                          onChange={() => {
+                            window.setTimeout(() => {
+                              validateField("startsAt");
+                            }, 0);
+                          }}
                         />
                       </Stack>
                       <TextFieldWrapper

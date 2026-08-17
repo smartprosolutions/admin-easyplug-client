@@ -65,8 +65,7 @@ const App = () => {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Router>
-        <UnreadCountsProvider>
-          <Routes>
+        <Routes>
             <Route path="/switch" element={<UiSwitchLanding />} />
             <Route
               path="/login"
@@ -112,11 +111,13 @@ const App = () => {
               path="/"
               element={
                 <PrivateRoute>
-                  <Navigation
-                    currentTheme={themeMode}
-                    setThemeMode={setThemeMode}
-                    theme={theme}
-                  />
+                  <UnreadCountsProvider>
+                    <Navigation
+                      currentTheme={themeMode}
+                      setThemeMode={setThemeMode}
+                      theme={theme}
+                    />
+                  </UnreadCountsProvider>
                 </PrivateRoute>
               }
             >
@@ -241,7 +242,6 @@ const App = () => {
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </UnreadCountsProvider>
       </Router>
     </ThemeProvider>
   );

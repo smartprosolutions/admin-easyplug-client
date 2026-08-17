@@ -75,3 +75,11 @@ export const canManageRecord = (record, userId, roleValue) => {
 
 export const needsAdminPasswordForRecord = (record, userId, roleValue) =>
   isAdminRole(roleValue) && !isOwnedByUser(record, userId);
+
+export const hasAccessToken = () => {
+  try {
+    return Boolean(localStorage.getItem("access_token"));
+  } catch {
+    return false;
+  }
+};

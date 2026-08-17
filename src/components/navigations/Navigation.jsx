@@ -710,9 +710,6 @@ export default function Navigation({ currentTheme, setThemeMode }) {
               </Stack>
 
               <Stack direction="row" spacing={0.5} alignItems="center">
-                <Box sx={{ minWidth: 148, mr: 0.5 }}>
-                  <RoleModeSwitch compact />
-                </Box>
                 <Tooltip title="Set Theme">
                   <IconButton onClick={() => setThemeMode(!currentTheme)} size="medium">
                     {currentTheme ? (

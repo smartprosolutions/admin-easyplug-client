@@ -2,10 +2,61 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="apple-touch-icon" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>EasyPlug Admin</title>
+    <meta
+      name="description"
+      content="EasyPlug Admin — Powering Easyplug Commerce. Sign in to continue building your African prosperity."
+    />
+    <meta name="theme-color" content="#667eea" />
+
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="EasyPlug Admin" />
+    <meta property="og:title" content="EasyPlug Admin" />
+    <meta
+      property="og:description"
+      content="Powering Easyplug Commerce. Sign in to continue building your African prosperity."
+    />
+    <meta property="og:url" content="%VITE_ADMIN_URL%/" />
+    <meta property="og:image" content="%VITE_ADMIN_URL%/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="EasyPlug Hyperlocal Marketplace" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="EasyPlug Admin" />
+    <meta
+      name="twitter:description"
+      content="Powering Easyplug Commerce. Sign in to continue building your African prosperity."
+    />
+    <meta name="twitter:image" content="%VITE_ADMIN_URL%/og-image.png" />
+    <meta name="twitter:image:alt" content="EasyPlug Hyperlocal Marketplace" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "name": "EasyPlug",
+            "url": "%VITE_ADMIN_URL%/",
+            "logo": "%VITE_ADMIN_URL%/logo.png"
+          },
+          {
+            "@type": "WebApplication",
+            "name": "EasyPlug Admin",
+            "url": "%VITE_ADMIN_URL%/",
+            "image": "%VITE_ADMIN_URL%/og-image.png",
+            "description": "EasyPlug Admin — Powering Easyplug Commerce."
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
