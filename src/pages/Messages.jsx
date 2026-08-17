@@ -48,8 +48,6 @@ import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import VideoLibraryIcon from "@mui/icons-material/VideoLibrary";
 import DescriptionIcon from "@mui/icons-material/Description";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
-import ContactsIcon from "@mui/icons-material/Contacts";
-import PhoneIcon from "@mui/icons-material/Phone";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import PersonIcon from "@mui/icons-material/Person";
 import CloseIcon from "@mui/icons-material/Close";
@@ -135,6 +133,28 @@ const formatMessageTime = (value) => {
   });
 };
 
+const toTimestamp = (value) => {
+  if (value == null || value === "") return 0;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const promoteConversation = (list, chatId, patch = {}) => {
+  const id = String(chatId ?? "");
+  if (!id) return list;
+  let promoted = null;
+  const rest = [];
+  for (const conv of list) {
+    if (String(conv.id) === id) {
+      promoted = { ...conv, ...patch };
+    } else {
+      rest.push(conv);
+    }
+  }
+  return promoted ? [promoted, ...rest] : list;
+};
+
 const resolveAssetUrl = (raw) => {
   if (!raw || typeof raw !== "string") return "";
   if (/^https?:\/\//i.test(raw)) return raw;
@@ -199,7 +219,7 @@ const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
     payload;
   const rows = Array.isArray(source) ? source : [];
 
-  return rows.map((item, idx) => {
+  const mapped = rows.map((item, idx) => {
     // Determine the "other" participant based on who is logged in
     const buyerId = pickFirst(
       item?.buyerId,
@@ -354,11 +374,17 @@ const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
       lastMessageSenderId,
       lastMessageRead,
       lastMessageIsMine,
+      lastMessageAt: pickFirst(
+        item?.lastMessageAt,
+        lastMessageObj?.createdAt,
+        item?.updatedAt,
+        item?.createdAt,
+      ),
       time: formatMessageTime(
         pickFirst(
-          item?.updatedAt,
           item?.lastMessageAt,
           lastMessageObj?.createdAt,
+          item?.updatedAt,
           item?.createdAt,
         ),
       ),
@@ -393,6 +419,10 @@ const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
       },
     };
   });
+
+  return mapped.sort(
+    (a, b) => toTimestamp(b.lastMessageAt) - toTimestamp(a.lastMessageAt),
+  );
 };
 
 const normalizeMessagesResponse = (
@@ -403,7 +433,7 @@ const normalizeMessagesResponse = (
     payload?.messages || payload?.items || payload?.data || payload;
   const rows = Array.isArray(source) ? source : [];
 
-  return rows.map((item, idx) => {
+  const mapped = rows.map((item, idx) => {
     const senderIdentifier = pickFirst(
       item?.senderId,
       item?.sender?.userId,
@@ -595,6 +625,7 @@ const normalizeMessagesResponse = (
       text:
         pickFirst(item?.text, item?.message, item?.content, item?.body, "") ||
         "(empty)",
+      createdAt: pickFirst(item?.createdAt, item?.timestamp, item?.time),
       time: formatMessageTime(
         pickFirst(item?.createdAt, item?.timestamp, item?.time),
       ),
@@ -606,6 +637,10 @@ const normalizeMessagesResponse = (
       replyTo,
     };
   });
+
+  return mapped.sort(
+    (a, b) => toTimestamp(b.createdAt) - toTimestamp(a.createdAt),
+  );
 };
 
 const hydrateRepliesFromPrevious = (nextMessages, previousMessages = []) => {
@@ -690,7 +725,6 @@ export default function Messages() {
   const [clearChatDialogOpen, setClearChatDialogOpen] = useState(false);
   const [deleteChatDialogOpen, setDeleteChatDialogOpen] = useState(false);
   const [locationDialogOpen, setLocationDialogOpen] = useState(false);
-  const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const [attachmentComposeOpen, setAttachmentComposeOpen] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState(null);
   const [attachmentCaption, setAttachmentCaption] = useState("");
@@ -745,13 +779,16 @@ export default function Messages() {
   }, [pendingAttachmentPreviewUrl]);
 
   const scrollToLatestMessage = React.useCallback((behavior = "smooth") => {
-    if (messageEndRef.current) {
-      messageEndRef.current.scrollIntoView({ behavior, block: "end" });
+    if (messagesContainerRef.current) {
+      if (behavior === "auto") {
+        messagesContainerRef.current.scrollTop = 0;
+        return;
+      }
+      messagesContainerRef.current.scrollTo({ top: 0, behavior });
       return;
     }
-    if (messagesContainerRef.current) {
-      messagesContainerRef.current.scrollTop =
-        messagesContainerRef.current.scrollHeight;
+    if (messageEndRef.current) {
+      messageEndRef.current.scrollIntoView({ behavior, block: "start" });
     }
   }, []);
 
@@ -925,28 +962,28 @@ export default function Messages() {
         !isMine &&
         String(incomingChatId) === String(selectedConversationId)
       ) {
-        setMessages((prev) => [...prev, normalized]);
+        setMessages((prev) => [normalized, ...prev]);
         markChatAsRead(incomingChatId);
       }
 
-      // Update conversation list in-place (last message preview + unread badge)
-      setConversationsList((prev) =>
-        prev.map((conv) =>
-          String(conv.id) === String(incomingChatId)
-            ? {
-                ...conv,
-                lastMessage: normalized.text,
-                lastMessageIsMine: isMine,
-                lastMessageRead: false,
-                time: formatMessageTime(incoming?.createdAt),
-                unread:
-                  !isMine && String(conv.id) !== String(selectedConversationId)
-                    ? (conv.unread || 0) + 1
-                    : conv.unread,
-              }
-            : conv,
-        ),
-      );
+      const incomingAt = incoming?.createdAt || new Date().toISOString();
+      setConversationsList((prev) => {
+        const existing = prev.find(
+          (conv) => String(conv.id) === String(incomingChatId),
+        );
+        const unread =
+          !isMine && String(incomingChatId) !== String(selectedConversationId)
+            ? (existing?.unread || 0) + 1
+            : existing?.unread;
+        return promoteConversation(prev, incomingChatId, {
+          lastMessage: normalized.text,
+          lastMessageIsMine: isMine,
+          lastMessageRead: false,
+          lastMessageAt: incomingAt,
+          time: formatMessageTime(incomingAt),
+          unread,
+        });
+      });
     };
 
     socket.on("new_message", handleNewMessage);
@@ -1047,7 +1084,6 @@ export default function Messages() {
       icon: LocationOnIcon,
       color: "#4caf50",
     },
-    { id: "contact", label: "Contact", icon: ContactsIcon, color: "#00bcd4" },
   ];
 
   const filterTags = [
@@ -1096,15 +1132,26 @@ export default function Messages() {
       : null;
 
     // Optimistically add message with reply data
+    const sentAt = new Date().toISOString();
     const optimisticMessage = {
       id: `${Date.now()}-${Math.random()}`,
       senderId: "me",
       text,
+      createdAt: sentAt,
       time: "Just now",
       read: false,
       ...(replyData ? { replyTo: replyData } : {}),
     };
-    setMessages((prev) => [...prev, optimisticMessage]);
+    setMessages((prev) => [optimisticMessage, ...prev]);
+    setConversationsList((prev) =>
+      promoteConversation(prev, selectedConversationId, {
+        lastMessage: text,
+        lastMessageIsMine: true,
+        lastMessageRead: false,
+        lastMessageAt: sentAt,
+        time: formatMessageTime(sentAt),
+      }),
+    );
     setMessageInput("");
     setReplyTo(null);
 
@@ -1233,9 +1280,6 @@ export default function Messages() {
       case "location":
         handleGetLocation();
         break;
-      case "contact":
-        setContactDialogOpen(true);
-        break;
       default:
         break;
     }
@@ -1322,10 +1366,12 @@ export default function Messages() {
         });
         const fileUrl = response?.fileUrl || "";
         const localPreviewUrl = URL.createObjectURL(file);
+        const sentAt = new Date().toISOString();
         const newMessage = {
           id: `${Date.now()}-${Math.random()}`,
           senderId: "me",
           text: attachmentMessage,
+          createdAt: sentAt,
           time: "Just now",
           read: false,
           attachment: {
@@ -1336,7 +1382,16 @@ export default function Messages() {
             url: resolveAssetUrl(fileUrl) || localPreviewUrl,
           },
         };
-        setMessages((prev) => [...prev, newMessage]);
+        setMessages((prev) => [newMessage, ...prev]);
+        setConversationsList((prev) =>
+          promoteConversation(prev, conversationId, {
+            lastMessage: attachmentMessage,
+            lastMessageIsMine: true,
+            lastMessageRead: false,
+            lastMessageAt: sentAt,
+            time: formatMessageTime(sentAt),
+          }),
+        );
         showSnackbar(`${type} attached successfully`);
         setMessageInput("");
         resetAttachmentComposer();
@@ -1454,15 +1509,26 @@ export default function Messages() {
         locationLng: userLocation.lng,
         locationName: selectedLocationName || "",
       });
+      const sentAt = new Date().toISOString();
       const newMessage = {
         id: `${Date.now()}-${Math.random()}`,
         senderId: "me",
         text: locationText,
+        createdAt: sentAt,
         time: "Just now",
         read: false,
         location: userLocation,
       };
-      setMessages((prev) => [...prev, newMessage]);
+      setMessages((prev) => [newMessage, ...prev]);
+      setConversationsList((prev) =>
+        promoteConversation(prev, conversationId, {
+          lastMessage: locationText,
+          lastMessageIsMine: true,
+          lastMessageRead: false,
+          lastMessageAt: sentAt,
+          time: formatMessageTime(sentAt),
+        }),
+      );
       await queryClient.invalidateQueries({
         queryKey: ["messages", "conversation", selectedConversationId],
       });
@@ -1529,20 +1595,6 @@ export default function Messages() {
     setLocationSearch("");
   };
 
-  const handleSendContact = (contact) => {
-    const newMessage = {
-      id: `${Date.now()}-${Math.random()}`,
-      senderId: "me",
-      text: `👤 Contact: ${contact.name}`,
-      time: "Just now",
-      read: false,
-      contact,
-    };
-    setMessages((prev) => [...prev, newMessage]);
-    setContactDialogOpen(false);
-    showSnackbar("Contact sent successfully");
-  };
-
   const filteredConversations = conversationsList.filter((conv) => {
     // Search filter
     const matchesSearch =
@@ -1569,7 +1621,9 @@ export default function Messages() {
     }
 
     return matchesSearch && matchesFilter;
-  });
+  }).sort(
+    (a, b) => toTimestamp(b.lastMessageAt) - toTimestamp(a.lastMessageAt),
+  );
 
   const selectedListingPath = useMemo(() => {
     const listingId = selectedConversation?.listing?.id;
@@ -2143,36 +2197,6 @@ export default function Messages() {
                 <SearchIcon sx={{ fontSize: 18 }} />
               </IconButton>
               <IconButton
-                sx={{
-                  color: "primary.main",
-                  bgcolor: alpha(theme.palette.primary.main, 0.1),
-                  width: 34,
-                  height: 34,
-                  transition: "all 0.2s ease",
-                  "&:hover": {
-                    bgcolor: alpha(theme.palette.primary.main, 0.2),
-                    transform: "scale(1.05)",
-                  },
-                }}
-              >
-                <PhoneIcon sx={{ fontSize: 18 }} />
-              </IconButton>
-              <IconButton
-                sx={{
-                  color: "primary.main",
-                  bgcolor: alpha(theme.palette.primary.main, 0.1),
-                  width: 34,
-                  height: 34,
-                  transition: "all 0.2s ease",
-                  "&:hover": {
-                    bgcolor: alpha(theme.palette.primary.main, 0.2),
-                    transform: "scale(1.05)",
-                  },
-                }}
-              >
-                <VideocamIcon sx={{ fontSize: 18 }} />
-              </IconButton>
-              <IconButton
                 onClick={(e) => setChatMenuAnchor(e.currentTarget)}
                 sx={{
                   color: "#666",
@@ -2281,7 +2305,9 @@ export default function Messages() {
                 No messages yet.
               </Typography>
             ) : (
-              messages.map((message) => (
+              <>
+              <Box ref={messageEndRef} sx={{ height: 1 }} />
+              {messages.map((message) => (
                 <Box
                   key={message.id}
                   id={`msg-${message.id}`}
@@ -2926,9 +2952,9 @@ export default function Messages() {
                     </IconButton>
                   )}
                 </Box>
-              ))
+              ))}
+              </>
             )}
-            <Box ref={messageEndRef} sx={{ height: 1 }} />
           </Box>
 
           {/* Message Input */}
