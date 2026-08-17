@@ -28,6 +28,7 @@ import {
   createListing as createItem,
   updateListing as updateItem,
   getListing as getItem,
+  invalidateListingQueries,
 } from "../services/listingService";
 import { resolveListingImagePath } from "../utils/listingImages";
 
@@ -207,7 +208,7 @@ export default function InventoryForm() {
     mutationFn: (vals) => createItem(vals, (pct) => setUploadProgress(pct)),
     onSuccess: async () => {
       try {
-        await queryClient.invalidateQueries({ queryKey: ["inventory"] });
+        await invalidateListingQueries(queryClient);
       } catch {
         // ignore
       }
@@ -230,7 +231,7 @@ export default function InventoryForm() {
     mutationFn: (vals) => updateItem(id, vals, (pct) => setUploadProgress(pct)),
     onSuccess: async () => {
       try {
-        await queryClient.invalidateQueries({ queryKey: ["inventory"] });
+        await invalidateListingQueries(queryClient);
       } catch {
         // ignore
       }

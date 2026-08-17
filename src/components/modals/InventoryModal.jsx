@@ -35,6 +35,7 @@ import {
   createListing as createItem,
   updateListing as updateItem,
   getListing as getItem,
+  invalidateListingQueries,
 } from "../../services/listingService";
 import { addListingToAdvert } from "../../services/advertService";
 import { useUserProfileQuery } from "../../services/queries";
@@ -152,7 +153,7 @@ export default function InventoryModal({
         : createItem(vals, (pct) => setUploadProgress(pct)),
     onSuccess: async () => {
       try {
-        await queryClient.invalidateQueries({ queryKey: ["inventory"] });
+        await invalidateListingQueries(queryClient);
         if (advertId) {
           await queryClient.invalidateQueries({
             queryKey: ["advert", advertId],
@@ -181,7 +182,7 @@ export default function InventoryModal({
     mutationFn: (vals) => updateItem(id, vals, (pct) => setUploadProgress(pct)),
     onSuccess: async () => {
       try {
-        await queryClient.invalidateQueries({ queryKey: ["inventory"] });
+        await invalidateListingQueries(queryClient);
       } catch {
         // ignore
       }

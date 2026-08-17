@@ -19,8 +19,10 @@ import { useNavigate, Outlet } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   deleteListing,
+  extractListings,
   getAdminListings,
-  getListings,
+  getMyListings,
+  resolveListingId,
 } from "../services/listingService";
 import { gradientPrimary } from "../theme/theme";
 import ConfirmDialog from "../components/modals/ConfirmDialog";
@@ -33,7 +35,6 @@ import { useUserProfileQuery } from "../services/queries";
 import {
   canManageRecord,
   needsAdminPasswordForRecord,
-  isOwnedByUser,
   isSellerRole,
   resolveUserId,
   resolveUserRole,
@@ -67,7 +68,9 @@ export default function Inventory() {
     severity: "info",
     message: "",
   });
-  const { data: profileData } = useUserProfileQuery({ retry: false });
+  const { data: profileData, isLoading: isProfileLoading } = useUserProfileQuery({
+    retry: false,
+  });
   const currentUserId = resolveUserId(profileData);
   const userRole = resolveUserRole(profileData);
   const isSeller = isSellerRole(userRole);
@@ -112,25 +115,15 @@ export default function Inventory() {
 
   const { data: apiData, isPending } = useQuery({
     queryKey: listingsQueryKey,
-    queryFn: () => (isSeller ? getListings() : getAdminListings()),
+    queryFn: () => (isSeller ? getMyListings() : getAdminListings()),
+    enabled: !isProfileLoading && (!isSeller || Boolean(currentUserId)),
     retry: false,
+    refetchOnMount: "always",
   });
 
-  // The API may return { listings: [...] } or an array directly. Normalize.
-  const listings =
-    apiData && Array.isArray(apiData)
-      ? apiData
-      : apiData && Array.isArray(apiData?.listings)
-        ? apiData.listings
-        : apiData?.data || [];
-
-  // Use camelCase API fields when available. Ensure DataGrid `id` is set to listingId.
-  const scopedListings = isSeller
-    ? (listings || []).filter((item) => isOwnedByUser(item, currentUserId))
-    : listings || [];
-
-  const rows = scopedListings.map((r) => {
-    const id = r.listingId ?? r.listing_id ?? r.id;
+  const listings = extractListings(apiData);
+  const rows = listings.map((r) => {
+    const id = resolveListingId(r);
     return {
       id,
       ...r,
@@ -347,14 +340,14 @@ export default function Inventory() {
       </Box>
 
       <Box>
-        {isPending ? (
+        {isPending || isProfileLoading ? (
           <Box display="flex" justifyContent="center" py={6}>
             <CircularProgress />
           </Box>
         ) : isMobile ? (
           <Stack spacing={1.25}>
             {rows.map((item) => {
-              const rowId = item.listingId ?? item.listing_id ?? item.id;
+              const rowId = resolveListingId(item);
               const canManageItem = canManageRecord(
                 item,
                 currentUserId,
@@ -443,6 +436,7 @@ export default function Inventory() {
           <CustomDataGrid
             autoHeight
             rows={rows}
+            getRowId={(row) => resolveListingId(row)}
             columns={[
               ...columns,
               {
@@ -451,10 +445,7 @@ export default function Inventory() {
                 width: 160,
                 sortable: false,
                 renderCell: (params) => {
-                  const rowId =
-                    params.row.listingId ??
-                    params.row.listing_id ??
-                    params.row.id;
+                  const rowId = resolveListingId(params.row);
                   const canManageItem = canManageRecord(
                     params.row,
                     currentUserId,

@@ -18,7 +18,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import { useNavigate, Outlet } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getAds } from "../services/advertService";
-import { deleteListing } from "../services/listingService";
+import { deleteListing, extractListings } from "../services/listingService";
 import { gradientPrimary } from "../theme/theme";
 import ConfirmDialog from "../components/modals/ConfirmDialog";
 import AdminPasswordDialog from "../components/modals/AdminPasswordDialog";
@@ -107,14 +107,7 @@ export default function Advertisements() {
     retry: false,
   });
 
-  const adverts =
-    apiData && Array.isArray(apiData)
-      ? apiData
-      : apiData?.listings ||
-        apiData?.adverts ||
-        apiData?.data ||
-        apiData?.items ||
-        [];
+  const adverts = extractListings(apiData);
 
   const scopedAdverts = isSeller
     ? (adverts || []).filter((item) => isOwnedByUser(item, currentUserId))
