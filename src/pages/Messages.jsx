@@ -32,6 +32,7 @@ import {
   Radio,
   Snackbar,
   Alert,
+  CircularProgress,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import SearchIcon from "@mui/icons-material/Search";
@@ -704,6 +705,9 @@ export default function Messages() {
   const [mapViewOpen, setMapViewOpen] = useState(false);
   const [viewingLocation, setViewingLocation] = useState(null);
   const [replyTo, setReplyTo] = useState(null);
+  const [sendingAttachment, setSendingAttachment] = useState(false);
+  const [sendingLocation, setSendingLocation] = useState(false);
+  const [savingAttachment, setSavingAttachment] = useState(false);
 
   // File input refs
   const cameraInputRef = useRef(null);
@@ -711,6 +715,10 @@ export default function Messages() {
   const documentInputRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const messageEndRef = useRef(null);
+  const sendLockRef = useRef(false);
+  const attachmentLockRef = useRef(false);
+  const locationLockRef = useRef(false);
+  const saveAttachmentLockRef = useRef(false);
 
   // Snackbar state
   const [snackbar, setSnackbar] = useState({
@@ -995,6 +1003,9 @@ export default function Messages() {
     },
   });
 
+  const isComposerBusy =
+    sendMessageMutation.isPending || sendingAttachment || sendingLocation;
+
   const chatMenuOptions = [
     { id: "profile", label: "Profile", icon: PersonIcon, color: "#667eea" },
     { id: "close", label: "Close Chat", icon: CloseIcon, color: "#757575" },
@@ -1062,8 +1073,14 @@ export default function Messages() {
 
   const handleSendMessage = () => {
     const text = messageInput.trim();
-    if (!text || !selectedConversationId || sendMessageMutation.isPending)
+    if (
+      !text ||
+      !selectedConversationId ||
+      sendLockRef.current ||
+      sendMessageMutation.isPending
+    )
       return;
+    sendLockRef.current = true;
     const receiverId =
       selectedConversation?.user?.id ||
       (String(currentUserId) === String(selectedConversation?.sellerId)
@@ -1091,17 +1108,25 @@ export default function Messages() {
     setMessageInput("");
     setReplyTo(null);
 
-    sendMessageMutation.mutate({
-      conversationId: selectedConversationId,
-      text,
-      receiverId,
-      replyTo: replyData,
-    });
+    sendMessageMutation.mutate(
+      {
+        conversationId: selectedConversationId,
+        text,
+        receiverId,
+        replyTo: replyData,
+      },
+      {
+        onSettled: () => {
+          sendLockRef.current = false;
+        },
+      },
+    );
   };
 
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+      if (isComposerBusy) return;
       handleSendMessage();
     }
   };
@@ -1217,11 +1242,14 @@ export default function Messages() {
   };
 
   const handleSaveAttachment = async (attachment) => {
+    if (saveAttachmentLockRef.current) return;
     const attachmentUrl = attachment?.url;
     if (!attachmentUrl) {
       showSnackbar("No attachment URL available", "error");
       return;
     }
+    saveAttachmentLockRef.current = true;
+    setSavingAttachment(true);
     const fallbackName =
       attachment?.name ||
       String(attachmentUrl).split("?")[0].split("#")[0].split("/").pop() ||
@@ -1249,6 +1277,9 @@ export default function Messages() {
       link.click();
       link.remove();
       showSnackbar("Save started");
+    } finally {
+      saveAttachmentLockRef.current = false;
+      setSavingAttachment(false);
     }
   };
 
@@ -1265,9 +1296,12 @@ export default function Messages() {
   };
 
   const handleSendPendingAttachment = async () => {
+    if (attachmentLockRef.current) return;
     if (!pendingAttachment?.file || !pendingAttachment?.type) return;
     const { file, type } = pendingAttachment;
     const captionText = attachmentCaption.trim();
+    attachmentLockRef.current = true;
+    setSendingAttachment(true);
     try {
       const attachmentMessage = captionText || `📎 ${type} attachment`;
       const conversationId = selectedConversationId;
@@ -1322,6 +1356,9 @@ export default function Messages() {
       }
     } catch (error) {
       showSnackbar("Failed to send attachment", "error");
+    } finally {
+      attachmentLockRef.current = false;
+      setSendingAttachment(false);
     }
   };
 
@@ -1337,6 +1374,7 @@ export default function Messages() {
   };
 
   const handleGetLocation = () => {
+    if (locationLoading) return;
     setLocationLoading(true);
     setLocationDialogOpen(true);
     setLocationError(null);
@@ -1383,7 +1421,9 @@ export default function Messages() {
   };
 
   const handleSendLocation = async () => {
-    if (!userLocation) return;
+    if (!userLocation || locationLockRef.current || sendingLocation) return;
+    locationLockRef.current = true;
+    setSendingLocation(true);
     const conversationId = selectedConversationId;
     const receiverId =
       selectedConversation?.user?.id ||
@@ -1392,6 +1432,8 @@ export default function Messages() {
         : selectedConversation?.sellerId) ||
       selectedConversation?.buyerId;
     if (!conversationId || !receiverId) {
+      locationLockRef.current = false;
+      setSendingLocation(false);
       showSnackbar("Select a conversation first", "warning");
       return;
     }
@@ -1440,11 +1482,14 @@ export default function Messages() {
           "Failed to send location",
         "error",
       );
+    } finally {
+      locationLockRef.current = false;
+      setSendingLocation(false);
     }
   };
 
   const handleLocationSearch = async () => {
-    if (!locationSearch.trim()) return;
+    if (!locationSearch.trim() || locationSearching) return;
 
     setLocationSearching(true);
     setLocationError(null);
@@ -2718,6 +2763,7 @@ export default function Messages() {
                                         e.stopPropagation();
                                         handleSaveAttachment(attachment);
                                       }}
+                                      disabled={savingAttachment}
                                       sx={{
                                         textTransform: "none",
                                         color: "#25D366",
@@ -2976,6 +3022,7 @@ export default function Messages() {
               <IconButton
                 size="small"
                 onClick={(e) => setAttachmentMenuAnchor(e.currentTarget)}
+                disabled={isComposerBusy}
                 sx={{
                   color: "white",
                   background: gradientPrimary,
@@ -3012,6 +3059,7 @@ export default function Messages() {
                   <MenuItem
                     key={option.id}
                     onClick={() => handleAttachmentAction(option.id)}
+                    disabled={isComposerBusy}
                     sx={{
                       borderRadius: 2,
                       py: 1.5,
@@ -3053,6 +3101,7 @@ export default function Messages() {
                 value={messageInput}
                 onChange={(e) => setMessageInput(e.target.value)}
                 onKeyPress={handleKeyPress}
+                disabled={isComposerBusy}
                 size="small"
                 multiline
                 maxRows={4}
@@ -3067,24 +3116,31 @@ export default function Messages() {
               {/* Send Button */}
               <IconButton
                 onClick={handleSendMessage}
-                disabled={!messageInput.trim() || sendMessageMutation.isPending}
+                disabled={!messageInput.trim() || isComposerBusy}
                 sx={{
                   width: 38,
                   height: 38,
-                  background: messageInput.trim()
+                  background: messageInput.trim() && !isComposerBusy
                     ? gradientPrimary
                     : alpha("#667eea", 0.1),
-                  color: messageInput.trim() ? "white" : alpha("#667eea", 0.4),
+                  color:
+                    messageInput.trim() && !isComposerBusy
+                      ? "white"
+                      : alpha("#667eea", 0.4),
                   borderRadius: 2.5,
                   transition: "all 0.3s ease",
                   "&:hover": {
-                    background: messageInput.trim()
+                    background: messageInput.trim() && !isComposerBusy
                       ? gradientPrimary
                       : alpha("#667eea", 0.15),
-                    transform: messageInput.trim() ? "scale(1.05)" : "none",
-                    boxShadow: messageInput.trim()
-                      ? "0 4px 15px rgba(102, 126, 234, 0.4)"
-                      : "none",
+                    transform:
+                      messageInput.trim() && !isComposerBusy
+                        ? "scale(1.05)"
+                        : "none",
+                    boxShadow:
+                      messageInput.trim() && !isComposerBusy
+                        ? "0 4px 15px rgba(102, 126, 234, 0.4)"
+                        : "none",
                   },
                   "&:disabled": {
                     background: alpha("#667eea", 0.1),
@@ -3092,7 +3148,11 @@ export default function Messages() {
                   },
                 }}
               >
-                <SendIcon sx={{ fontSize: 20 }} />
+                {isComposerBusy ? (
+                  <CircularProgress size={16} sx={{ color: "primary.main" }} />
+                ) : (
+                  <SendIcon sx={{ fontSize: 20 }} />
+                )}
               </IconButton>
             </Box>
           </Box>
@@ -3326,6 +3386,7 @@ export default function Messages() {
               fullWidth
               variant="outlined"
               onClick={handleGetLocation}
+              disabled={locationLoading}
               startIcon={<LocationOnIcon />}
               sx={{
                 borderRadius: 2,
@@ -3395,6 +3456,7 @@ export default function Messages() {
                     setLocationError(null);
                     handleGetLocation();
                   }}
+                  disabled={locationLoading}
                   sx={{
                     borderRadius: 2,
                     bgcolor: "#4caf50",
@@ -3492,16 +3554,22 @@ export default function Messages() {
           </Button>
           <Button
             variant="contained"
-            disabled={!userLocation || locationLoading}
+            disabled={!userLocation || locationLoading || sendingLocation}
             onClick={handleSendLocation}
-            startIcon={<SendIcon />}
+            startIcon={
+              sendingLocation ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : (
+                <SendIcon />
+              )
+            }
             sx={{
               borderRadius: 2,
               bgcolor: "#4caf50",
               "&:hover": { bgcolor: "#43a047" },
             }}
           >
-            Send Location
+            {sendingLocation ? "Sending..." : "Send Location"}
           </Button>
         </DialogActions>
       </Dialog>
@@ -3927,19 +3995,29 @@ export default function Messages() {
           />
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={resetAttachmentComposer} sx={{ borderRadius: 2 }}>
+          <Button
+            onClick={resetAttachmentComposer}
+            disabled={sendingAttachment}
+            sx={{ borderRadius: 2 }}
+          >
             Discard
           </Button>
           <Button
             variant="contained"
             onClick={handleSendPendingAttachment}
+            disabled={sendingAttachment || !pendingAttachment?.file}
+            startIcon={
+              sendingAttachment ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : null
+            }
             sx={{
               borderRadius: 2,
               background: gradientPrimary,
               "&:hover": { background: gradientPrimary, opacity: 0.9 },
             }}
           >
-            Send
+            {sendingAttachment ? "Sending..." : "Send"}
           </Button>
         </DialogActions>
       </Dialog>

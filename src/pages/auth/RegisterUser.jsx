@@ -23,7 +23,7 @@ import * as Yup from "yup";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { gradientPrimary } from "../../theme/theme";
-import logo from "../../assets/images/Sample Logo 1 (3).png";
+import BrandLogo from "../../components/brand/BrandLogo";
 import TextFieldWrapper from "../../components/forms/TextFieldWrapper";
 import SelectFieldWrapper from "../../components/forms/SelectFieldWrapper";
 import LocationAutoComplete from "../../components/form-components/LocationAutoComplete";
@@ -1161,9 +1161,7 @@ export default function RegisterUser() {
           },
         }}
       >
-        <Box
-          component="img"
-          src={logo}
+        <BrandLogo
           alt="Easyplug Logo"
           sx={{
             width: { xs: 185, md: 235 },

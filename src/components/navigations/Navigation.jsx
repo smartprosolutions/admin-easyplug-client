@@ -17,7 +17,6 @@ import BottomNavigation from "@mui/material/BottomNavigation";
 import BottomNavigationAction from "@mui/material/BottomNavigationAction";
 import Paper from "@mui/material/Paper";
 import LogoutIcon from "@mui/icons-material/Logout";
-import logo from "../../assets/images/Sample Logo 1 (4).png";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import NotificationsRoundedIcon from "@mui/icons-material/NotificationsRounded";
 import MarkunreadIcon from "@mui/icons-material/Markunread";
@@ -48,6 +47,7 @@ import {
 import AppTour from "../tour/AppTour";
 import { tourIdForNavUrl, TOUR_TARGETS } from "../../utils/appTour";
 import RoleModeSwitch from "./RoleModeSwitch";
+import BrandLogo from "../brand/BrandLogo";
 
 // AppBar removed; toolbar contents moved into the drawer
 
@@ -340,10 +340,10 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                           bgcolor: "#fff",
                         }}
                       >
-                        <img
-                          src={logo}
+                        <BrandLogo
                           alt="EasyPlug Logo"
-                          style={{
+                          updateDocumentIcons
+                          sx={{
                             width: "100%",
                             height: "100%",
                             objectFit: "cover",

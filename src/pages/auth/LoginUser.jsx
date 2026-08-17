@@ -1,6 +1,5 @@
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
-import Avatar from "@mui/material/Avatar";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -8,7 +7,7 @@ import Checkbox from "@mui/material/Checkbox";
 import { alpha } from "@mui/material/styles";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import { gradientPrimary } from "../../theme/theme";
-import logo from "../../assets/images/Sample Logo 1 (3).png";
+import BrandLogo from "../../components/brand/BrandLogo";
 import { Formik, Form } from "formik";
 import * as Yup from "yup";
 import TextFieldWrapper from "../../components/forms/TextFieldWrapper";
@@ -137,13 +136,11 @@ export default function LoginUser() {
           },
         }}
       >
-        <Avatar
-          src={logo}
-          alt="Logo"
+        <BrandLogo
+          alt="EasyPlug Logo"
           sx={{
             width: { xs: 185, sm: 235 },
             height: { xs: 185, sm: 235 },
-            bgcolor: "transparent",
           }}
         />
       </Box>

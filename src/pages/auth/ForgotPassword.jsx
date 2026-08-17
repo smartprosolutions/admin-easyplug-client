@@ -1,7 +1,6 @@
 import React from "react";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
-import Avatar from "@mui/material/Avatar";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -11,7 +10,7 @@ import * as Yup from "yup";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { gradientPrimary } from "../../theme/theme";
-import logo from "../../assets/images/Sample Logo 1 (3).png";
+import BrandLogo from "../../components/brand/BrandLogo";
 import TextFieldWrapper from "../../components/forms/TextFieldWrapper";
 import ToastAlert from "../../components/alerts/ToastAlert";
 import { requestPasswordReset } from "../../services/authService";
@@ -87,13 +86,11 @@ export default function ForgotPassword() {
           },
         }}
       >
-        <Avatar
-          src={logo}
-          alt="Logo"
+        <BrandLogo
+          alt="EasyPlug Logo"
           sx={{
             width: { xs: 185, sm: 235 },
             height: { xs: 185, sm: 235 },
-            bgcolor: "transparent",
           }}
         />
       </Box>

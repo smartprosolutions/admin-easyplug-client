@@ -233,20 +233,19 @@ export default function UserManagement() {
   }, []);
 
   const handleConfirmToggle = useCallback(() => {
-    if (selectedUser) {
-      const nextStatus =
-        selectedUser.status === "active" ? "inactive" : "active";
-      const fullName =
-        `${selectedUser.firstName || ""} ${selectedUser.lastName || ""}`.trim() ||
-        selectedUser.businessName ||
-        "User";
+    if (!selectedUser || toggleStatusMutation.isPending) return;
+    const nextStatus =
+      selectedUser.status === "active" ? "inactive" : "active";
+    const fullName =
+      `${selectedUser.firstName || ""} ${selectedUser.lastName || ""}`.trim() ||
+      selectedUser.businessName ||
+      "User";
 
-      toggleStatusMutation.mutate({
-        userId: selectedUser.id,
-        status: nextStatus,
-        name: fullName,
-      });
-    }
+    toggleStatusMutation.mutate({
+      userId: selectedUser.id,
+      status: nextStatus,
+      name: fullName,
+    });
     setDeactivateDialogOpen(false);
     setSelectedUser(null);
   }, [selectedUser, toggleStatusMutation]);

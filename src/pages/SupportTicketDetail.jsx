@@ -113,7 +113,7 @@ export default function SupportTicketDetail() {
 
   const handleSend = async () => {
     const message = reply.trim();
-    if (!message) return;
+    if (!message || replyMutation.isPending) return;
     try {
       await replyMutation.mutateAsync({ message });
     } catch (err) {
@@ -125,7 +125,7 @@ export default function SupportTicketDetail() {
 
   const handleStatusChange = async (event) => {
     const status = event.target.value;
-    if (!status || status === ticket?.status) return;
+    if (!status || status === ticket?.status || statusMutation.isPending) return;
     try {
       await statusMutation.mutateAsync(status);
     } catch (err) {

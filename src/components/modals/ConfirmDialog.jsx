@@ -94,7 +94,7 @@ export default function ConfirmDialog({
           {cancelText}
         </Button>
         <Button
-          onClick={onConfirm}
+          onClick={loading ? undefined : onConfirm}
           disabled={loading}
           color={confirmColor}
           variant="contained"
