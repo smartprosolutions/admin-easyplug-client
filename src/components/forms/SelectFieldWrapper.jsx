@@ -10,11 +10,15 @@ import {
 import PropTypes from "prop-types";
 
 const SelectFieldWrapper = ({ name, label, options, ...otherProps }) => {
-  const { values, setFieldValue } = useFormikContext();
+  const { values, setFieldValue, setFieldTouched, submitCount } =
+    useFormikContext();
   const [field, meta] = useField(name);
+  const showError = Boolean(meta?.error && (meta.touched || submitCount > 0));
+  const labelId = `${name}-select-label`;
 
   const handleChange = (event) => {
-    setFieldValue(name, event.target.value);
+    setFieldValue(name, event.target.value, true);
+    setFieldTouched(name, true, false);
   };
 
   const configSelect = {
@@ -26,23 +30,15 @@ const SelectFieldWrapper = ({ name, label, options, ...otherProps }) => {
   };
 
   return (
-    <FormControl
-      error={meta && meta.touched && meta.error ? true : null}
-      fullWidth
-      // size="small"
-    >
-      <InputLabel id="select">{label}</InputLabel>
+    <FormControl error={showError} fullWidth>
+      <InputLabel id={labelId}>{label}</InputLabel>
       <Select
         {...configSelect}
-        labelId="select"
-        id="select_id"
-        value={values[name]}
+        labelId={labelId}
+        id={`${name}-select`}
+        value={values[name] ?? ""}
         label={label}
-        // size="small"
       >
-        {/* <MenuItem value="">
-          <em>None</em>
-        </MenuItem> */}
         {options.map((item, index) => {
           return (
             <MenuItem key={index} value={item.value}>
@@ -51,9 +47,7 @@ const SelectFieldWrapper = ({ name, label, options, ...otherProps }) => {
           );
         })}
       </Select>
-      {meta.touched && meta.error ? (
-        <FormHelperText>{meta.error}</FormHelperText>
-      ) : null}
+      {showError ? <FormHelperText>{meta.error}</FormHelperText> : null}
     </FormControl>
   );
 };

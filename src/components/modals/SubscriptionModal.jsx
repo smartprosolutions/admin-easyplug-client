@@ -221,7 +221,11 @@ export default function SubscriptionModal() {
             <SubscriptionsIcon sx={{ fontSize: 28 }} />
           </Avatar>
           <Box>
-            <Typography variant="h5" fontWeight={700} sx={{ mb: 0.5 }}>
+            <Typography
+              variant="h5"
+              fontWeight={700}
+              sx={{ mb: 0.5, color: "common.white" }}
+            >
               {isEdit ? "Edit Subscription" : "Create New Subscription"}
             </Typography>
             <Stack direction="row" spacing={1}>

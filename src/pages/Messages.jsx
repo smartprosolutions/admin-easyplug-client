@@ -58,6 +58,7 @@ import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import ReplyIcon from "@mui/icons-material/Reply";
+import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import { useNavigate } from "react-router-dom";
 import { gradientPrimary } from "../theme/theme";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -72,162 +73,6 @@ import { resolveListingImagePath } from "../utils/listingImages";
 import { useUserProfileQuery } from "../services/queries";
 import { connectSocket, getSocket } from "../socket/socketClient";
 import { useUnreadCounts } from "../context/UnreadCountsContext";
-
-// Dummy conversations data
-const conversations = [
-  {
-    id: 1,
-    user: {
-      name: "John Mensah",
-      avatar: "https://i.pravatar.cc/150?img=12",
-      verified: true,
-      online: true,
-      rating: 4.8,
-      reviews: 127,
-    },
-    lastMessage: "Is this still available?",
-    time: "2 min ago",
-    unread: 2,
-    listing: {
-      title: "iPhone 13 Pro Max",
-      price: "R 12,999",
-      image:
-        "https://images.unsplash.com/photo-1632661674596-df8be070a5c5?w=100",
-    },
-  },
-  {
-    id: 2,
-    user: {
-      name: "Sarah Williams",
-      avatar: "https://i.pravatar.cc/150?img=5",
-      verified: true,
-      online: false,
-      rating: 4.9,
-      reviews: 89,
-    },
-    lastMessage: "Thank you for your interest! Yes, it's available.",
-    time: "1 hour ago",
-    unread: 0,
-    listing: {
-      title: "MacBook Pro M2",
-      price: "R 28,999",
-      image:
-        "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=100",
-    },
-  },
-  {
-    id: 3,
-    user: {
-      name: "Mike Johnson",
-      avatar: "https://i.pravatar.cc/150?img=8",
-      verified: false,
-      online: true,
-      rating: 4.2,
-      reviews: 34,
-    },
-    lastMessage: "Can you do R10,000?",
-    time: "3 hours ago",
-    unread: 1,
-    listing: {
-      title: "Samsung Galaxy S23",
-      price: "R 11,999",
-      image:
-        "https://images.unsplash.com/photo-1610945415295-d9bbf067e59c?w=100",
-    },
-  },
-  {
-    id: 4,
-    user: {
-      name: "Emma Davis",
-      avatar: "https://i.pravatar.cc/150?img=9",
-      verified: true,
-      online: false,
-      rating: 5.0,
-      reviews: 156,
-    },
-    lastMessage: "Great, I'll take it. When can we meet?",
-    time: "Yesterday",
-    unread: 0,
-    listing: {
-      title: "Sony WH-1000XM5",
-      price: "R 6,999",
-      image: "https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=100",
-    },
-  },
-  {
-    id: 5,
-    user: {
-      name: "David Brown",
-      avatar: "https://i.pravatar.cc/150?img=11",
-      verified: false,
-      online: false,
-      rating: 3.8,
-      reviews: 12,
-    },
-    lastMessage: "Is the price negotiable?",
-    time: "2 days ago",
-    unread: 0,
-    listing: {
-      title: "Gaming Laptop RTX 4060",
-      price: "R 22,500",
-      image:
-        "https://images.unsplash.com/photo-1603302576837-37561b2e2302?w=100",
-    },
-  },
-];
-
-// Dummy messages for selected conversation
-const dummyMessages = [
-  {
-    id: 1,
-    senderId: "other",
-    text: "Hi! I saw your listing for the iPhone 13 Pro Max. Is it still available?",
-    time: "10:30 AM",
-    read: true,
-  },
-  {
-    id: 2,
-    senderId: "me",
-    text: "Yes, it's still available! Are you interested?",
-    time: "10:32 AM",
-    read: true,
-  },
-  {
-    id: 3,
-    senderId: "other",
-    text: "Yes! What's the condition like? Any scratches or damage?",
-    time: "10:35 AM",
-    read: true,
-  },
-  {
-    id: 4,
-    senderId: "me",
-    text: "It's in excellent condition. No scratches on the screen, and the body is pristine. Battery health is at 95%.",
-    time: "10:38 AM",
-    read: true,
-  },
-  {
-    id: 5,
-    senderId: "other",
-    text: "That sounds great! Does it come with original accessories?",
-    time: "10:40 AM",
-    read: true,
-  },
-  {
-    id: 6,
-    senderId: "me",
-    text: "Yes, it comes with the original box, charger, cable, and earphones. Everything is included.",
-    time: "10:42 AM",
-    read: true,
-  },
-  {
-    id: 7,
-    senderId: "other",
-    text: "Is this still available?",
-    time: "2 min ago",
-    read: false,
-  },
-];
 
 const FALLBACK_AVATAR = "https://i.pravatar.cc/150?img=1";
 const FALLBACK_LISTING_IMAGE = "https://via.placeholder.com/100";
@@ -827,6 +672,7 @@ export default function Messages() {
   const { data: profileData } = useUserProfileQuery({ retry: false });
   const [selectedConversationId, setSelectedConversationId] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [messageInput, setMessageInput] = useState("");
   const [messages, setMessages] = useState([]);
   const [activeFilter, setActiveFilter] = useState("all");
@@ -1697,50 +1543,140 @@ export default function Messages() {
       elevation={0}
       sx={{
         height: "100%",
-        bgcolor: isMobile ? "transparent" : "background.paper",
-        border: isMobile ? "none" : "1px solid",
+        bgcolor: "background.paper",
+        border: "1px solid",
         borderColor: "divider",
-        borderRadius: isMobile ? 0 : 3,
-        boxShadow: "none",
-        overflow: "hidden",
+        borderRadius: { xs: isMobile && selectedConversation ? 0 : 3, sm: 3 },
         display: "flex",
         flexDirection: "column",
+        overflow: "hidden",
       }}
     >
-      {/* Header */}
-      <Box sx={{ p: { xs: 1.5, sm: 2 }, borderBottom: "1px solid", borderColor: "divider" }}>
-        <Typography variant="h6" fontWeight={800} mb={0.25}>
-          Messages
-        </Typography>
-        <Typography fontSize={12.5} color="text.secondary" mb={1.4}>
-          Buyer and seller conversations
-        </Typography>
-        <TextField
-          fullWidth
-          placeholder="Search by product or person..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          size="small"
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon sx={{ color: "text.secondary" }} />
-              </InputAdornment>
-            ),
-          }}
-          sx={{
-            "& .MuiOutlinedInput-root": {
-              borderRadius: 2,
-              bgcolor: alpha(theme.palette.primary.main, 0.05),
-            },
-          }}
-        />
-        {/* Filter Tags */}
+      <Box
+        sx={{
+          px: 1.5,
+          py: 1,
+          minHeight: 58,
+          background: gradientPrimary,
+          color: "common.white",
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          boxSizing: "border-box",
+        }}
+      >
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={1.25}
+          sx={{ width: "100%" }}
+        >
+          <IconButton
+            onClick={() => navigate(-1)}
+            size="small"
+            sx={{
+              color: "white",
+              bgcolor: alpha("#fff", 0.2),
+              "&:hover": { bgcolor: alpha("#fff", 0.3) },
+            }}
+          >
+            <ArrowBackIcon fontSize="small" />
+          </IconButton>
+          <Box
+            sx={{
+              width: 42,
+              height: 42,
+              borderRadius: 1.5,
+              bgcolor: alpha("#fff", 0.2),
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <ChatBubbleOutlineIcon sx={{ color: "white", fontSize: 22 }} />
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography
+              fontWeight={700}
+              color="white"
+              fontSize={15}
+              sx={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Messages
+            </Typography>
+            <Typography fontSize={12} sx={{ color: alpha("#fff", 0.85) }}>
+              {conversationsList.length} conversation
+              {conversationsList.length !== 1 ? "s" : ""}
+            </Typography>
+          </Box>
+          <IconButton
+            onClick={() => {
+              setSearchOpen((prev) => {
+                if (prev) setSearchQuery("");
+                return !prev;
+              });
+            }}
+            size="small"
+            sx={{
+              color: "white",
+              bgcolor: alpha("#fff", searchOpen ? 0.3 : 0.2),
+              "&:hover": { bgcolor: alpha("#fff", 0.35) },
+            }}
+          >
+            {searchOpen ? (
+              <CloseIcon fontSize="small" />
+            ) : (
+              <SearchIcon fontSize="small" />
+            )}
+          </IconButton>
+        </Stack>
+      </Box>
+
+      <Box sx={{ p: 2, borderBottom: "1px solid", borderColor: "divider" }}>
+        {searchOpen && (
+          <TextField
+            fullWidth
+            autoFocus
+            placeholder="Search by product or person..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            size="small"
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ color: "text.secondary" }} />
+                </InputAdornment>
+              ),
+              endAdornment: searchQuery ? (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    onClick={() => setSearchQuery("")}
+                    edge="end"
+                  >
+                    <CloseIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </InputAdornment>
+              ) : null,
+            }}
+            sx={{
+              mb: 2,
+              "& .MuiOutlinedInput-root": {
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.primary.main, 0.05),
+              },
+            }}
+          />
+        )}
         <Stack
           direction="row"
           spacing={1}
           sx={{
-            mt: 2,
             overflowX: "auto",
             pb: 0.5,
             "&::-webkit-scrollbar": { display: "none" },
@@ -1759,15 +1695,18 @@ export default function Messages() {
                 px: 0.5,
                 bgcolor:
                   activeFilter === tag.id
-                    ? "primary.main"
+                    ? theme.palette.primary.main
                     : alpha(theme.palette.primary.main, 0.08),
-                color: activeFilter === tag.id ? "white" : "text.primary",
+                color:
+                  activeFilter === tag.id
+                    ? "primary.contrastText"
+                    : "text.primary",
                 border: "none",
                 transition: "all 0.2s ease",
                 "&:hover": {
                   bgcolor:
                     activeFilter === tag.id
-                      ? "primary.main"
+                      ? theme.palette.primary.main
                       : alpha(theme.palette.primary.main, 0.15),
                 },
               }}
@@ -1776,39 +1715,40 @@ export default function Messages() {
         </Stack>
       </Box>
 
-      {/* Conversation List */}
-      <List sx={{
-            flex: 1,
-            overflow: "auto",
-            p: 0,
-            "&::-webkit-scrollbar": { width: 6 },
-            "&::-webkit-scrollbar-track": {
-              bgcolor: alpha(theme.palette.primary.main, 0.05),
-              borderRadius: 3,
-            },
-            "&::-webkit-scrollbar-thumb": {
-              bgcolor: alpha(theme.palette.primary.main, 0.25),
-              borderRadius: 3,
-              "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.4) },
-            },
-            scrollbarWidth: "thin",
-            scrollbarColor: `${alpha(theme.palette.primary.main, 0.25)} ${alpha(theme.palette.primary.main, 0.05)}`,
-          }}>
+      <List
+        sx={{
+          flex: 1,
+          overflow: "auto",
+          p: 0,
+          "&::-webkit-scrollbar": { width: 6 },
+          "&::-webkit-scrollbar-track": {
+            bgcolor: alpha(theme.palette.primary.main, 0.05),
+            borderRadius: 3,
+          },
+          "&::-webkit-scrollbar-thumb": {
+            bgcolor: alpha(theme.palette.primary.main, 0.25),
+            borderRadius: 3,
+            "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.4) },
+          },
+          scrollbarWidth: "thin",
+          scrollbarColor: `${alpha(theme.palette.primary.main, 0.25)} ${alpha(theme.palette.primary.main, 0.05)}`,
+        }}
+      >
         {isLoadingConversations ? (
-          <Box sx={{ p: 3 }}>
-            <Typography fontSize={13} color="text.secondary">
+          <Box sx={{ p: 3, textAlign: "center" }}>
+            <Typography fontSize={14} color="text.secondary">
               Loading conversations...
             </Typography>
           </Box>
         ) : isConversationsError ? (
-          <Box sx={{ p: 3 }}>
-            <Typography fontSize={13} color="error.main">
+          <Box sx={{ p: 3, textAlign: "center" }}>
+            <Typography fontSize={14} color="error.main">
               Unable to load conversations.
             </Typography>
           </Box>
         ) : filteredConversations.length === 0 ? (
-          <Box sx={{ p: 3 }}>
-            <Typography fontSize={13} color="text.secondary">
+          <Box sx={{ p: 3, textAlign: "center" }}>
+            <Typography fontSize={14} color="text.secondary">
               No conversations found.
             </Typography>
           </Box>
@@ -1820,17 +1760,26 @@ export default function Messages() {
               sx={{
                 cursor: "pointer",
                 borderBottom: "1px solid",
-                borderColor: "divider",
+                borderBottomColor: "divider",
+                borderLeft: "3px solid",
+                borderLeftColor:
+                  conversation.unread > 0 ? "primary.main" : "transparent",
                 bgcolor:
                   selectedConversation?.id === conversation.id
                     ? alpha(theme.palette.primary.main, 0.08)
-                    : "transparent",
-                "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.05) },
+                    : conversation.unread > 0
+                      ? alpha(theme.palette.primary.main, 0.04)
+                      : "transparent",
+                "&:hover": {
+                  bgcolor:
+                    selectedConversation?.id === conversation.id
+                      ? alpha(theme.palette.primary.main, 0.1)
+                      : alpha(theme.palette.primary.main, 0.06),
+                },
                 py: 1.5,
                 px: 2,
               }}
             >
-              {/* Product Image - Primary */}
               <ListItemAvatar>
                 <Box
                   sx={{
@@ -1852,7 +1801,6 @@ export default function Messages() {
                       objectFit: "cover",
                     }}
                   />
-                  {/* User avatar overlay */}
                   <Badge
                     overlap="circular"
                     anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
@@ -1879,7 +1827,7 @@ export default function Messages() {
                         height: 24,
                         border: "2px solid",
                         borderColor: "background.paper",
-                        boxShadow: `0 1px 3px ${alpha(theme.palette.common.black, 0.2)}`,
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
                       }}
                     />
                   </Badge>
@@ -1906,34 +1854,30 @@ export default function Messages() {
                         <VerifiedIcon sx={{ fontSize: 14, color: "primary.main" }} />
                       )}
                     </Stack>
-                    <Typography
-                      component="span"
-                      fontSize={13}
-                      fontWeight={600}
-                      sx={{ color: "primary.main", display: "block" }}
-                    >
-                      {conversation.listing.price}
-                    </Typography>
+                    {conversation.listing.price && (
+                      <Typography
+                        component="span"
+                        fontSize={13}
+                        fontWeight={600}
+                        sx={{ color: "primary.main", display: "block" }}
+                      >
+                        {conversation.listing.price}
+                      </Typography>
+                    )}
                   </Stack>
                 }
                 primaryTypographyProps={{ component: "div" }}
                 secondary={
                   <Stack
                     direction="row"
-                    spacing={0.4}
                     alignItems="center"
-                    sx={{
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      maxWidth: 180,
-                      display: "flex",
-                    }}
+                    spacing={0.5}
+                    sx={{ maxWidth: 180 }}
                   >
                     {conversation.lastMessageIsMine && (
                       <DoneAllIcon
                         sx={{
-                          fontSize: 14,
+                          fontSize: 13,
                           color: conversation.lastMessageRead
                             ? "success.main"
                             : "text.disabled",
@@ -1969,17 +1913,19 @@ export default function Messages() {
                 {conversation.unread > 0 && (
                   <Box
                     sx={{
-                      minWidth: 20,
-                      height: 20,
-                      borderRadius: "50%",
+                      minWidth: 22,
+                      height: 22,
+                      borderRadius: 99,
                       background: gradientPrimary,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
+                      px: 0.75,
+                      boxShadow: "0 2px 8px rgba(102,126,234,0.35)",
                     }}
                   >
                     <Typography fontSize={11} fontWeight={700} color="white">
-                      {conversation.unread}
+                      {conversation.unread > 99 ? "99+" : conversation.unread}
                     </Typography>
                   </Box>
                 )}
@@ -1997,14 +1943,13 @@ export default function Messages() {
       elevation={0}
       sx={{
         height: "100%",
-        bgcolor: isMobile ? "transparent" : "background.paper",
-        border: isMobile ? "none" : "1px solid",
+        bgcolor: "background.paper",
+        border: "1px solid",
         borderColor: "divider",
-        borderRadius: isMobile ? 0 : 3,
-        boxShadow: "none",
-        overflow: "hidden",
+        borderRadius: { xs: isMobile && selectedConversation ? 0 : 3, sm: 3 },
         display: "flex",
         flexDirection: "column",
+        overflow: "hidden",
       }}
     >
       {selectedConversation ? (
@@ -2014,11 +1959,14 @@ export default function Messages() {
             sx={{
               px: 1.5,
               py: 1,
+              minHeight: 58,
               borderBottom: "1px solid",
               borderColor: "divider",
               display: "flex",
               alignItems: "center",
               gap: 1,
+              boxSizing: "border-box",
+              flexShrink: 0,
             }}
           >
             {isMobile && (
@@ -3189,37 +3137,50 @@ export default function Messages() {
   return (
     <Box
       sx={{
-        bgcolor: "background.default",
-        height: { xs: "calc(100vh - 124px)", md: "100vh" },
-        overflow: "hidden",
+        position: "fixed",
+        inset: 0,
+        width: "100%",
+        height: "100dvh",
         display: "flex",
         flexDirection: "column",
-        p: { xs: 0.5, sm: 1, md: 1.5 },
-        borderRadius: { xs: 2, md: 2.5 },
+        bgcolor: "background.default",
+        overflow: "hidden",
+        zIndex: 1,
       }}
     >
       <Container
         maxWidth={false}
         sx={{
+          width: "100%",
           flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0,
+          height: "100%",
           overflow: "hidden",
-          px: { xs: 0, md: 0.5 },
+          pt: isMobile && selectedConversation ? 0 : { xs: 1.5, sm: 2 },
+          pb: isMobile && selectedConversation ? 0 : { xs: 1.5, sm: 2 },
+          px: isMobile && selectedConversation ? 0 : { xs: 1.5, sm: 2 },
         }}
       >
-        {isMobile ? (
-          selectedConversation ? (
-            renderChatView()
+        <Box sx={{ flex: 1, minHeight: 0, height: "100%" }}>
+          {isMobile ? (
+            selectedConversation ? (
+              renderChatView()
+            ) : (
+              renderConversationList()
+            )
           ) : (
-            renderConversationList()
-          )
-        ) : (
-          <Box sx={{ display: "flex", gap: 1.5, height: "100%" }}>
-            <Box sx={{ width: 360, flexShrink: 0 }}>
-              {renderConversationList()}
+            <Box sx={{ display: "flex", gap: 2, height: "100%" }}>
+              <Box sx={{ width: 380, flexShrink: 0, minHeight: 0 }}>
+                {renderConversationList()}
+              </Box>
+              <Box sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+                {renderChatView()}
+              </Box>
             </Box>
-            <Box sx={{ flex: 1 }}>{renderChatView()}</Box>
-          </Box>
-        )}
+          )}
+        </Box>
       </Container>
 
       {/* Location Dialog */}

@@ -10,6 +10,7 @@ import {
   Alert,
   Avatar,
   Box,
+  Button,
   Chip,
   Grid,
   Paper,
@@ -774,19 +775,40 @@ export default function Dashboard() {
         py: { xs: 1.25, sm: 1.75, md: 1 },
       }}
     >
-      <Typography
-        variant="h5"
-        fontWeight={700}
-        color="primary.main"
-        sx={{ mb: 0.5, fontSize: { xs: 22, sm: 28 } }}
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={1.5}
+        alignItems={{ xs: "stretch", sm: "flex-start" }}
+        justifyContent="space-between"
+        sx={{ mb: { xs: 2, sm: 3 } }}
       >
-        {isSeller ? "Seller Dashboard" : "Dashboard"}
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: { xs: 2, sm: 3 } }}>
-        {isSeller
-          ? "Performance snapshot for your listings, adverts, and order outcomes."
-          : "Business intelligence snapshot to support growth, retention, and revenue decisions."}
-      </Typography>
+        <Box>
+          <Typography
+            variant="h5"
+            fontWeight={700}
+            color="primary.main"
+            sx={{ mb: 0.5, fontSize: { xs: 22, sm: 28 } }}
+          >
+            {isSeller ? "Seller Dashboard" : "Dashboard"}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {isSeller
+              ? "Performance snapshot for your listings, adverts, and order outcomes."
+              : "Business intelligence snapshot to support growth, retention, and revenue decisions."}
+          </Typography>
+        </Box>
+        {isAdmin ? (
+          <Button
+            component={RouterLink}
+            to="/reports"
+            variant="outlined"
+            size="small"
+            sx={{ borderRadius: 2, alignSelf: { xs: "stretch", sm: "center" } }}
+          >
+            View reports
+          </Button>
+        ) : null}
+      </Stack>
 
       {!isProfileLoading && !canLoadInsights ? (
         <Alert severity="warning" sx={{ mb: 2 }}>

@@ -49,14 +49,15 @@ export default function ForgotPassword() {
     <Box
       sx={{
         minHeight: "100vh",
-        width: "100vw",
+        width: "100%",
+        maxWidth: "100%",
         background: (theme) =>
           `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.2)} 0%, ${alpha(theme.palette.secondary.main, 0.1)} 36%, ${theme.palette.background.default} 100%)`,
         pt: 0,
         pb: { xs: 2.5, sm: 3.5 },
         px: 0,
         position: "relative",
-        overflow: "hidden",
+        overflowX: "hidden",
       }}
     >
       <Box

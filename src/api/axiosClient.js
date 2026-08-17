@@ -12,6 +12,7 @@ const PUBLIC_AUTH_ENDPOINTS = [
   "/auth/forgot-password",
   "/auth/reset-password",
   "/auth/verify-code",
+  "/auth/ui-switch-consume",
 ];
 
 const shouldAttachAuthHeader = (url = "") =>
@@ -45,6 +46,27 @@ axiosClient.interceptors.response.use(
       enhancedError.name = "ApiNetworkError";
       return Promise.reject(enhancedError);
     }
+
+    const status = error?.response?.status;
+    const requestUrl = String(error?.config?.url || "");
+    const isAuthEndpoint = PUBLIC_AUTH_ENDPOINTS.some((endpoint) =>
+      requestUrl.includes(endpoint),
+    );
+
+    if (status === 401 && !isAuthEndpoint) {
+      try {
+        localStorage.removeItem("access_token");
+      } catch {
+        // ignore
+      }
+      if (
+        typeof window !== "undefined" &&
+        !window.location.pathname.startsWith("/login")
+      ) {
+        window.location.assign("/login");
+      }
+    }
+
     return Promise.reject(error);
   },
 );

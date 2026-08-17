@@ -57,7 +57,14 @@ export async function getAdminListings(params) {
   return resp.data;
 }
 
-export async function deleteListing(id) {
-  const resp = await axiosClient.delete(`/listings/${id}`);
+export async function getMyListings(params) {
+  const resp = await axiosClient.get(`/listings/me`, { params });
+  return resp.data;
+}
+
+export async function deleteListing(id, { adminPassword } = {}) {
+  const resp = await axiosClient.delete(`/listings/${id}`, {
+    data: adminPassword ? { adminPassword } : undefined,
+  });
   return resp.data;
 }

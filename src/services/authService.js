@@ -32,9 +32,26 @@ export async function registerSeller(formData, onProgress) {
   return resp.data;
 }
 
-export async function sendVerificationCode({ email }) {
+export async function sendVerificationCode({ email, firstName, lastName }) {
   // Adjust endpoint path as needed
-  const resp = await axiosClient.post("/auth/send-code", { email });
+  const resp = await axiosClient.post("/auth/send-code", {
+    email,
+    firstName,
+    lastName,
+  });
+  return resp.data;
+}
+
+export async function verifyVerificationCode({
+  email,
+  code,
+  verificationToken,
+}) {
+  const resp = await axiosClient.post("/auth/verify-code", {
+    email,
+    code,
+    verificationToken,
+  });
   return resp.data;
 }
 
@@ -50,9 +67,32 @@ export async function resetPassword({ token, password, email }) {
   return resp.data;
 }
 
+export async function changePassword({
+  currentPassword,
+  newPassword,
+  confirmPassword,
+}) {
+  const resp = await axiosClient.post("/auth/change-password", {
+    currentPassword,
+    newPassword,
+    confirmPassword,
+  });
+  return resp.data;
+}
+
 export async function me() {
   // Calls the backend to verify the current token and return user info
   const resp = await axiosClient.get("/auth/me");
+  return resp.data;
+}
+
+export async function issueUiSwitchTicket() {
+  const resp = await axiosClient.post("/auth/ui-switch-ticket");
+  return resp.data;
+}
+
+export async function consumeUiSwitchTicket(ticket) {
+  const resp = await axiosClient.post("/auth/ui-switch-consume", { ticket });
   return resp.data;
 }
 

@@ -12,27 +12,42 @@ import {
   Grid,
   useMediaQuery,
   useTheme,
+  Autocomplete,
+  TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import LocalOfferOutlinedIcon from "@mui/icons-material/LocalOfferOutlined";
 import { useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { getAdvert } from "../services/advertService";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getAdvert, setAdvertFeatured } from "../services/advertService";
+import { getMyListings } from "../services/listingService";
 import { gradientPrimary } from "../theme/theme";
-import InventoryModal from "../components/modals/InventoryModal";
 import { ListingTile } from "../components/listing/ListingTile";
 import { MobileListingItem } from "../components/listing/MobileListingItem";
 import { resolveListingImages } from "../utils/listingImages";
+import ToastAlert from "../components/alerts/ToastAlert";
 import { useUserProfileQuery } from "../services/queries";
 import {
+  canManageRecord,
+  needsAdminPasswordForRecord,
   isOwnedByUser,
   isSellerRole,
   resolveUserId,
   resolveUserRole,
 } from "../utils/accessControl";
+import AdminPasswordDialog from "../components/modals/AdminPasswordDialog";
+import CheckBoxOutlineBlankIcon from "@mui/icons-material/CheckBoxOutlineBlank";
+import CheckBoxIcon from "@mui/icons-material/CheckBox";
+import Checkbox from "@mui/material/Checkbox";
+
+const checkboxIcon = <CheckBoxOutlineBlankIcon fontSize="small" />;
+const checkboxCheckedIcon = <CheckBoxIcon fontSize="small" />;
 
 const formatDate = (value) =>
   value
@@ -107,16 +122,31 @@ export default function AdvertisementDetails() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { id } = useParams();
-  const [isCatalogueOpen, setIsCatalogueOpen] = React.useState(false);
+  const [featureDialogOpen, setFeatureDialogOpen] = React.useState(false);
+  const [selectedFeatured, setSelectedFeatured] = React.useState([]);
+  const [toast, setToast] = React.useState({
+    open: false,
+    severity: "info",
+    message: "",
+  });
   const { data: profileData } = useUserProfileQuery({ retry: false });
   const currentUserId = resolveUserId(profileData);
-  const isSeller = isSellerRole(resolveUserRole(profileData));
+  const userRole = resolveUserRole(profileData);
+  const isSeller = isSellerRole(userRole);
 
   const { data, isPending, error } = useQuery({
     queryKey: ["advert", id],
     queryFn: () => getAdvert(id),
     enabled: Boolean(id),
+    retry: false,
+  });
+
+  const { data: inventoryData, isPending: isInventoryLoading } = useQuery({
+    queryKey: ["myInventoryForFeature", currentUserId],
+    queryFn: () => getMyListings(),
+    enabled: featureDialogOpen && Boolean(currentUserId),
     retry: false,
   });
 
@@ -129,12 +159,25 @@ export default function AdvertisementDetails() {
     null;
 
   const canViewAdvert = !isSeller || isOwnedByUser(advert, currentUserId);
-  const canManageAdvert = isOwnedByUser(advert, currentUserId);
-
-  const catalogueItems = useMemo(
-    () => advert?.catalogueItems || advert?.items || advert?.listings || [],
-    [advert],
+  const canManageAdvert = canManageRecord(advert, currentUserId, userRole);
+  const needsAdminPassword = needsAdminPasswordForRecord(
+    advert,
+    currentUserId,
+    userRole,
   );
+  const [featurePasswordOpen, setFeaturePasswordOpen] = React.useState(false);
+  const [featurePasswordError, setFeaturePasswordError] = React.useState("");
+  const pendingFeaturedIdsRef = React.useRef(null);
+
+  const featuredItems = useMemo(() => {
+    const featured =
+      data?.featuredListings ||
+      advert?.featuredListings ||
+      [];
+    if (Array.isArray(featured) && featured.length > 0) return featured;
+    // Legacy fallback: catalogue children
+    return advert?.catalogueItems || advert?.items || advert?.listings || [];
+  }, [advert, data?.featuredListings]);
 
   const advertUrl =
     advert?.url ||
@@ -149,9 +192,23 @@ export default function AdvertisementDetails() {
     : "-";
   const sellerEmail = advert?.seller?.email || "";
 
-  const formattedCatalogueItems = useMemo(() => {
-    if (!Array.isArray(catalogueItems)) return [];
-    return catalogueItems.map((item) => {
+  const inventoryOptions = useMemo(() => {
+    const rows =
+      inventoryData?.listings ||
+      inventoryData?.data ||
+      inventoryData?.items ||
+      (Array.isArray(inventoryData) ? inventoryData : []);
+    return (rows || [])
+      .filter((row) => !row?.isAdvertisement)
+      .filter((row) => isOwnedByUser(row, currentUserId))
+      .sort((a, b) =>
+        String(a?.title || "").localeCompare(String(b?.title || "")),
+      );
+  }, [inventoryData, currentUserId]);
+
+  const formattedFeaturedItems = useMemo(() => {
+    if (!Array.isArray(featuredItems)) return [];
+    return featuredItems.map((item) => {
       const createdAt = item?.createdAt || item?.created_at;
       const createdDate = createdAt ? new Date(createdAt) : null;
       const now = new Date();
@@ -191,7 +248,74 @@ export default function AdvertisementDetails() {
         verified: item?.seller?.sellerInfo?.verified || false,
       };
     });
-  }, [catalogueItems, sellerEmail]);
+  }, [featuredItems, sellerEmail]);
+
+  const featureMut = useMutation({
+    mutationFn: ({ listingIds, adminPassword }) =>
+      setAdvertFeatured(id, listingIds, { adminPassword }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["advert", id] });
+      setFeatureDialogOpen(false);
+      setFeaturePasswordOpen(false);
+      setFeaturePasswordError("");
+      pendingFeaturedIdsRef.current = null;
+      setToast({
+        open: true,
+        severity: "success",
+        message: "Featured inventory updated",
+      });
+    },
+    onError: (err) => {
+      const message =
+        err?.response?.data?.message ||
+        err.message ||
+        "Failed to update featured inventory";
+      const code = err?.response?.data?.code;
+      if (
+        code === "ADMIN_PASSWORD_REQUIRED" ||
+        code === "ADMIN_PASSWORD_INVALID" ||
+        /admin password/i.test(message)
+      ) {
+        setFeaturePasswordError(message);
+        setFeaturePasswordOpen(true);
+        return;
+      }
+      setToast({
+        open: true,
+        severity: "error",
+        message,
+      });
+    },
+  });
+
+  const openFeatureDialog = () => {
+    const currentIds = Array.isArray(advert?.featuredListingIds)
+      ? advert.featuredListingIds.map(String)
+      : featuredItems.map((row) => String(row.listingId || row.id));
+    setSelectedFeatured(
+      inventoryOptions.filter((row) =>
+        currentIds.includes(String(row.listingId || row.id)),
+      ),
+    );
+    setFeatureDialogOpen(true);
+  };
+
+  React.useEffect(() => {
+    if (!featureDialogOpen || inventoryOptions.length === 0) return;
+    const currentIds = Array.isArray(advert?.featuredListingIds)
+      ? advert.featuredListingIds.map(String)
+      : featuredItems.map((row) => String(row.listingId || row.id));
+    setSelectedFeatured(
+      inventoryOptions.filter((row) =>
+        currentIds.includes(String(row.listingId || row.id)),
+      ),
+    );
+  }, [
+    featureDialogOpen,
+    inventoryOptions,
+    advert?.featuredListingIds,
+    featuredItems,
+  ]);
 
   return (
     <Box sx={{ p: { xs: 1.25, sm: 2, md: 3 } }}>
@@ -220,7 +344,7 @@ export default function AdvertisementDetails() {
                 WebkitTextFillColor: "transparent",
               }}
             >
-              Advert Details
+              Campaign Details
             </Typography>
             <Chip
               size="small"
@@ -251,24 +375,24 @@ export default function AdvertisementDetails() {
               },
             }}
           >
-            Edit Advert
+            Edit Campaign
           </Button>
         ) : null}
       </Stack>
 
       {error ? (
         <Alert severity="error">
-          Failed to load advert. {error?.message || "Please try again."}
+          Failed to load campaign. {error?.message || "Please try again."}
         </Alert>
       ) : isPending ? (
         <Box display="flex" justifyContent="center" py={6}>
           <CircularProgress />
         </Box>
       ) : !advert ? (
-        <Alert severity="warning">Advert not found.</Alert>
+        <Alert severity="warning">Campaign not found.</Alert>
       ) : !canViewAdvert ? (
         <Alert severity="warning">
-          You can only access adverts that belong to your seller account.
+          You can only access campaigns that belong to your seller account.
         </Alert>
       ) : (
         <Grid container spacing={3}>
@@ -284,17 +408,17 @@ export default function AdvertisementDetails() {
                   WebkitTextFillColor: "transparent",
                 }}
               >
-                Basic Information
+                Campaign
               </Typography>
             </Stack>
             <Stack spacing={1.5}>
               <InfoCard label="Title" value={advert.title} />
-              <InfoCard label="Type" value={advert.type} />
-              <InfoCard label="Category" value={advert.category} />
               <InfoCard label="Seller" value={sellerName} />
               <InfoCard label="Seller Email" value={sellerEmail || "-"} />
-              <InfoCard label="Created" value={formatDate(advert.createdAt)} />
-              <InfoCard label="Updated" value={formatDate(advert.updatedAt)} />
+              <InfoCard
+                label="Promo copy"
+                value={stripHtml(advert.description) || "No promo copy"}
+              />
             </Stack>
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
@@ -309,172 +433,278 @@ export default function AdvertisementDetails() {
                   WebkitTextFillColor: "transparent",
                 }}
               >
-                Advert Information
+                Schedule & status
               </Typography>
             </Stack>
             <Stack spacing={1.5}>
               <InfoCard label="Status" value={advert.status} />
               <InfoCard label="Views" value={advert.views} />
-              <InfoCard label="Price" value={advert.price} />
-              <InfoCard label="Condition" value={advert.condition} />
               <InfoCard
-                label="Description"
-                value={stripHtml(advert.description) || "No description"}
+                label="Starts"
+                value={formatDate(advert.startsAt || advert.starts_at)}
               />
+              <InfoCard
+                label="Ends"
+                value={formatDate(advert.expiresAt || advert.expires_at)}
+              />
+              <InfoCard label="Created" value={formatDate(advert.createdAt)} />
+              <InfoCard label="Updated" value={formatDate(advert.updatedAt)} />
             </Stack>
           </Grid>
-          <Grid size={{ xs: 12 }}>
-            {hasAdvertUrl ? (
-              <>
-                <Stack direction="row" spacing={1} alignItems="center" mb={2}>
-                  <LocalOfferOutlinedIcon color="primary" fontSize="small" />
-                  <Typography
-                    variant="h6"
-                    fontWeight={700}
-                    sx={{
-                      background: gradientPrimary,
-                      WebkitBackgroundClip: "text",
-                      WebkitTextFillColor: "transparent",
-                    }}
-                  >
-                    URL
-                  </Typography>
-                </Stack>
-                <Paper
-                  variant="outlined"
+
+          {hasAdvertUrl ? (
+            <Grid size={{ xs: 12 }}>
+              <Stack direction="row" spacing={1} alignItems="center" mb={2}>
+                <LocalOfferOutlinedIcon color="primary" fontSize="small" />
+                <Typography
+                  variant="h6"
+                  fontWeight={700}
                   sx={{
-                    p: 3,
-                    borderRadius: 2,
-                    borderColor: "divider",
+                    background: gradientPrimary,
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
                   }}
                 >
-                  {hasAdvertUrl ? (
-                    <Stack spacing={1.5}>
-                      <Typography variant="body2" color="text.secondary">
-                        This advert uses an external URL.
-                      </Typography>
-                      <Typography
-                        variant="body2"
-                        sx={{ wordBreak: "break-all" }}
-                      >
-                        {advertUrl}
-                      </Typography>
-                      <Box>
-                        <Button
-                          component="a"
-                          href={advertUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          variant="contained"
-                          sx={{
-                            background: gradientPrimary,
-                            color: "#fff",
-                            "&:hover": { opacity: 0.92 },
-                          }}
-                        >
-                          Open URL
-                        </Button>
-                      </Box>
-                    </Stack>
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      No URL configured for this advert.
-                    </Typography>
-                  )}
-                </Paper>
-              </>
-            ) : (
-              <>
-                <Stack direction="row" spacing={1} alignItems="center" mb={2}>
-                  <LocalOfferOutlinedIcon color="primary" fontSize="small" />
-                  <Typography
-                    variant="h6"
-                    fontWeight={700}
-                    sx={{
-                      background: gradientPrimary,
-                      WebkitBackgroundClip: "text",
-                      WebkitTextFillColor: "transparent",
-                    }}
-                  >
-                    Catalogue Items
+                  Website URL
+                </Typography>
+              </Stack>
+              <Paper
+                variant="outlined"
+                sx={{
+                  p: 3,
+                  borderRadius: 2,
+                  borderColor: "divider",
+                }}
+              >
+                <Stack spacing={1.5}>
+                  <Typography variant="body2" sx={{ wordBreak: "break-all" }}>
+                    {advertUrl}
                   </Typography>
-                </Stack>
-                <Stack
-                  direction={{ xs: "column", md: "row" }}
-                  justifyContent="space-between"
-                  alignItems={{ xs: "flex-start", md: "center" }}
-                  spacing={2}
-                >
                   <Box>
-                    <Typography variant="body2" color="text.secondary">
-                      {Array.isArray(catalogueItems)
-                        ? `${catalogueItems.length} item(s) linked to this advert`
-                        : "No items linked"}
-                    </Typography>
-                  </Box>
-                  {!hasAdvertUrl && canManageAdvert ? (
                     <Button
+                      component="a"
+                      href={advertUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       variant="contained"
-                      startIcon={<AddIcon />}
-                      onClick={() => setIsCatalogueOpen(true)}
                       sx={{
                         background: gradientPrimary,
                         color: "#fff",
                         "&:hover": { opacity: 0.92 },
                       }}
                     >
-                      Add Catalogue Item
+                      Visit website
                     </Button>
-                  ) : null}
+                  </Box>
                 </Stack>
-                <Divider sx={{ my: 2 }} />
-                {formattedCatalogueItems.length > 0 ? (
-                  <Grid container spacing={{ xs: 1.5, sm: 2, md: 3 }}>
-                    {formattedCatalogueItems.map((item) => (
-                      <Grid
-                        item
-                        size={{ xs: 6, sm: 6, md: 4, lg: 3, xl: 2.4 }}
-                        key={item.id}
-                      >
-                        {isMobile ? (
-                          <MobileListingItem listing={item} />
-                        ) : (
-                          <ListingTile listing={item} />
-                        )}
-                      </Grid>
-                    ))}
-                  </Grid>
-                ) : (
-                  <Paper
-                    variant="outlined"
-                    sx={{
-                      p: 3,
-                      borderRadius: 2,
-                      borderStyle: "dashed",
-                      textAlign: "center",
-                      color: "text.secondary",
-                    }}
+              </Paper>
+            </Grid>
+          ) : null}
+
+          <Grid size={{ xs: 12 }}>
+            <Stack direction="row" spacing={1} alignItems="center" mb={2}>
+              <LocalOfferOutlinedIcon color="primary" fontSize="small" />
+              <Typography
+                variant="h6"
+                fontWeight={700}
+                sx={{
+                  background: gradientPrimary,
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                }}
+              >
+                Featured inventory
+              </Typography>
+            </Stack>
+            <Stack
+              direction={{ xs: "column", md: "row" }}
+              justifyContent="space-between"
+              alignItems={{ xs: "flex-start", md: "center" }}
+              spacing={2}
+            >
+              <Typography variant="body2" color="text.secondary">
+                {`${formattedFeaturedItems.length} inventory item(s) featured on this campaign`}
+              </Typography>
+              {canManageAdvert ? (
+                <Button
+                  variant="contained"
+                  onClick={openFeatureDialog}
+                  sx={{
+                    background: gradientPrimary,
+                    color: "#fff",
+                    "&:hover": { opacity: 0.92 },
+                  }}
+                >
+                  Manage featured items
+                </Button>
+              ) : null}
+            </Stack>
+            <Divider sx={{ my: 2 }} />
+            {formattedFeaturedItems.length > 0 ? (
+              <Grid container spacing={{ xs: 1.5, sm: 2, md: 3 }}>
+                {formattedFeaturedItems.map((item) => (
+                  <Grid
+                    item
+                    size={{ xs: 6, sm: 6, md: 4, lg: 3, xl: 2.4 }}
+                    key={item.id}
                   >
-                    <Typography variant="body2">
-                      No catalogue items yet. Add one to showcase this advert.
-                    </Typography>
-                  </Paper>
-                )}
-              </>
+                    {isMobile ? (
+                      <MobileListingItem
+                        listing={item}
+                        onClick={() => navigate(`/inventory/${item.id}/edit`)}
+                      />
+                    ) : (
+                      <ListingTile
+                        listing={item}
+                        onClick={() => navigate(`/inventory/${item.id}/edit`)}
+                      />
+                    )}
+                  </Grid>
+                ))}
+              </Grid>
+            ) : (
+              <Paper
+                variant="outlined"
+                sx={{
+                  p: 3,
+                  borderRadius: 2,
+                  borderStyle: "dashed",
+                  textAlign: "center",
+                  color: "text.secondary",
+                }}
+              >
+                <Typography variant="body2">
+                  No featured inventory yet. Promote items from your Inventory,
+                  or leave empty for a website/brand campaign.
+                </Typography>
+              </Paper>
             )}
           </Grid>
         </Grid>
       )}
-      {isCatalogueOpen && (
-        <InventoryModal
-          onClose={() => setIsCatalogueOpen(false)}
-          redirectPath={null}
-          presetType={advert?.type}
-          presetCategory={advert?.category}
-          lockTypeCategory
-          advertId={id}
-        />
-      )}
+
+      <Dialog
+        open={featureDialogOpen}
+        onClose={() =>
+          featureMut.isPending ? undefined : setFeatureDialogOpen(false)
+        }
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Feature inventory items</DialogTitle>
+        <DialogContent>
+          <Autocomplete
+            sx={{ mt: 1 }}
+            multiple
+            disableCloseOnSelect
+            options={inventoryOptions}
+            value={selectedFeatured}
+            loading={isInventoryLoading}
+            noOptionsText={
+              isInventoryLoading
+                ? "Loading inventory..."
+                : "No inventory items available to promote"
+            }
+            getOptionLabel={(option) =>
+              option?.title ||
+              option?.name ||
+              String(option?.listingId || option?.id || "")
+            }
+            isOptionEqualToValue={(option, value) =>
+              String(option?.listingId || option?.id) ===
+              String(value?.listingId || value?.id)
+            }
+            onChange={(_, selected) => setSelectedFeatured(selected)}
+            renderOption={(props, option, { selected }) => {
+              const { key, ...optionProps } = props;
+              return (
+                <li key={key} {...optionProps}>
+                  <Checkbox
+                    icon={checkboxIcon}
+                    checkedIcon={checkboxCheckedIcon}
+                    style={{ marginRight: 8 }}
+                    checked={selected}
+                  />
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="body2" noWrap>
+                      {option?.title || option?.name || "Untitled"}
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      noWrap
+                    >
+                      {[option?.category, option?.type]
+                        .filter(Boolean)
+                        .join(" · ") || "Inventory item"}
+                    </Typography>
+                  </Box>
+                </li>
+              );
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Items to promote"
+                placeholder="Pick one or more inventory items"
+                helperText={`${selectedFeatured.length} selected`}
+              />
+            )}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setFeatureDialogOpen(false)}
+            disabled={featureMut.isPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            disabled={featureMut.isPending}
+            onClick={() => {
+              const listingIds = selectedFeatured.map((row) =>
+                String(row.listingId || row.id),
+              );
+              if (needsAdminPassword) {
+                pendingFeaturedIdsRef.current = listingIds;
+                setFeaturePasswordError("");
+                setFeaturePasswordOpen(true);
+                return;
+              }
+              featureMut.mutate({ listingIds });
+            }}
+            sx={{ background: gradientPrimary, color: "#fff" }}
+          >
+            {featureMut.isPending ? "Saving..." : "Save"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <AdminPasswordDialog
+        open={featurePasswordOpen}
+        title="Update featured items"
+        description="Enter your admin password to update featured inventory on this campaign."
+        confirmText="Save"
+        loading={featureMut.isPending}
+        error={featurePasswordError}
+        onClose={() => {
+          setFeaturePasswordOpen(false);
+          setFeaturePasswordError("");
+          pendingFeaturedIdsRef.current = null;
+        }}
+        onConfirm={(adminPassword) => {
+          const listingIds = pendingFeaturedIdsRef.current || [];
+          featureMut.mutate({ listingIds, adminPassword });
+        }}
+      />
+
+      <ToastAlert
+        open={toast.open}
+        severity={toast.severity}
+        message={toast.message}
+        onClose={() => setToast((s) => ({ ...s, open: false }))}
+      />
     </Box>
   );
 }

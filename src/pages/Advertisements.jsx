@@ -21,12 +21,15 @@ import { getAds } from "../services/advertService";
 import { deleteListing } from "../services/listingService";
 import { gradientPrimary } from "../theme/theme";
 import ConfirmDialog from "../components/modals/ConfirmDialog";
+import AdminPasswordDialog from "../components/modals/AdminPasswordDialog";
 import ToastAlert from "../components/alerts/ToastAlert";
 import { useState } from "react";
 import { useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useUserProfileQuery } from "../services/queries";
 import {
+  canManageRecord,
+  needsAdminPasswordForRecord,
   isOwnedByUser,
   isSellerRole,
   resolveUserId,
@@ -57,13 +60,16 @@ export default function Advertisements() {
   });
   const { data: profileData } = useUserProfileQuery({ retry: false });
   const currentUserId = resolveUserId(profileData);
-  const isSeller = isSellerRole(resolveUserRole(profileData));
+  const userRole = resolveUserRole(profileData);
+  const isSeller = isSellerRole(userRole);
   const advertsQueryKey = isSeller
     ? ["sellerAdverts", currentUserId]
     : ["adverts"];
+  const [adminPasswordError, setAdminPasswordError] = useState("");
 
   const deleteMut = useMutation({
-    mutationFn: (id) => deleteListing(id),
+    mutationFn: ({ id, adminPassword }) =>
+      deleteListing(id, { adminPassword }),
     onSuccess: async () => {
       try {
         await queryClient.invalidateQueries({ queryKey: advertsQueryKey });
@@ -72,13 +78,26 @@ export default function Advertisements() {
       }
       setToast({ open: true, severity: "success", message: "Advert deleted" });
       setDeleteTarget(null);
+      setAdminPasswordError("");
     },
     onError: (err) => {
+      const message =
+        err?.response?.data?.message || err.message || "Delete failed";
+      const code = err?.response?.data?.code;
+      if (
+        code === "ADMIN_PASSWORD_REQUIRED" ||
+        code === "ADMIN_PASSWORD_INVALID" ||
+        /admin password/i.test(message)
+      ) {
+        setAdminPasswordError(message);
+        return;
+      }
       setToast({
         open: true,
         severity: "error",
-        message: err?.response?.data?.message || err.message || "Delete failed",
+        message,
       });
+      setDeleteTarget(null);
     },
   });
 
@@ -125,9 +144,48 @@ export default function Advertisements() {
   };
 
   const columns = [
-    { field: "title", headerName: "Title", width: 180, flex: 1 },
-    { field: "category", headerName: "Category", width: 170, flex: 1 },
-
+    { field: "title", headerName: "Campaign", width: 220, flex: 1.2 },
+    {
+      field: "schedule",
+      headerName: "Schedule",
+      width: 220,
+      flex: 1,
+      valueGetter: (_value, row) => {
+        const start = row?.startsAt || row?.starts_at;
+        const end = row?.expiresAt || row?.expires_at;
+        if (!start && !end) return "No schedule";
+        const startLabel = start ? formatDate(start) : "Anytime";
+        const endLabel = end ? formatDate(end) : "No end";
+        return `${startLabel} → ${endLabel}`;
+      },
+      renderCell: (params) => (
+        <Box sx={{ display: "flex", alignItems: "center", height: "100%" }}>
+          <Typography variant="body2">{params.value}</Typography>
+        </Box>
+      ),
+    },
+    {
+      field: "featuredCount",
+      headerName: "Featured",
+      width: 110,
+      valueGetter: (_value, row) => {
+        const ids = row?.featuredListingIds;
+        if (Array.isArray(ids)) return ids.length;
+        return Array.isArray(row?.catalogueItems) ? row.catalogueItems.length : 0;
+      },
+    },
+    {
+      field: "url",
+      headerName: "Website",
+      width: 160,
+      valueGetter: (_value, row) =>
+        row?.url || row?.advertUrl || row?.websiteURL || "",
+      renderCell: (params) => (
+        <Typography variant="body2" noWrap title={params.value || ""}>
+          {params.value ? "Yes" : "—"}
+        </Typography>
+      ),
+    },
     {
       field: "status",
       headerName: "Status",
@@ -155,21 +213,6 @@ export default function Advertisements() {
         </Box>
       ),
     },
-    {
-      field: "updatedAt",
-      headerName: "Updated",
-      width: 180,
-      flex: 1,
-      renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center", height: "100%" }}>
-          <Typography variant="body2">
-            {formatDate(
-              params.value ?? params.row.updatedAt ?? params.row.updated_at,
-            )}
-          </Typography>
-        </Box>
-      ),
-    },
   ];
 
   const totalAds = advertisementRows.length;
@@ -179,34 +222,33 @@ export default function Advertisements() {
   const draftAds = advertisementRows.filter(
     (r) => String(r.status || "").toLowerCase() === "draft",
   ).length;
-
-  const uniqueCategories = new Set(
-    advertisementRows.map((row) => String(row.category || "Uncategorized").trim()),
-  ).size;
+  const withWebsite = advertisementRows.filter(
+    (r) => Boolean(String(r.url || r.advertUrl || r.websiteURL || "").trim()),
+  ).length;
 
   const advertCards = [
     {
-      label: "Total Adverts",
+      label: "Total Campaigns",
       value: totalAds.toLocaleString("en-ZA"),
-      sub: "All advertisement listings",
+      sub: "All advertisement campaigns",
       accent: "primary.main",
     },
     {
-      label: "Active Adverts",
+      label: "Active Campaigns",
       value: activeAds.toLocaleString("en-ZA"),
-      sub: "Currently live campaigns",
+      sub: "Currently published",
       accent: "success.main",
     },
     {
-      label: "Draft Adverts",
+      label: "Draft Campaigns",
       value: draftAds.toLocaleString("en-ZA"),
       sub: "Not yet published",
       accent: "warning.main",
     },
     {
-      label: "Categories",
-      value: uniqueCategories.toLocaleString("en-ZA"),
-      sub: "Distinct advert categories",
+      label: "With Website",
+      value: withWebsite.toLocaleString("en-ZA"),
+      sub: "Campaigns with a URL CTA",
       accent: "secondary.main",
     },
   ];
@@ -253,14 +295,14 @@ export default function Advertisements() {
               "&:hover": { opacity: { xs: 0.95, sm: 0.92 }, boxShadow: "none" },
             }}
           >
-            Add Advertisement
+            Add Campaign
           </Button>
         </Stack>
       </Stack>
 
       <Box sx={{ mb: 2.5 }}>
         <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.2 }}>
-          Advert Overview
+          Campaign Overview
         </Typography>
         <Grid container spacing={1.5}>
           {advertCards.map((card) => (
@@ -311,7 +353,16 @@ export default function Advertisements() {
                 item.id ??
                 item.listingId ??
                 item.listing_id;
-              const canManageItem = isOwnedByUser(item, currentUserId);
+              const canManageItem = canManageRecord(
+                item,
+                currentUserId,
+                userRole,
+              );
+              const needsPassword = needsAdminPasswordForRecord(
+                item,
+                currentUserId,
+                userRole,
+              );
 
               return (
                 <Paper
@@ -341,12 +392,25 @@ export default function Advertisements() {
                       spacing={0.75}
                       sx={{ flexWrap: "wrap", rowGap: 0.75 }}
                     >
-                      <Chip size="small" label={item?.category || "Uncategorized"} />
+                      <Chip
+                        size="small"
+                        label={
+                          item?.expiresAt || item?.expires_at || item?.startsAt
+                            ? "Scheduled"
+                            : "Campaign"
+                        }
+                      />
                       <Chip size="small" color="info" label="Ad" />
                     </Stack>
 
                     <Typography fontSize={12} color="text.secondary">
-                      Updated: {formatDate(item.updatedAt ?? item.updated_at)}
+                      {item.startsAt || item.expiresAt
+                        ? `${item.startsAt ? formatDate(item.startsAt) : "Anytime"} → ${
+                            item.expiresAt || item.expires_at
+                              ? formatDate(item.expiresAt || item.expires_at)
+                              : "No end"
+                          }`
+                        : `Updated: ${formatDate(item.updatedAt ?? item.updated_at)}`}
                     </Typography>
 
                     <Stack
@@ -380,6 +444,7 @@ export default function Advertisements() {
                               setDeleteTarget({
                                 id: rowId,
                                 title: item.title,
+                                needsPassword,
                               })
                             }
                           >
@@ -420,9 +485,15 @@ export default function Advertisements() {
                         params.row.id ??
                         params.row.listingId ??
                         params.row.listing_id;
-                      const canManageItem = isOwnedByUser(
+                      const canManageItem = canManageRecord(
                         params.row,
                         currentUserId,
+                        userRole,
+                      );
+                      const needsPassword = needsAdminPasswordForRecord(
+                        params.row,
+                        currentUserId,
+                        userRole,
                       );
                       return (
                         <>
@@ -469,6 +540,7 @@ export default function Advertisements() {
                                     setDeleteTarget({
                                       id: rowId,
                                       title: params.row.title,
+                                      needsPassword,
                                     })
                                   }
                                 >
@@ -488,7 +560,7 @@ export default function Advertisements() {
         )}
       </Box>
       <ConfirmDialog
-        open={Boolean(deleteTarget)}
+        open={Boolean(deleteTarget) && !deleteTarget?.needsPassword}
         title="Delete advert"
         description={
           deleteTarget?.title
@@ -499,7 +571,29 @@ export default function Advertisements() {
         confirmColor="error"
         loading={deleteMut.isPending}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget?.id && deleteMut.mutate(deleteTarget.id)}
+        onConfirm={() =>
+          deleteTarget?.id && deleteMut.mutate({ id: deleteTarget.id })
+        }
+      />
+      <AdminPasswordDialog
+        open={Boolean(deleteTarget?.needsPassword)}
+        title="Delete advert"
+        description={
+          deleteTarget?.title
+            ? `Enter your admin password to delete "${deleteTarget.title}".`
+            : "Enter your admin password to delete this advert."
+        }
+        confirmText="Delete"
+        loading={deleteMut.isPending}
+        error={adminPasswordError}
+        onClose={() => {
+          setDeleteTarget(null);
+          setAdminPasswordError("");
+        }}
+        onConfirm={(adminPassword) =>
+          deleteTarget?.id &&
+          deleteMut.mutate({ id: deleteTarget.id, adminPassword })
+        }
       />
       <ToastAlert
         open={toast.open}
