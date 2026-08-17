@@ -639,7 +639,7 @@ const normalizeMessagesResponse = (
   });
 
   return mapped.sort(
-    (a, b) => toTimestamp(b.createdAt) - toTimestamp(a.createdAt),
+    (a, b) => toTimestamp(a.createdAt) - toTimestamp(b.createdAt),
   );
 };
 
@@ -779,16 +779,13 @@ export default function Messages() {
   }, [pendingAttachmentPreviewUrl]);
 
   const scrollToLatestMessage = React.useCallback((behavior = "smooth") => {
-    if (messagesContainerRef.current) {
-      if (behavior === "auto") {
-        messagesContainerRef.current.scrollTop = 0;
-        return;
-      }
-      messagesContainerRef.current.scrollTo({ top: 0, behavior });
+    if (messageEndRef.current) {
+      messageEndRef.current.scrollIntoView({ behavior, block: "end" });
       return;
     }
-    if (messageEndRef.current) {
-      messageEndRef.current.scrollIntoView({ behavior, block: "start" });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop =
+        messagesContainerRef.current.scrollHeight;
     }
   }, []);
 
@@ -962,7 +959,7 @@ export default function Messages() {
         !isMine &&
         String(incomingChatId) === String(selectedConversationId)
       ) {
-        setMessages((prev) => [normalized, ...prev]);
+        setMessages((prev) => [...prev, normalized]);
         markChatAsRead(incomingChatId);
       }
 
@@ -1142,7 +1139,7 @@ export default function Messages() {
       read: false,
       ...(replyData ? { replyTo: replyData } : {}),
     };
-    setMessages((prev) => [optimisticMessage, ...prev]);
+    setMessages((prev) => [...prev, optimisticMessage]);
     setConversationsList((prev) =>
       promoteConversation(prev, selectedConversationId, {
         lastMessage: text,
@@ -1382,7 +1379,7 @@ export default function Messages() {
             url: resolveAssetUrl(fileUrl) || localPreviewUrl,
           },
         };
-        setMessages((prev) => [newMessage, ...prev]);
+        setMessages((prev) => [...prev, newMessage]);
         setConversationsList((prev) =>
           promoteConversation(prev, conversationId, {
             lastMessage: attachmentMessage,
@@ -1519,7 +1516,7 @@ export default function Messages() {
         read: false,
         location: userLocation,
       };
-      setMessages((prev) => [newMessage, ...prev]);
+      setMessages((prev) => [...prev, newMessage]);
       setConversationsList((prev) =>
         promoteConversation(prev, conversationId, {
           lastMessage: locationText,
@@ -2305,9 +2302,7 @@ export default function Messages() {
                 No messages yet.
               </Typography>
             ) : (
-              <>
-              <Box ref={messageEndRef} sx={{ height: 1 }} />
-              {messages.map((message) => (
+              messages.map((message) => (
                 <Box
                   key={message.id}
                   id={`msg-${message.id}`}
@@ -2952,9 +2947,9 @@ export default function Messages() {
                     </IconButton>
                   )}
                 </Box>
-              ))}
-              </>
+              ))
             )}
+            <Box ref={messageEndRef} sx={{ height: 1 }} />
           </Box>
 
           {/* Message Input */}
