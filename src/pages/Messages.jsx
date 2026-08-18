@@ -135,9 +135,64 @@ const formatMessageTime = (value) => {
 
 const toTimestamp = (value) => {
   if (value == null || value === "") return 0;
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  const parsed = new Date(value).getTime();
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value > 1e12) return value;
+    if (value > 1e9) return value * 1000;
+    return 0;
+  }
+  if (typeof value === "object") {
+    return toTimestamp(
+      value.$date ||
+        value.seconds ||
+        value._seconds ||
+        value.iso ||
+        value.date,
+    );
+  }
+  const text = String(value).trim();
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(text)) return 0;
+  const parsed = Date.parse(text);
   return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const resolveMessageCreatedAt = (item) =>
+  pickFirst(
+    item?.createdAt,
+    item?.created_at,
+    item?.sentAt,
+    item?.sent_at,
+    item?.timestamp,
+    item?.updatedAt,
+    item?.updated_at,
+    item?.date,
+  );
+
+const sortMessagesOldestFirst = (messages = []) => {
+  if (!Array.isArray(messages) || messages.length < 2) return messages;
+
+  const decorated = messages.map((msg, index) => ({
+    msg,
+    index,
+    time: toTimestamp(msg?.createdAt),
+    idNum: Number(msg?.id),
+  }));
+
+  const hasTime = decorated.some((item) => item.time > 0);
+  if (hasTime) {
+    decorated.sort((a, b) => {
+      if (a.time !== b.time) return a.time - b.time;
+      return a.index - b.index;
+    });
+    return decorated.map((item) => item.msg);
+  }
+
+  const hasNumericIds = decorated.every((item) => Number.isFinite(item.idNum));
+  if (hasNumericIds) {
+    decorated.sort((a, b) => a.idNum - b.idNum);
+    return decorated.map((item) => item.msg);
+  }
+
+  return messages;
 };
 
 const promoteConversation = (list, chatId, patch = {}) => {
@@ -429,8 +484,14 @@ const normalizeMessagesResponse = (
   payload,
   { currentUserId, sellerId, otherUserId } = {},
 ) => {
+  const nestedData = payload?.data;
   const source =
-    payload?.messages || payload?.items || payload?.data || payload;
+    payload?.messages ||
+    payload?.items ||
+    (Array.isArray(nestedData) ? nestedData : null) ||
+    nestedData?.messages ||
+    nestedData?.items ||
+    payload;
   const rows = Array.isArray(source) ? source : [];
 
   const mapped = rows.map((item, idx) => {
@@ -625,10 +686,8 @@ const normalizeMessagesResponse = (
       text:
         pickFirst(item?.text, item?.message, item?.content, item?.body, "") ||
         "(empty)",
-      createdAt: pickFirst(item?.createdAt, item?.timestamp, item?.time),
-      time: formatMessageTime(
-        pickFirst(item?.createdAt, item?.timestamp, item?.time),
-      ),
+      createdAt: resolveMessageCreatedAt(item),
+      time: formatMessageTime(resolveMessageCreatedAt(item)),
       read: Boolean(pickFirst(item?.read, item?.isRead, mine)),
       attachment,
       location: hasLocation
@@ -638,9 +697,7 @@ const normalizeMessagesResponse = (
     };
   });
 
-  return mapped.sort(
-    (a, b) => toTimestamp(a.createdAt) - toTimestamp(b.createdAt),
-  );
+  return sortMessagesOldestFirst(mapped);
 };
 
 const hydrateRepliesFromPrevious = (nextMessages, previousMessages = []) => {
@@ -903,7 +960,11 @@ export default function Messages() {
 
   useEffect(() => {
     if (selectedConversationId) {
-      setMessages((prev) => hydrateRepliesFromPrevious(normalizedMessages, prev));
+      setMessages((prev) =>
+        sortMessagesOldestFirst(
+          hydrateRepliesFromPrevious(normalizedMessages, prev),
+        ),
+      );
       return;
     }
     setMessages([]);
@@ -1622,6 +1683,8 @@ export default function Messages() {
     (a, b) => toTimestamp(b.lastMessageAt) - toTimestamp(a.lastMessageAt),
   );
 
+  const threadMessages = sortMessagesOldestFirst(messages);
+
   const selectedListingPath = useMemo(() => {
     const listingId = selectedConversation?.listing?.id;
     if (!listingId) return "";
@@ -2273,6 +2336,7 @@ export default function Messages() {
               p: 2,
               display: "flex",
               flexDirection: "column",
+              justifyContent: "flex-start",
               gap: 1.5,
               bgcolor: "#fafafa",
               "&::-webkit-scrollbar": { width: 6 },
@@ -2297,12 +2361,12 @@ export default function Messages() {
               <Typography fontSize={13} color="error.main">
                 Unable to load messages for this conversation.
               </Typography>
-            ) : messages.length === 0 ? (
+            ) : threadMessages.length === 0 ? (
               <Typography fontSize={13} color="text.secondary">
                 No messages yet.
               </Typography>
             ) : (
-              messages.map((message) => (
+              threadMessages.map((message) => (
                 <Box
                   key={message.id}
                   id={`msg-${message.id}`}
