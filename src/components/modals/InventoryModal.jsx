@@ -46,6 +46,11 @@ import {
   resolveUserRole,
 } from "../../utils/accessControl";
 import { resolveListingImagePath } from "../../utils/listingImages";
+import {
+  compressListingImages,
+  listingUploadErrorMessage,
+  appendImagesToFormData,
+} from "../../utils/compressImage";
 
 const getImageRef = (img) => {
   if (!img) return "";
@@ -114,15 +119,12 @@ export default function InventoryModal({
     const fd = new FormData();
     Object.entries(vals || {}).forEach(([key, value]) => {
       if (key === "images" && Array.isArray(value)) {
-        value.forEach((file) => {
-          if (file instanceof File) {
-            fd.append("images", file);
-          }
-        });
+        appendImagesToFormData(fd, value);
       } else if (value !== undefined && value !== null) {
-        // serialize non-file objects
-        if (typeof value === "object" && !(value instanceof File)) {
+        if (typeof value === "object" && !(value instanceof File) && !(value instanceof Blob)) {
           fd.append(key, JSON.stringify(value));
+        } else if (value instanceof Blob) {
+          fd.append(key, value, value.name || key);
         } else {
           fd.append(key, String(value));
         }
@@ -174,7 +176,7 @@ export default function InventoryModal({
       setToast({
         open: true,
         severity: "error",
-        message: err?.response?.data?.message || err.message || "Create failed",
+        message: listingUploadErrorMessage(err, "Create failed"),
       }),
   });
 
@@ -193,8 +195,7 @@ export default function InventoryModal({
       setTimeout(() => closeAfterSuccess(), 700);
     },
     onError: (err) => {
-      const message =
-        err?.response?.data?.message || err.message || "Update failed";
+      const message = listingUploadErrorMessage(err, "Update failed");
       const code = err?.response?.data?.code;
       if (
         code === "ADMIN_PASSWORD_REQUIRED" ||
@@ -562,6 +563,7 @@ export default function InventoryModal({
                     toSend.removedImages = removedImages;
                   }
 
+                  toSend.images = await compressListingImages(toSend.images);
                   // convert values to FormData so files are sent correctly
                   const payload = buildFormData(toSend);
                   setUploadProgress(0);
@@ -578,9 +580,16 @@ export default function InventoryModal({
                   } else {
                     await createMut.mutateAsync(payload);
                   }
-                } catch {
+                } catch (err) {
                   submitLockRef.current = false;
                   setSaving(false);
+                  if (!err?.response && err?.name !== "ApiNetworkError") {
+                    setToast({
+                      open: true,
+                      severity: "error",
+                      message: listingUploadErrorMessage(err, "Save failed"),
+                    });
+                  }
                 } finally {
                   setSubmitting(false);
                 }

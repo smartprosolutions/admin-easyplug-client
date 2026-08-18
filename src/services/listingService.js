@@ -48,7 +48,7 @@ export async function invalidateListingQueries(queryClient) {
 
 export async function createListing(payload, onProgress) {
   // payload may be FormData (for images) or plain object
-  const config = {};
+  const config = { timeout: 180000 };
   if (typeof onProgress === "function") {
     config.onUploadProgress = (evt) => {
       try {
@@ -66,7 +66,7 @@ export async function createListing(payload, onProgress) {
 }
 
 export async function updateListing(id, payload, onProgress) {
-  const config = {};
+  const config = { timeout: 180000 };
   if (typeof onProgress === "function") {
     config.onUploadProgress = (evt) => {
       try {

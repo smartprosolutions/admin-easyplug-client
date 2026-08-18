@@ -40,8 +40,13 @@ axiosClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (!error?.response && error?.message === "Network Error") {
+      const isUpload =
+        typeof FormData !== "undefined" &&
+        error?.config?.data instanceof FormData;
       const enhancedError = new Error(
-        `Unable to reach API at ${API_URL}. Check backend availability and CORS settings.`,
+        isUpload
+          ? `Upload to ${API_URL} failed. Phone photos are often too large. Try fewer or smaller images.`
+          : `Unable to reach API at ${API_URL}. Check backend availability and CORS settings.`,
       );
       enhancedError.name = "ApiNetworkError";
       return Promise.reject(enhancedError);

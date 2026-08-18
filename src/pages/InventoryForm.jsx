@@ -31,6 +31,11 @@ import {
   invalidateListingQueries,
 } from "../services/listingService";
 import { resolveListingImagePath } from "../utils/listingImages";
+import {
+  compressListingImages,
+  listingUploadErrorMessage,
+  appendImagesToFormData,
+} from "../utils/compressImage";
 
 const sectionTitleSx = {
   fontWeight: 700,
@@ -109,14 +114,12 @@ export default function InventoryForm() {
     const fd = new FormData();
     Object.entries(vals || {}).forEach(([key, value]) => {
       if (key === "images" && Array.isArray(value)) {
-        value.forEach((file) => {
-          if (file instanceof File) {
-            fd.append("images", file);
-          }
-        });
+        appendImagesToFormData(fd, value);
       } else if (value !== undefined && value !== null) {
-        if (typeof value === "object" && !(value instanceof File)) {
+        if (typeof value === "object" && !(value instanceof File) && !(value instanceof Blob)) {
           fd.append(key, JSON.stringify(value));
+        } else if (value instanceof Blob) {
+          fd.append(key, value, value.name || key);
         } else {
           fd.append(key, String(value));
         }
@@ -223,7 +226,7 @@ export default function InventoryForm() {
       setToast({
         open: true,
         severity: "error",
-        message: err?.response?.data?.message || err.message || "Create failed",
+        message: listingUploadErrorMessage(err, "Create failed"),
       }),
   });
 
@@ -242,7 +245,7 @@ export default function InventoryForm() {
       setToast({
         open: true,
         severity: "error",
-        message: err?.response?.data?.message || err.message || "Update failed",
+        message: listingUploadErrorMessage(err, "Update failed"),
       }),
   });
 
@@ -528,10 +531,17 @@ export default function InventoryForm() {
                   ),
                 };
 
+                toSend.images = await compressListingImages(toSend.images);
                 const payload = buildFormData(toSend);
                 setUploadProgress(0);
                 if (isEdit) await updateMut.mutateAsync(payload);
                 else await createMut.mutateAsync(payload);
+              } catch (err) {
+                setToast({
+                  open: true,
+                  severity: "error",
+                  message: listingUploadErrorMessage(err, "Create failed"),
+                });
               } finally {
                 setSubmitting(false);
               }
@@ -710,7 +720,8 @@ export default function InventoryForm() {
                             Media
                           </Typography>
                           <Typography variant="caption" sx={sectionCaptionSx}>
-                            Upload up to 6 images for the listing.
+                            Upload up to 6 images. Phone photos are compressed
+                            before upload.
                           </Typography>
                         </Box>
                         <div>

@@ -38,6 +38,11 @@ import {
   getMyListings,
 } from "../../services/listingService";
 import { resolveListingImagePath } from "../../utils/listingImages";
+import {
+  compressListingImages,
+  listingUploadErrorMessage,
+  appendImagesToFormData,
+} from "../../utils/compressImage";
 import { useUserProfileQuery } from "../../services/queries";
 import {
   canManageRecord,
@@ -234,14 +239,12 @@ export default function ListingAdvModal() {
     const fd = new FormData();
     Object.entries(vals || {}).forEach(([key, value]) => {
       if (key === "images" && Array.isArray(value)) {
-        value.forEach((file) => {
-          if (file instanceof File) {
-            fd.append("images", file);
-          }
-        });
+        appendImagesToFormData(fd, value);
       } else if (value !== undefined && value !== null) {
-        if (typeof value === "object" && !(value instanceof File)) {
+        if (typeof value === "object" && !(value instanceof File) && !(value instanceof Blob)) {
           fd.append(key, JSON.stringify(value));
+        } else if (value instanceof Blob) {
+          fd.append(key, value, value.name || key);
         } else {
           fd.append(key, String(value));
         }
@@ -285,7 +288,7 @@ export default function ListingAdvModal() {
       setToast({
         open: true,
         severity: "error",
-        message: err?.response?.data?.message || err.message || "Create failed",
+        message: listingUploadErrorMessage(err, "Create failed"),
       }),
   });
 
@@ -313,8 +316,7 @@ export default function ListingAdvModal() {
       setTimeout(() => navigate("/advertisements"), 700);
     },
     onError: (err) => {
-      const message =
-        err?.response?.data?.message || err.message || "Update failed";
+      const message = listingUploadErrorMessage(err, "Update failed");
       const code = err?.response?.data?.code;
       if (
         code === "ADMIN_PASSWORD_REQUIRED" ||
@@ -689,6 +691,7 @@ export default function ListingAdvModal() {
                     toSend.removedImages = removedImages;
                   }
 
+                  toSend.images = await compressListingImages(toSend.images);
                   const payload = buildFormData(toSend);
                   setUploadProgress(0);
                   if (isEdit) {
@@ -704,9 +707,16 @@ export default function ListingAdvModal() {
                   } else {
                     await createMut.mutateAsync(payload);
                   }
-                } catch {
+                } catch (err) {
                   submitLockRef.current = false;
                   setSaving(false);
+                  if (!err?.response && err?.name !== "ApiNetworkError") {
+                    setToast({
+                      open: true,
+                      severity: "error",
+                      message: listingUploadErrorMessage(err, "Save failed"),
+                    });
+                  }
                 } finally {
                   setSubmitting(false);
                 }
