@@ -521,7 +521,7 @@ export default function ListingAdvModal() {
                   textShadow: "0 1px 2px rgba(0,0,0,0.3)",
                 }}
               >
-                Promote inventory items and/or link to your website
+                Promote listings and/or link to your website
               </Typography>
             </Box>
             <IconButton
@@ -814,8 +814,8 @@ export default function ListingAdvModal() {
                         value={selectedFeatured}
                         noOptionsText={
                           isInventoryLoading
-                            ? "Loading inventory..."
-                            : "No inventory items available to promote"
+                            ? "Loading listings..."
+                            : "No listings available to promote"
                         }
                         getOptionLabel={(option) =>
                           option?.title ||
@@ -855,7 +855,7 @@ export default function ListingAdvModal() {
                                 >
                                   {[option?.category, option?.type]
                                     .filter(Boolean)
-                                    .join(" · ") || "Inventory item"}
+                                    .join(" · ") || "Listing"}
                                 </Typography>
                               </Box>
                             </li>
@@ -878,14 +878,14 @@ export default function ListingAdvModal() {
                             placeholder={
                               selectedFeatured.length
                                 ? "Add another item..."
-                                : "Pick one or more inventory items"
+                                : "Pick one or more listings"
                             }
                             helperText={
                               inventoryOptions.length
                                 ? `${selectedFeatured.length} selected · Optional — leave empty for website/brand-only`
                                 : isInventoryLoading
-                                  ? "Loading your inventory..."
-                                  : "Create inventory items first, then you can promote them here"
+                                  ? "Loading your listings..."
+                                  : "Create listings first, then you can promote them here"
                             }
                           />
                         )}

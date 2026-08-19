@@ -5,6 +5,7 @@ import {
   Divider,
   Button,
   IconButton,
+  InputAdornment,
   Stack,
   CircularProgress,
   Box,
@@ -42,6 +43,7 @@ import { useUserProfileQuery } from "../../services/queries";
 import {
   canManageRecord,
   needsAdminPasswordForRecord,
+  isOwnedByUser,
   resolveUserId,
   resolveUserRole,
 } from "../../utils/accessControl";
@@ -197,6 +199,8 @@ export default function InventoryModal({
     onError: (err) => {
       const message = listingUploadErrorMessage(err, "Update failed");
       const code = err?.response?.data?.code;
+      submitLockRef.current = false;
+      setSaving(false);
       if (
         code === "ADMIN_PASSWORD_REQUIRED" ||
         code === "ADMIN_PASSWORD_INVALID" ||
@@ -204,15 +208,9 @@ export default function InventoryModal({
       ) {
         setAdminPasswordError(message);
         setAdminPasswordOpen(true);
-        submitLockRef.current = false;
-        setSaving(false);
         return;
       }
-      setToast({
-        open: true,
-        severity: "error",
-        message,
-      });
+      setToast({ open: true, severity: "error", message });
     },
   });
 
@@ -224,11 +222,12 @@ export default function InventoryModal({
       null
     : null;
   const canEditItem = canManageRecord(itemData, currentUserId, userRole);
-  const needsAdminPassword = needsAdminPasswordForRecord(
-    itemData,
-    currentUserId,
-    userRole,
-  );
+  // Only ask for password when the item belongs to a different user
+  const needsAdminPassword =
+    isEdit &&
+    Boolean(itemData) &&
+    !isOwnedByUser(itemData, currentUserId) &&
+    needsAdminPasswordForRecord(itemData, currentUserId, userRole);
 
   const previewSellerEmail =
     itemData?.seller?.email || itemData?.sellerEmail || "";
@@ -282,10 +281,17 @@ export default function InventoryModal({
     [itemData?.images],
   );
 
+  const normalizeKeyFeatures = (raw) => {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === "string" && raw.trim())
+      return raw.split(",").map((f) => f.trim()).filter(Boolean);
+    return [];
+  };
+
   const initialValues = {
     title: itemData?.title || "",
     description: itemData?.description || "",
-    keyFeatures: itemData?.keyFeatures || [],
+    keyFeatures: normalizeKeyFeatures(itemData?.keyFeatures),
     price: itemData?.price || "",
     category: resolvedCategory.category,
     customCategory: resolvedCategory.customCategory,
@@ -348,7 +354,7 @@ export default function InventoryModal({
           </Typography>
           <Stack direction="row" justifyContent="flex-end">
             <Button variant="contained" onClick={handleClose}>
-              Back to inventory
+              Back to My Listings
             </Button>
           </Stack>
         </Stack>
@@ -432,7 +438,7 @@ export default function InventoryModal({
                   textShadow: "0 1px 2px rgba(0,0,0,0.35)",
                 }}
               >
-                {isEdit ? "Edit Item" : "Add Item"}
+                {isEdit ? "Edit Listing" : "Add Listing"}
               </Typography>
               <Typography
                 variant="body2"
@@ -445,8 +451,8 @@ export default function InventoryModal({
                 }}
               >
                 {isEdit
-                  ? "Update inventory listing details"
-                  : "Create a new inventory listing"}
+                  ? "Update listing details"
+                  : "Create a new listing"}
               </Typography>
             </Box>
             <IconButton
@@ -564,21 +570,27 @@ export default function InventoryModal({
                   }
 
                   toSend.images = await compressListingImages(toSend.images);
-                  // convert values to FormData so files are sent correctly
-                  const payload = buildFormData(toSend);
                   setUploadProgress(0);
                   if (isEdit) {
                     if (needsAdminPassword) {
-                      pendingPayloadRef.current = payload;
+                      // Store the raw data object — FormData will be built fresh
+                      // inside onConfirm so the password is included from the start
+                      // and there is no stale/double-append issue.
+                      pendingPayloadRef.current = toSend;
                       setAdminPasswordError("");
                       setAdminPasswordOpen(true);
                       submitLockRef.current = false;
                       setSaving(false);
                       return;
                     }
-                    await updateMut.mutateAsync(payload);
+                    // Own listing — send directly. Also store raw data so
+                    // onError can open the password dialog as a fallback if the
+                    // backend still demands one (ownership mismatch on server side).
+                    pendingPayloadRef.current = toSend;
+                    await updateMut.mutateAsync(buildFormData(toSend));
                   } else {
-                    await createMut.mutateAsync(payload);
+                    pendingPayloadRef.current = null;
+                    await createMut.mutateAsync(buildFormData(toSend));
                   }
                 } catch (err) {
                   submitLockRef.current = false;
@@ -648,7 +660,7 @@ export default function InventoryModal({
                           disabled={isTypeCategoryLocked}
                         />
                       )}
-                      <TextFieldWrapper name="title" label="Title" />
+                      <TextFieldWrapper name="title" label="Listing Name" />
                       <RichTextEditor
                         label="Description"
                         value={values.description || ""}
@@ -723,7 +735,20 @@ export default function InventoryModal({
                           </Typography>
                         )}
                       </Box>
-                      <TextFieldWrapper name="price" label="Price" />
+                      <TextFieldWrapper
+                        name="price"
+                        label={values.type === "SERVICES" ? "Rating From" : "Price"}
+                        placeholder="e.g. 150.00"
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">R</InputAdornment>
+                          ),
+                          inputProps: {
+                            inputMode: "decimal",
+                            pattern: "[0-9]*\\.?[0-9]{0,2}",
+                          },
+                        }}
+                      />
                       <SelectFieldWrapper
                         name="status"
                         label="Status"
@@ -948,8 +973,8 @@ export default function InventoryModal({
         />
         <AdminPasswordDialog
           open={adminPasswordOpen}
-          title="Save item changes"
-          description="Enter your admin password to edit this inventory item."
+          title="Edit listing"
+          description="Enter your admin password to save changes to this listing."
           confirmText="Save changes"
           loading={updateMut.isPending}
           error={adminPasswordError}
@@ -961,16 +986,17 @@ export default function InventoryModal({
             setSaving(false);
           }}
           onConfirm={async (adminPassword) => {
-            const payload = pendingPayloadRef.current;
-            if (!payload) return;
-            payload.append("adminPassword", adminPassword);
+            const toSend = pendingPayloadRef.current;
+            if (!toSend) return;
+            // Build a fresh FormData with the password included from scratch —
+            // avoids stale / double-append issues with reused FormData objects.
+            const payload = buildFormData({ ...toSend, adminPassword });
             submitLockRef.current = true;
             setSaving(true);
             try {
               await updateMut.mutateAsync(payload);
             } catch {
-              submitLockRef.current = false;
-              setSaving(false);
+              // onError handles display
             }
           }}
         />

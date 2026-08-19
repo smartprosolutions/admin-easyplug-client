@@ -185,7 +185,7 @@ const adminNav = [
     icon: ConfirmationNumberOutlinedIcon,
     url: "/support-tickets",
   },
-  { title: "Inventory", icon: Inventory2RoundedIcon, url: "/inventory" },
+  { title: "My Listings", icon: Inventory2RoundedIcon, url: "/inventory" },
   {
     title: "Advertisements",
     icon: CampaignRoundedIcon,
@@ -203,7 +203,7 @@ const adminNav = [
 
 const sellerNav = [
   { title: "Dashboard", icon: DashboardIcon, url: "/dashboard" },
-  { title: "Inventory", icon: Inventory2RoundedIcon, url: "/inventory" },
+  { title: "My Listings", icon: Inventory2RoundedIcon, url: "/inventory" },
   {
     title: "Advertisements",
     icon: CampaignRoundedIcon,
@@ -264,7 +264,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
     if (isSeller) {
       return [
         { title: "Dashboard", icon: DashboardIcon, url: "/dashboard" },
-        { title: "Inventory", icon: Inventory2RoundedIcon, url: "/inventory" },
+        { title: "My Listings", icon: Inventory2RoundedIcon, url: "/inventory" },
         { title: "Adverts", icon: CampaignRoundedIcon, url: "/advertisements" },
         { title: "Messages", icon: MarkunreadIcon, url: "/messages" },
         { title: "Alerts", icon: NotificationsRoundedIcon, url: "/notifications" },
@@ -273,7 +273,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
 
     return [
       { title: "Dashboard", icon: DashboardIcon, url: "/dashboard" },
-      { title: "Inventory", icon: Inventory2RoundedIcon, url: "/inventory" },
+      { title: "My Listings", icon: Inventory2RoundedIcon, url: "/inventory" },
       { title: "Adverts", icon: CampaignRoundedIcon, url: "/advertisements" },
       { title: "Messages", icon: MarkunreadIcon, url: "/messages" },
       { title: "Alerts", icon: NotificationsRoundedIcon, url: "/notifications" },

@@ -108,6 +108,16 @@ export async function updateUser(id, payload) {
   return resp.data;
 }
 
+export async function deactivateMyAccount(reason = "") {
+  const resp = await axiosClient.post("/users/me/deactivate", { reason });
+  return resp.data;
+}
+
+export async function deleteMyAccount(reason = "") {
+  const resp = await axiosClient.delete("/users/me", { data: { reason } });
+  return resp.data;
+}
+
 // Upload current user's profile picture
 export async function uploadProfilePicture(file) {
   const form = new FormData();

@@ -1162,7 +1162,7 @@ export default function RegisterUser() {
         }}
       >
         <BrandLogo
-          alt="Easyplug Logo"
+          alt="EasyPlug Logo"
           sx={{
             width: { xs: 185, md: 235 },
             height: { xs: 185, md: 235 },
@@ -1209,7 +1209,7 @@ export default function RegisterUser() {
                 textAlign: "center",
               }}
             >
-              Powering Easyplug Commerce
+              Powering EasyPlug Commerce
             </Typography>
             <Typography
               variant="h4"
@@ -1952,7 +1952,7 @@ export default function RegisterUser() {
                                 </span>
                               </Stack>
                             ) : (
-                              "Register to sell on Easyplug"
+                              "Register to sell on EasyPlug"
                             )}
                           </Button>
                         )}

@@ -6,6 +6,7 @@ import {
   Divider,
   Grid,
   IconButton,
+  InputAdornment,
   Paper,
   Stack,
   Typography,
@@ -689,7 +690,7 @@ export default function InventoryForm() {
                           ]}
                           disabled={isConditionDisabled}
                         />
-                        <TextFieldWrapper name="title" label="Title" />
+                        <TextFieldWrapper name="title" label="Listing Name" />
                         <TextFieldWrapper
                           name="description"
                           label="Description"
@@ -703,7 +704,20 @@ export default function InventoryForm() {
                           multiline
                           rows={3}
                         />
-                        <TextFieldWrapper name="price" label="Price" />
+                        <TextFieldWrapper
+                          name="price"
+                          label={values.type === "SERVICES" ? "Rating From" : "Price"}
+                          placeholder="e.g. 150.00"
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">R</InputAdornment>
+                            ),
+                            inputProps: {
+                              inputMode: "decimal",
+                              pattern: "[0-9]*\\.?[0-9]{0,2}",
+                            },
+                          }}
+                        />
                         <SelectFieldWrapper
                           name="status"
                           label="Status"

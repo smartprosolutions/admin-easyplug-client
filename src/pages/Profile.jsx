@@ -36,6 +36,7 @@ import { Formik, Form } from "formik";
 import * as Yup from "yup";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  Alert,
   Box,
   Container,
   Grid,
@@ -53,6 +54,9 @@ import {
   Dialog,
   DialogActions,
   DialogContent,
+  DialogTitle,
+  MenuItem,
+  TextField,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import SaveIcon from "@mui/icons-material/Save";
@@ -78,6 +82,8 @@ import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import VerifiedIcon from "@mui/icons-material/Verified";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
+import PauseCircleOutlineIcon from "@mui/icons-material/PauseCircleOutline";
+import DeleteForeverOutlinedIcon from "@mui/icons-material/DeleteForeverOutlined";
 import ExploreOutlinedIcon from "@mui/icons-material/ExploreOutlined";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import LockResetIcon from "@mui/icons-material/LockReset";
@@ -99,6 +105,8 @@ import {
   updateUser,
   uploadProfilePicture,
   changePassword as changePasswordRequest,
+  deactivateMyAccount,
+  deleteMyAccount,
 } from "../services/authService";
 import {
   updateSellerInfo,
@@ -383,6 +391,11 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
     severity: "info",
     message: "",
   });
+  const [deactivateOpen, setDeactivateOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deactivateReason, setDeactivateReason] = useState("");
+  const [deleteReasonKey, setDeleteReasonKey] = useState("");
+  const [deleteReasonDetail, setDeleteReasonDetail] = useState("");
   // Mutations: update user, update company, upload pictures
   const updateUserMutation = useMutation({
     mutationFn: async (payload) => {
@@ -442,6 +455,7 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["user", "me", "full"] });
+      setEditingCompany(false);
       setToast({ open: true, severity: "success", message: "Company updated" });
     },
     onError: (e) => {
@@ -574,6 +588,60 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
       });
     },
   });
+
+  const deactivateMutation = useMutation({
+    mutationFn: () => deactivateMyAccount(deactivateReason.trim()),
+    onSuccess: () => {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("token");
+      localStorage.removeItem("auth_user");
+      setDeactivateOpen(false);
+      setToast({ open: true, severity: "success", message: "Account deactivated. You have been signed out." });
+      setTimeout(() => window.location.href = "/login", 900);
+    },
+    onError: (e) => {
+      setToast({ open: true, severity: "error", message: e?.response?.data?.message || "Failed to deactivate account." });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteMyAccount(builtDeleteReason),
+    onSuccess: () => {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("token");
+      localStorage.removeItem("auth_user");
+      setDeleteOpen(false);
+      setToast({ open: true, severity: "success", message: "Your account has been deleted." });
+      setTimeout(() => window.location.href = "/login", 900);
+    },
+    onError: (e) => {
+      setToast({ open: true, severity: "error", message: e?.response?.data?.message || "Failed to delete account." });
+    },
+  });
+
+  const DELETE_REASON_OPTIONS = [
+    { value: "not_using", label: "I'm not using EasyPlug anymore" },
+    { value: "privacy", label: "Privacy concerns" },
+    { value: "too_many_emails", label: "Too many emails / notifications" },
+    { value: "found_alternative", label: "I found an alternative" },
+    { value: "bad_experience", label: "Bad experience on the platform" },
+    { value: "other", label: "Other" },
+  ];
+
+  const builtDeleteReason = (() => {
+    const selected = DELETE_REASON_OPTIONS.find((o) => o.value === deleteReasonKey);
+    const label = selected?.label || "";
+    const detail = deleteReasonDetail.trim();
+    if (!label && !detail) return "";
+    if (deleteReasonKey === "other") return detail;
+    if (detail) return `${label}. ${detail}`;
+    return label;
+  })();
+
+  const canSubmitDelete =
+    Boolean(deleteReasonKey) &&
+    builtDeleteReason.trim().length >= 10 &&
+    (deleteReasonKey !== "other" || deleteReasonDetail.trim().length >= 10);
 
   const uploadBusinessPictureMutation = useMutation({
     mutationFn: async (file) => uploadBusinessPicture(file),
@@ -1270,21 +1338,6 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                   </IconButton>
                 ) : (
                   <Box>
-                    <IconButton
-                      size="small"
-                      onClick={() => setEditingCompany(false)}
-                      sx={{
-                        ...gradientButtonSx,
-                        width: 32,
-                        height: 32,
-                        "&:hover": {
-                          background: gradientPrimary,
-                          filter: "brightness(0.9)",
-                        },
-                      }}
-                    >
-                      <SaveIcon />
-                    </IconButton>
                     <IconButton
                       size="small"
                       color="inherit"
@@ -2475,6 +2528,147 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
               </Form>
             )}
           </Formik>
+        </Dialog>
+
+        {/* Danger Zone */}
+        <Paper
+          elevation={0}
+          sx={{
+            mt: 3,
+            p: { xs: 2, sm: 2.5 },
+            borderRadius: 3,
+            border: "1px solid",
+            borderColor: "error.light",
+            bgcolor: (t) => t.palette.mode === "dark" ? "transparent" : "#fff8f8",
+          }}
+        >
+          <Typography variant="h6" fontWeight={800} color="error" sx={{ mb: 0.5 }}>
+            Danger Zone
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Deactivate to pause your account, or permanently delete it.
+          </Typography>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25}>
+            <Button
+              variant="outlined"
+              color="warning"
+              startIcon={<PauseCircleOutlineIcon />}
+              onClick={() => setDeactivateOpen(true)}
+              sx={{ textTransform: "none", fontWeight: 700, borderRadius: 2 }}
+            >
+              Deactivate account
+            </Button>
+            <Button
+              variant="contained"
+              color="error"
+              startIcon={<DeleteForeverOutlinedIcon />}
+              onClick={() => setDeleteOpen(true)}
+              sx={{ textTransform: "none", fontWeight: 700, borderRadius: 2 }}
+            >
+              Delete account
+            </Button>
+          </Stack>
+        </Paper>
+
+        {/* Deactivate dialog */}
+        <Dialog
+          open={deactivateOpen}
+          onClose={() => !deactivateMutation.isPending && setDeactivateOpen(false)}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle sx={{ fontWeight: 800 }}>Deactivate account</DialogTitle>
+          <DialogContent dividers>
+            <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
+              Your account will be paused and you will be signed out. You can contact support later if you want it reactivated.
+            </Alert>
+            <TextField
+              label="Reason (optional)"
+              value={deactivateReason}
+              onChange={(e) => setDeactivateReason(e.target.value)}
+              fullWidth
+              multiline
+              minRows={3}
+              placeholder="Tell us why you're pausing your account"
+            />
+          </DialogContent>
+          <DialogActions sx={{ px: 3, py: 2 }}>
+            <Button
+              onClick={() => setDeactivateOpen(false)}
+              disabled={deactivateMutation.isPending}
+              sx={{ textTransform: "none" }}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="warning"
+              variant="contained"
+              disabled={deactivateMutation.isPending}
+              onClick={() => deactivateMutation.mutate()}
+              sx={{ textTransform: "none", fontWeight: 700 }}
+            >
+              {deactivateMutation.isPending ? "Deactivating..." : "Deactivate"}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Delete dialog */}
+        <Dialog
+          open={deleteOpen}
+          onClose={() => !deleteMutation.isPending && setDeleteOpen(false)}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle sx={{ fontWeight: 800 }}>Delete account</DialogTitle>
+          <DialogContent dividers>
+            <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+              This permanently deletes your account. You will need to register again if you return.
+            </Alert>
+            <Stack spacing={1.5}>
+              <TextField
+                select
+                label="Why are you leaving?"
+                value={deleteReasonKey}
+                onChange={(e) => setDeleteReasonKey(e.target.value)}
+                fullWidth
+                required
+              >
+                {DELETE_REASON_OPTIONS.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                label={deleteReasonKey === "other" ? "Please tell us more (required)" : "Additional details (optional)"}
+                value={deleteReasonDetail}
+                onChange={(e) => setDeleteReasonDetail(e.target.value)}
+                fullWidth
+                multiline
+                minRows={3}
+                required={deleteReasonKey === "other"}
+                helperText="Minimum 10 characters required overall"
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, py: 2 }}>
+            <Button
+              onClick={() => setDeleteOpen(false)}
+              disabled={deleteMutation.isPending}
+              sx={{ textTransform: "none" }}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="error"
+              variant="contained"
+              disabled={!canSubmitDelete || deleteMutation.isPending}
+              onClick={() => deleteMutation.mutate()}
+              sx={{ textTransform: "none", fontWeight: 700 }}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete permanently"}
+            </Button>
+          </DialogActions>
         </Dialog>
       </Container>
     </Box>

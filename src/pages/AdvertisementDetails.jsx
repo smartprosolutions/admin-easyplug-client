@@ -262,14 +262,14 @@ export default function AdvertisementDetails() {
       setToast({
         open: true,
         severity: "success",
-        message: "Featured inventory updated",
+        message: "Featured listings updated",
       });
     },
     onError: (err) => {
       const message =
         err?.response?.data?.message ||
         err.message ||
-        "Failed to update featured inventory";
+        "Failed to update featured listings";
       const code = err?.response?.data?.code;
       if (
         code === "ADMIN_PASSWORD_REQUIRED" ||
@@ -513,7 +513,7 @@ export default function AdvertisementDetails() {
                   WebkitTextFillColor: "transparent",
                 }}
               >
-                Featured inventory
+                Featured Listings
               </Typography>
             </Stack>
             <Stack
@@ -523,7 +523,7 @@ export default function AdvertisementDetails() {
               spacing={2}
             >
               <Typography variant="body2" color="text.secondary">
-                {`${formattedFeaturedItems.length} inventory item(s) featured on this campaign`}
+                {`${formattedFeaturedItems.length} listing(s) featured on this campaign`}
               </Typography>
               {canManageAdvert ? (
                 <Button
@@ -574,7 +574,7 @@ export default function AdvertisementDetails() {
                 }}
               >
                 <Typography variant="body2">
-                  No featured inventory yet. Promote items from your Inventory,
+                  No featured listings yet. Promote items from My Listings,
                   or leave empty for a website/brand campaign.
                 </Typography>
               </Paper>
@@ -591,7 +591,7 @@ export default function AdvertisementDetails() {
         fullWidth
         maxWidth="sm"
       >
-        <DialogTitle>Feature inventory items</DialogTitle>
+        <DialogTitle>Feature listings</DialogTitle>
         <DialogContent>
           <Autocomplete
             sx={{ mt: 1 }}
@@ -602,8 +602,8 @@ export default function AdvertisementDetails() {
             loading={isInventoryLoading}
             noOptionsText={
               isInventoryLoading
-                ? "Loading inventory..."
-                : "No inventory items available to promote"
+                ? "Loading listings..."
+                : "No listings available to promote"
             }
             getOptionLabel={(option) =>
               option?.title ||
@@ -636,7 +636,7 @@ export default function AdvertisementDetails() {
                     >
                       {[option?.category, option?.type]
                         .filter(Boolean)
-                        .join(" · ") || "Inventory item"}
+                        .join(" · ") || "Listing"}
                     </Typography>
                   </Box>
                 </li>
@@ -646,7 +646,7 @@ export default function AdvertisementDetails() {
               <TextField
                 {...params}
                 label="Items to promote"
-                placeholder="Pick one or more inventory items"
+                placeholder="Pick one or more listings"
                 helperText={`${selectedFeatured.length} selected`}
               />
             )}
@@ -684,7 +684,7 @@ export default function AdvertisementDetails() {
       <AdminPasswordDialog
         open={featurePasswordOpen}
         title="Update featured items"
-        description="Enter your admin password to update featured inventory on this campaign."
+          description="Enter your admin password to update featured listings on this campaign."
         confirmText="Save"
         loading={featureMut.isPending}
         error={featurePasswordError}

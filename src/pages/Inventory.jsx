@@ -95,21 +95,9 @@ export default function Inventory() {
     onError: (err) => {
       const message =
         err?.response?.data?.message || err.message || "Delete failed";
-      const code = err?.response?.data?.code;
-      if (
-        code === "ADMIN_PASSWORD_REQUIRED" ||
-        code === "ADMIN_PASSWORD_INVALID" ||
-        /admin password/i.test(message)
-      ) {
-        setAdminPasswordError(message);
-        return;
-      }
-      setToast({
-        open: true,
-        severity: "error",
-        message,
-      });
-      setDeleteTarget(null);
+      // Always show the error inside the password dialog so the user sees it
+      setAdminPasswordError(message);
+      setToast({ open: true, severity: "error", message });
     },
   });
 
@@ -233,13 +221,13 @@ export default function Inventory() {
 
   const productCards = [
     {
-      label: "Total Products",
+      label: "Total Listings",
       value: totalProducts.toLocaleString("en-ZA"),
-      sub: "All inventory records",
+      sub: "All listing records",
       accent: "primary.main",
     },
     {
-      label: "Active Products",
+      label: "Active Listings",
       value: activeProducts.toLocaleString("en-ZA"),
       sub: "Currently visible to users",
       accent: "success.main",
@@ -247,13 +235,13 @@ export default function Inventory() {
     {
       label: "Promoted Ads",
       value: promotedAds.toLocaleString("en-ZA"),
-      sub: "Paid promotion products",
+      sub: "Paid promotion listings",
       accent: "warning.main",
     },
     {
       label: "Top Category",
       value: topCategory,
-      sub: `${topCategoryCount.toLocaleString("en-ZA")} products`,
+      sub: `${topCategoryCount.toLocaleString("en-ZA")} listings`,
       accent: "secondary.main",
     },
   ];
@@ -269,12 +257,12 @@ export default function Inventory() {
       >
         <Box>
           <Typography variant="h5" fontWeight={700}>
-            Inventory
+            My Listings
           </Typography>
           <Typography variant="body2" color="text.secondary">
             {isSeller
-              ? "Manage your inventory items and availability"
-              : "Manage inventory items and availability"}
+              ? "Manage your listings and availability"
+              : "Manage listings and availability"}
           </Typography>
         </Box>
         <Box sx={{ width: { xs: "100%", sm: "auto" }, mt: { xs: 0.5, sm: 0 } }}>
@@ -295,14 +283,14 @@ export default function Inventory() {
               "&:hover": { opacity: { xs: 0.95, sm: 0.92 }, boxShadow: "none" },
             }}
           >
-            Add Item
+            Add Listing
           </Button>
         </Box>
       </Stack>
 
       <Box sx={{ mb: 2.5 }}>
         <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.2 }}>
-          Product Overview
+          Listing Overview
         </Typography>
         <Grid container spacing={1.5}>
           {productCards.map((card) => (
@@ -550,10 +538,13 @@ export default function Inventory() {
           setDeleteTarget(null);
           setAdminPasswordError("");
         }}
-        onConfirm={(adminPassword) =>
-          deleteTarget?.id &&
-          deleteMut.mutate({ id: deleteTarget.id, adminPassword })
-        }
+        onConfirm={(adminPassword) => {
+          if (deleteTarget?.id) {
+            deleteMut.mutate({ id: deleteTarget.id, adminPassword });
+          } else {
+            setAdminPasswordError("Cannot identify listing — please close and try again");
+          }
+        }}
       />
       <ToastAlert
         open={toast.open}

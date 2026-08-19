@@ -44,14 +44,19 @@ import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import StorefrontIcon from "@mui/icons-material/Storefront";
 import PeopleIcon from "@mui/icons-material/People";
 import VerifiedIcon from "@mui/icons-material/Verified";
+import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import MetricsDataGrid from "../components/metrics/MetricsDataGrid";
 import TextFieldWrapper from "../components/forms/TextFieldWrapper";
 import SelectFieldWrapper from "../components/forms/SelectFieldWrapper";
+import AdminPasswordDialog from "../components/modals/AdminPasswordDialog";
 import { gradientPrimary } from "../theme/theme";
 import {
   getUserManagementData,
   updateUserStatus,
   createUserByAdmin,
+  updateUserByAdmin,
+  suspendUserByAdmin,
+  cascadeDeleteUser,
 } from "../services/userManagementService";
 import {
   createNameFieldSchema,
@@ -116,8 +121,13 @@ export default function UserManagement() {
   // Dialog states
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editUser, setEditUser] = useState(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteUser, setDeleteUser] = useState(null);
+  const [deleteAdminPasswordError, setDeleteAdminPasswordError] = useState("");
   const [viewUser, setViewUser] = useState(null);
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -171,6 +181,82 @@ export default function UserManagement() {
           "Failed to create user",
         "error",
       );
+    },
+  });
+
+  const updateUserMutation = useMutation({
+    mutationFn: ({ userId, payload }) => updateUserByAdmin(userId, payload),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ["user-management"] });
+      setEditDialogOpen(false);
+      setEditUser(null);
+      showSnackbar(response?.message || "User updated successfully", "success");
+    },
+    onError: (mutationError) => {
+      showSnackbar(
+        mutationError?.response?.data?.message ||
+          mutationError?.message ||
+          "Failed to update user",
+        "error",
+      );
+    },
+  });
+
+  const suspendMutation = useMutation({
+    mutationFn: (userId) => suspendUserByAdmin(userId),
+    onSuccess: (_, userId) => {
+      queryClient.invalidateQueries({ queryKey: ["user-management"] });
+      queryClient.invalidateQueries({ queryKey: ["adminListings"] });
+      const name =
+        `${selectedUser?.firstName || ""} ${selectedUser?.lastName || ""}`.trim() ||
+        selectedUser?.businessName ||
+        "User";
+      showSnackbar(
+        `${name} has been suspended. Their listings are now hidden.`,
+        "warning",
+      );
+      setDeactivateDialogOpen(false);
+      setSelectedUser(null);
+    },
+    onError: (mutationError) => {
+      showSnackbar(
+        mutationError?.response?.data?.message ||
+          mutationError?.message ||
+          "Failed to suspend user",
+        "error",
+      );
+    },
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: ({ userId, adminPassword }) =>
+      cascadeDeleteUser(userId, adminPassword),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["user-management"] });
+      queryClient.invalidateQueries({ queryKey: ["adminListings"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-insights"] });
+      const name =
+        `${deleteUser?.firstName || ""} ${deleteUser?.lastName || ""}`.trim() ||
+        deleteUser?.businessName ||
+        "User";
+      const hadErrors = data?.cascadeErrors?.length > 0;
+      showSnackbar(
+        hadErrors
+          ? `${name} deleted. Some associated items could not be removed — check listings manually.`
+          : `${name} and all their data have been permanently deleted.`,
+        hadErrors ? "warning" : "success",
+      );
+      setDeleteDialogOpen(false);
+      setDeleteUser(null);
+      setDeleteAdminPasswordError("");
+    },
+    onError: (mutationError) => {
+      const message =
+        mutationError?.response?.data?.message ||
+        mutationError?.message ||
+        "Failed to delete user";
+      setDeleteAdminPasswordError(message);
+      showSnackbar(message, "error");
     },
   });
 
@@ -233,34 +319,44 @@ export default function UserManagement() {
   }, []);
 
   const handleConfirmToggle = useCallback(() => {
-    if (!selectedUser || toggleStatusMutation.isPending) return;
-    const nextStatus =
-      selectedUser.status === "active" ? "inactive" : "active";
+    if (!selectedUser) return;
+    const isActive = selectedUser.status === "active";
+    const isSeller = selectedUser.entityType === "Seller";
     const fullName =
       `${selectedUser.firstName || ""} ${selectedUser.lastName || ""}`.trim() ||
       selectedUser.businessName ||
       "User";
 
-    toggleStatusMutation.mutate({
-      userId: selectedUser.id,
-      status: nextStatus,
-      name: fullName,
-    });
-    setDeactivateDialogOpen(false);
-    setSelectedUser(null);
-  }, [selectedUser, toggleStatusMutation]);
+    if (isActive && isSeller) {
+      // Sellers get "suspended" so the backend can hide their listings
+      suspendMutation.mutate(selectedUser.id || selectedUser.userId);
+    } else {
+      const nextStatus = isActive ? "inactive" : "active";
+      toggleStatusMutation.mutate({
+        userId: selectedUser.id || selectedUser.userId,
+        status: nextStatus,
+        name: fullName,
+      });
+      setDeactivateDialogOpen(false);
+      setSelectedUser(null);
+    }
+  }, [selectedUser, toggleStatusMutation, suspendMutation]);
+
+  const handleOpenDeleteDialog = useCallback((user) => {
+    setDeleteUser(user);
+    setDeleteAdminPasswordError("");
+    setDeleteDialogOpen(true);
+  }, []);
 
   const handleView = useCallback((user, entityType) => {
     setViewUser({ ...user, entityType });
     setViewDialogOpen(true);
   }, []);
 
-  const handleEdit = useCallback(
-    (user) => {
-      showSnackbar(`Editing ${user.firstName} ${user.lastName}`, "info");
-    },
-    [showSnackbar],
-  );
+  const handleEdit = useCallback((user) => {
+    setEditUser(user);
+    setEditDialogOpen(true);
+  }, []);
 
   const handleOpenAddDialog = useCallback(() => {
     setAddDialogOpen(true);
@@ -285,6 +381,31 @@ export default function UserManagement() {
       }
     },
     [activeUserType, createUserMutation],
+  );
+
+  const handleUpdateUser = useCallback(
+    async (values, helpers) => {
+      if (!editUser) return;
+      const userId = editUser.userId || editUser.id;
+      try {
+        await updateUserMutation.mutateAsync({
+          userId,
+          payload: {
+            title: values.title,
+            firstName: values.firstName.trim(),
+            lastName: values.lastName.trim(),
+            email: values.email.trim().toLowerCase(),
+            phone: values.phone?.trim() || undefined,
+          },
+        });
+        helpers.resetForm();
+      } catch {
+        // Error toast handled by mutation
+      } finally {
+        helpers.setSubmitting(false);
+      }
+    },
+    [editUser, updateUserMutation],
   );
 
   const handleExport = useCallback(() => {
@@ -538,11 +659,20 @@ export default function UserManagement() {
                 )}
               </IconButton>
             </Tooltip>
+            <Tooltip title="Delete">
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => handleOpenDeleteDialog(params.row)}
+              >
+                <DeleteForeverIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </Stack>
         ),
       },
     ],
-    [formatDate, handleEdit, handleToggleStatus, handleView],
+    [formatDate, handleEdit, handleToggleStatus, handleView, handleOpenDeleteDialog],
   );
 
   // Seller columns
@@ -673,11 +803,20 @@ export default function UserManagement() {
                 )}
               </IconButton>
             </Tooltip>
+            <Tooltip title="Delete">
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => handleOpenDeleteDialog(params.row)}
+              >
+                <DeleteForeverIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </Stack>
         ),
       },
     ],
-    [formatDate, handleEdit, handleToggleStatus, handleView],
+    [formatDate, handleEdit, handleToggleStatus, handleView, handleOpenDeleteDialog],
   );
 
   // User columns
@@ -770,11 +909,20 @@ export default function UserManagement() {
                 )}
               </IconButton>
             </Tooltip>
+            <Tooltip title="Delete">
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => handleOpenDeleteDialog(params.row)}
+              >
+                <DeleteForeverIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </Stack>
         ),
       },
     ],
-    [formatDate, handleToggleStatus, handleView],
+    [formatDate, handleToggleStatus, handleView, handleOpenDeleteDialog],
   );
 
   const activeAdminsCount = adminRows.filter(
@@ -1095,6 +1243,13 @@ export default function UserManagement() {
                             <CheckCircleIcon fontSize="small" />
                           )}
                         </IconButton>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleOpenDeleteDialog(admin)}
+                        >
+                          <DeleteForeverIcon fontSize="small" />
+                        </IconButton>
                       </Stack>
                     </Stack>
                   </Paper>
@@ -1302,6 +1457,13 @@ export default function UserManagement() {
                             <CheckCircleIcon fontSize="small" />
                           )}
                         </IconButton>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleOpenDeleteDialog(seller)}
+                        >
+                          <DeleteForeverIcon fontSize="small" />
+                        </IconButton>
                       </Stack>
                     </Stack>
                   </Paper>
@@ -1480,6 +1642,13 @@ export default function UserManagement() {
                             <CheckCircleIcon fontSize="small" />
                           )}
                         </IconButton>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleOpenDeleteDialog(user)}
+                        >
+                          <DeleteForeverIcon fontSize="small" />
+                        </IconButton>
                       </Stack>
                     </Stack>
                   </Paper>
@@ -1534,12 +1703,24 @@ export default function UserManagement() {
         <DialogContent>
           <DialogContentText>
             Are you sure you want to{" "}
-            {selectedUser?.status === "active" ? "deactivate" : "activate"}{" "}
+            {selectedUser?.status === "active"
+              ? selectedUser?.entityType === "Seller"
+                ? "suspend"
+                : "deactivate"
+              : "activate"}{" "}
             <strong>
-              {selectedUser?.firstName} {selectedUser?.lastName}
+              {selectedUser?.firstName} {selectedUser?.lastName ||
+                selectedUser?.businessName}
             </strong>
             ?
             {selectedUser?.status === "active" &&
+              selectedUser?.entityType === "Seller" && (
+                <Box component="span" sx={{ display: "block", mt: 1, color: "warning.main", fontWeight: 600 }}>
+                  All their listings will be hidden from the marketplace while suspended.
+                </Box>
+              )}
+            {selectedUser?.status === "active" &&
+              selectedUser?.entityType !== "Seller" &&
               " They will no longer be able to access the platform."}
           </DialogContentText>
         </DialogContent>
@@ -1560,7 +1741,7 @@ export default function UserManagement() {
           <Button
             variant="contained"
             onClick={handleConfirmToggle}
-            disabled={toggleStatusMutation.isPending}
+            disabled={toggleStatusMutation.isPending || suspendMutation.isPending}
             sx={{
               borderRadius: 2,
               width: { xs: "100%", sm: "auto" },
@@ -1572,14 +1753,165 @@ export default function UserManagement() {
               },
             }}
           >
-            {toggleStatusMutation.isPending
+            {toggleStatusMutation.isPending || suspendMutation.isPending
               ? "Updating..."
               : selectedUser?.status === "active"
-                ? "Deactivate"
+                ? selectedUser?.entityType === "Seller"
+                  ? "Suspend"
+                  : "Deactivate"
                 : "Activate"}
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Edit User Dialog */}
+      <Dialog
+        open={editDialogOpen}
+        onClose={() => !updateUserMutation.isPending && setEditDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}
+      >
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <EditIcon sx={{ color: "#667eea" }} />
+            <Typography fontWeight={600}>Edit User</Typography>
+          </Stack>
+        </DialogTitle>
+        <Formik
+          initialValues={{
+            title: editUser?.title || "",
+            firstName: editUser?.firstName || "",
+            lastName: editUser?.lastName || "",
+            email: editUser?.email || "",
+            phone: editUser?.phone && editUser.phone !== "-" ? editUser.phone : "",
+          }}
+          validationSchema={createUserValidationSchema}
+          validateOnBlur
+          validateOnChange
+          onSubmit={handleUpdateUser}
+          enableReinitialize
+        >
+          {({ isSubmitting, isValid, submitCount }) => (
+            <Form noValidate>
+              <DialogContent>
+                <Stack spacing={2}>
+                  <SelectFieldWrapper
+                    name="title"
+                    label="Title"
+                    options={TITLE_OPTIONS}
+                  />
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                    <TextFieldWrapper
+                      name="firstName"
+                      label="First name"
+                      sanitize={sanitizeNameInput}
+                      blockDigits
+                      inputMode="text"
+                      autoComplete="given-name"
+                    />
+                    <TextFieldWrapper
+                      name="lastName"
+                      label="Last name"
+                      sanitize={sanitizeNameInput}
+                      blockDigits
+                      inputMode="text"
+                      autoComplete="family-name"
+                    />
+                  </Stack>
+                  <TextFieldWrapper
+                    name="email"
+                    label="Email"
+                    type="email"
+                    autoComplete="email"
+                  />
+                  <TextFieldWrapper
+                    name="phone"
+                    label="Cellphone (optional)"
+                    sanitize={sanitizePhoneInput}
+                    allowOnlyPattern={/[\d+]/}
+                    inputMode="tel"
+                    autoComplete="tel"
+                    placeholder="0821234567"
+                  />
+                </Stack>
+                {submitCount > 0 && !isValid ? (
+                  <Typography
+                    variant="caption"
+                    color="error"
+                    sx={{ display: "block", mt: 1.5 }}
+                  >
+                    Please fix the highlighted fields before continuing.
+                  </Typography>
+                ) : null}
+              </DialogContent>
+              <DialogActions
+                sx={{
+                  p: 2,
+                  pt: 1,
+                  flexDirection: { xs: "column", sm: "row" },
+                  gap: 1,
+                }}
+              >
+                <Button
+                  type="button"
+                  onClick={() => setEditDialogOpen(false)}
+                  disabled={isSubmitting || updateUserMutation.isPending}
+                  sx={{ borderRadius: 2, width: { xs: "100%", sm: "auto" } }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  disabled={isSubmitting || updateUserMutation.isPending}
+                  sx={{
+                    borderRadius: 2,
+                    width: { xs: "100%", sm: "auto" },
+                    backgroundImage: gradientPrimary,
+                    color: "#fff",
+                  }}
+                >
+                  {isSubmitting || updateUserMutation.isPending
+                    ? "Saving..."
+                    : "Save Changes"}
+                </Button>
+              </DialogActions>
+            </Form>
+          )}
+        </Formik>
+      </Dialog>
+
+      {/* Delete User Dialog */}
+      <AdminPasswordDialog
+        open={deleteDialogOpen}
+        title="Delete User"
+        description={`Enter your admin password to permanently delete ${
+          [deleteUser?.firstName, deleteUser?.lastName].filter(Boolean).join(" ") ||
+          deleteUser?.businessName ||
+          "this user"
+        }. All their listings, advertisements, and linked data will be archived and removed from the marketplace. This cannot be undone.`}
+        confirmText="Delete Permanently"
+        loading={deleteUserMutation.isPending}
+        error={deleteAdminPasswordError}
+        onClose={() => {
+          setDeleteDialogOpen(false);
+          setDeleteUser(null);
+          setDeleteAdminPasswordError("");
+        }}
+        onConfirm={(adminPassword) => {
+          const userId =
+            deleteUser?.id ||
+            deleteUser?.userId ||
+            deleteUser?._id ||
+            deleteUser?.user_id;
+          if (!userId) {
+            showSnackbar("Cannot identify user — please try again", "error");
+            return;
+          }
+          deleteUserMutation.mutate({ userId, adminPassword });
+        }}
+      />
 
       {/* Add User Dialog */}
       <Dialog

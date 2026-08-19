@@ -246,6 +246,45 @@ export default function Advertisements() {
     },
   ];
 
+  if (isSeller) {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "60vh",
+          textAlign: "center",
+          px: 3,
+          p: { xs: 1.25, sm: 2, md: 3 },
+        }}
+      >
+        <Paper
+          elevation={0}
+          sx={{
+            p: { xs: 4, sm: 6 },
+            borderRadius: 4,
+            border: "1px solid",
+            borderColor: "divider",
+            maxWidth: 480,
+            width: "100%",
+          }}
+        >
+          <Typography variant="h2" sx={{ mb: 1.5, lineHeight: 1 }}>
+            📢
+          </Typography>
+          <Typography variant="h5" fontWeight={800} sx={{ mb: 1 }}>
+            Advertisements — Coming Soon
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.8 }}>
+            Advertisement management for sellers is being prepared and will be available shortly. Check back soon!
+          </Typography>
+        </Paper>
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ p: { xs: 1.25, sm: 2, md: 3 } }}>
       <Stack
@@ -260,9 +299,7 @@ export default function Advertisements() {
             Advertisements
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            {isSeller
-              ? "Manage your adverts and campaigns"
-              : "Manage adverts and campaigns"}
+            Manage adverts and campaigns
           </Typography>
         </Box>
         <Stack
