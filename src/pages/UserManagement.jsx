@@ -396,6 +396,7 @@ export default function UserManagement() {
             lastName: values.lastName.trim(),
             email: values.email.trim().toLowerCase(),
             phone: values.phone?.trim() || undefined,
+            userType: values.userType,
           },
         });
         helpers.resetForm();
@@ -1785,6 +1786,7 @@ export default function UserManagement() {
             lastName: editUser?.lastName || "",
             email: editUser?.email || "",
             phone: editUser?.phone && editUser.phone !== "-" ? editUser.phone : "",
+            userType: editUser?.userType || editUser?.entityType?.toLowerCase() || "seller",
           }}
           validationSchema={createUserValidationSchema}
           validateOnBlur
@@ -1833,6 +1835,15 @@ export default function UserManagement() {
                     inputMode="tel"
                     autoComplete="tel"
                     placeholder="0821234567"
+                  />
+                  <SelectFieldWrapper
+                    name="userType"
+                    label="Role"
+                    options={[
+                      { value: "seller", label: "Seller" },
+                      { value: "admin", label: "Admin" },
+                      { value: "user", label: "User" },
+                    ]}
                   />
                 </Stack>
                 {submitCount > 0 && !isValid ? (
