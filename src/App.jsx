@@ -17,6 +17,7 @@ import ListingAdvModal from "./components/modals/ListingAdvModal";
 import NotFound from "./pages/NotFound";
 import Transactions from "./pages/Transactions";
 import UserManagement from "./pages/UserManagement";
+import ActivityLogs from "./pages/ActivityLogs";
 import Reports from "./pages/Reports";
 import SupportTickets from "./pages/SupportTickets";
 import SupportTicketDetail from "./pages/SupportTicketDetail";
@@ -228,6 +229,14 @@ const App = () => {
                 element={
                   <RoleRoute allow={["admin"]} fallbackTo="/inventory">
                     <Navigate to="/userManagement" replace />
+                  </RoleRoute>
+                }
+              />
+              <Route
+                path="activity-logs"
+                element={
+                  <RoleRoute allow={["admin"]} fallbackTo="/inventory">
+                    <ActivityLogs />
                   </RoleRoute>
                 }
               />

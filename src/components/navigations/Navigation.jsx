@@ -26,6 +26,7 @@ import ReceiptLongRoundedIcon from "@mui/icons-material/ReceiptLongRounded";
 import GroupRoundedIcon from "@mui/icons-material/GroupRounded";
 import AssessmentRoundedIcon from "@mui/icons-material/AssessmentRounded";
 import ConfirmationNumberOutlinedIcon from "@mui/icons-material/ConfirmationNumberOutlined";
+import ManageSearchIcon from "@mui/icons-material/ManageSearch";
 import Badge from "@mui/material/Badge";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
@@ -193,6 +194,7 @@ const adminNav = [
   },
   { title: "Transactions", icon: ReceiptLongRoundedIcon, url: "/transactions" },
   { title: "User Management", icon: GroupRoundedIcon, url: "/userManagement" },
+  { title: "Activity Logs", icon: ManageSearchIcon, url: "/activity-logs" },
   { title: "Messages", icon: MarkunreadIcon, url: "/messages" },
   {
     title: "Notifications",
