@@ -30,6 +30,7 @@ import { getMyListings } from "../services/listingService";
 import { gradientPrimary } from "../theme/theme";
 import { ListingTile } from "../components/listing/ListingTile";
 import { MobileListingItem } from "../components/listing/MobileListingItem";
+import ListingReviewsPanel from "../components/listing/ListingReviewsPanel";
 import { resolveListingImages } from "../utils/listingImages";
 import ToastAlert from "../components/alerts/ToastAlert";
 import { useUserProfileQuery } from "../services/queries";
@@ -579,6 +580,9 @@ export default function AdvertisementDetails() {
                 </Typography>
               </Paper>
             )}
+          </Grid>
+          <Grid size={{ xs: 12 }}>
+            <ListingReviewsPanel listingId={id} canReply={canManageAdvert} />
           </Grid>
         </Grid>
       )}

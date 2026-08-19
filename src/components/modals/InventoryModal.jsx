@@ -37,7 +37,9 @@ import {
   updateListing as updateItem,
   getListing as getItem,
   invalidateListingQueries,
+  resolveListingId,
 } from "../../services/listingService";
+import ListingReviewsPanel from "../listing/ListingReviewsPanel";
 import { addListingToAdvert } from "../../services/advertService";
 import { useUserProfileQuery } from "../../services/queries";
 import {
@@ -926,6 +928,12 @@ export default function InventoryModal({
               }}
             </Formik>
           )}
+          {isEdit && resolveListingId(itemData) ? (
+            <ListingReviewsPanel
+              listingId={resolveListingId(itemData) || id}
+              canReply={canEditItem}
+            />
+          ) : null}
         </DialogContent>
 
         <Divider />
