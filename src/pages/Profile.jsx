@@ -1316,7 +1316,7 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                         color: "#fff",
                       }}
                     >
-                      <PhotoCameraIcon fontSize="small" />
+                      <EditIcon fontSize="small" />
                       <input
                         hidden
                         accept="image/png,image/jpeg,image/jpg,image/webp;capture=camera"
@@ -1385,13 +1385,15 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                   <Form>
                     <Grid container spacing={2} sx={{ mt: 1 }}>
                       <Grid size={{ xs: 12, sm: 6 }}>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{ mb: 0.5, display: "block" }}
-                        >
-                          Business Name
-                        </Typography>
+                        {!editingCompany && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ mb: 0.5, display: "block" }}
+                          >
+                            Business Name
+                          </Typography>
+                        )}
                         {editingCompany ? (
                           <TextFieldWrapper
                             name="businessName"
@@ -1418,13 +1420,15 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                         )}
                       </Grid>
                       <Grid size={{ xs: 12, sm: 6 }}>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{ mb: 0.5, display: "block" }}
-                        >
-                          Business Email
-                        </Typography>
+                        {!editingCompany && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ mb: 0.5, display: "block" }}
+                          >
+                            Business Email
+                          </Typography>
+                        )}
                         {editingCompany ? (
                           <TextFieldWrapper
                             name="businessEmail"
@@ -1451,13 +1455,15 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                         )}
                       </Grid>
                       <Grid size={{ xs: 12 }}>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{ mb: 0.5, display: "block" }}
-                        >
-                          Registration Number
-                        </Typography>
+                        {!editingCompany && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ mb: 0.5, display: "block" }}
+                          >
+                            Registration Number
+                          </Typography>
+                        )}
                         {editingCompany ? (
                           <TextFieldWrapper
                             name="businessRegistrationNumber"
@@ -1490,13 +1496,15 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                         </Typography>
                       </Grid>
                       <Grid size={{ xs: 12, sm: 6 }}>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{ mb: 0.5, display: "block" }}
-                        >
-                          Website URL
-                        </Typography>
+                        {!editingCompany && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ mb: 0.5, display: "block" }}
+                          >
+                            Website URL
+                          </Typography>
+                        )}
                         {editingCompany ? (
                           <TextFieldWrapper
                             name="websiteURL"
@@ -1529,13 +1537,15 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                         )}
                       </Grid>
                       <Grid size={{ xs: 12, sm: 6 }}>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{ mb: 0.5, display: "block" }}
-                        >
-                          Tax Number
-                        </Typography>
+                        {!editingCompany && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ mb: 0.5, display: "block" }}
+                          >
+                            Tax Number
+                          </Typography>
+                        )}
                         {editingCompany ? (
                           <TextFieldWrapper
                             name="taxNumber"
@@ -1562,13 +1572,15 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                         )}
                       </Grid>
                       <Grid size={{ xs: 12, sm: 6 }}>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{ mb: 0.5, display: "block" }}
-                        >
-                          Status
-                        </Typography>
+                        {!editingCompany && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ mb: 0.5, display: "block" }}
+                          >
+                            Status
+                          </Typography>
+                        )}
                         {editingCompany ? (
                           <TextFieldWrapper
                             name="status"
