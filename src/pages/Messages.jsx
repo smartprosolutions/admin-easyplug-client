@@ -3007,7 +3007,7 @@ export default function Messages() {
                         "&:hover": { color: "#667eea", bgcolor: alpha("#667eea", 0.08) },
                       }}
                     >
-                      <ReplyIcon sx={{ fontSize: 18, transform: "scaleX(-1)" }} />
+                      <ReplyIcon sx={{ fontSize: 18 }} />
                     </IconButton>
                   )}
                 </Box>
@@ -3040,7 +3040,7 @@ export default function Messages() {
                   borderLeft: `3px solid ${theme.palette.primary.main}`,
                 }}
               >
-                <ReplyIcon sx={{ fontSize: 18, color: "primary.main", mr: 1, transform: "scaleX(-1)" }} />
+                <ReplyIcon sx={{ fontSize: 18, color: "primary.main", mr: 1 }} />
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography fontSize={12} fontWeight={600} color="primary.main">
                     Replying to {replyTo.senderId === "me" ? "yourself" : selectedConversation?.user?.name || "User"}

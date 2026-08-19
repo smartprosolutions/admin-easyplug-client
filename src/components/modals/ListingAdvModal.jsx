@@ -586,7 +586,7 @@ export default function ListingAdvModal() {
                 images: Yup.array().max(6, "Maximum 6 images allowed"),
                 description: Yup.string(),
                 url: Yup.string()
-                  .trim()
+                      .trim()
                   .nullable()
                   .test(
                     "is-url",
@@ -741,7 +741,7 @@ export default function ListingAdvModal() {
                 return (
                   <Form>
                     <Stack spacing={2} sx={{ pt: 1 }}>
-                      <TextFieldWrapper
+                        <TextFieldWrapper
                         name="title"
                         label="Campaign title"
                         placeholder="e.g. Summer sale"
@@ -763,7 +763,7 @@ export default function ListingAdvModal() {
                         }
                         minHeight={180}
                       />
-                      <Stack
+                        <Stack
                         direction={{ xs: "column", sm: "row" }}
                         spacing={2}
                       >
@@ -847,7 +847,7 @@ export default function ListingAdvModal() {
                               <Box sx={{ minWidth: 0 }}>
                                 <Typography variant="body2" noWrap>
                                   {option?.title || option?.name || "Untitled"}
-                                </Typography>
+                          </Typography>
                                 <Typography
                                   variant="caption"
                                   color="text.secondary"
@@ -899,162 +899,162 @@ export default function ListingAdvModal() {
                           { value: "expired", label: "Expired" },
                         ]}
                       />
-                      <div>
-                        <input
-                          ref={inputRef}
-                          id="images"
-                          name="images"
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          style={{ display: "none" }}
-                          onChange={(e) => {
-                            const picked = Array.from(e.target.files || []);
-                            const pickedPreviewItems = picked.map(
-                              (file, idx) =>
-                                toPreviewItem(file, idx + previews.length),
-                            );
-                            const combined =
-                              previews.concat(pickedPreviewItems);
-                            const limited = combined.slice(0, MAX_IMAGES);
-
-                            if (combined.length > MAX_IMAGES) {
-                              setImageHelper(
-                                `Maximum ${MAX_IMAGES} images allowed`,
+                        <div>
+                          <input
+                            ref={inputRef}
+                            id="images"
+                            name="images"
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            style={{ display: "none" }}
+                            onChange={(e) => {
+                              const picked = Array.from(e.target.files || []);
+                              const pickedPreviewItems = picked.map(
+                                (file, idx) =>
+                                  toPreviewItem(file, idx + previews.length),
                               );
-                            } else {
-                              setImageHelper("");
-                            }
+                              const combined =
+                                previews.concat(pickedPreviewItems);
+                              const limited = combined.slice(0, MAX_IMAGES);
 
-                            setPreviews(limited);
-                            setFieldValue(
-                              "images",
-                              limited.map((item) => item.file || item.raw),
-                            );
+                              if (combined.length > MAX_IMAGES) {
+                                setImageHelper(
+                                  `Maximum ${MAX_IMAGES} images allowed`,
+                                );
+                              } else {
+                                setImageHelper("");
+                              }
 
-                            if (combined.length > MAX_IMAGES) {
-                              combined.slice(MAX_IMAGES).forEach((item) => {
-                                if (item?.isObjectUrl && item?.url) {
-                                  try {
-                                    URL.revokeObjectURL(item.url);
-                                  } catch {
-                                    /* ignore */
+                              setPreviews(limited);
+                              setFieldValue(
+                                "images",
+                                limited.map((item) => item.file || item.raw),
+                              );
+
+                              if (combined.length > MAX_IMAGES) {
+                                combined.slice(MAX_IMAGES).forEach((item) => {
+                                  if (item?.isObjectUrl && item?.url) {
+                                    try {
+                                      URL.revokeObjectURL(item.url);
+                                    } catch {
+                                      /* ignore */
+                                    }
                                   }
-                                }
-                              });
+                                });
+                              }
+
+                              if (inputRef.current) inputRef.current.value = "";
+                            }}
+                          />
+
+                          <Button
+                            variant="outlined"
+                            fullWidth
+                            sx={{ height: 40 }}
+                            startIcon={<CloudUploadIcon />}
+                            onClick={() =>
+                              inputRef.current && inputRef.current.click()
                             }
-
-                            if (inputRef.current) inputRef.current.value = "";
-                          }}
-                        />
-
-                        <Button
-                          variant="outlined"
-                          fullWidth
-                          sx={{ height: 40 }}
-                          startIcon={<CloudUploadIcon />}
-                          onClick={() =>
-                            inputRef.current && inputRef.current.click()
-                          }
-                        >
+                          >
                           Upload campaign images
-                        </Button>
+                          </Button>
 
-                        {previews && previews.length > 0 && (
-                          <Grid container spacing={1} sx={{ mt: 1 }}>
-                            {previews.map((p, idx) => (
-                              <Grid item key={p.key || idx}>
-                                <Box component="div">
-                                  <Box
-                                    component="div"
-                                    sx={{
-                                      width: 100,
-                                      height: 100,
-                                      borderRadius: 1,
-                                      overflow: "hidden",
-                                      position: "relative",
-                                      boxShadow: 1,
-                                    }}
-                                  >
-                                    <img
-                                      src={p.url}
-                                      alt={`preview-${idx}`}
-                                      style={{
-                                        width: "100%",
-                                        height: "100%",
-                                        objectFit: "cover",
-                                      }}
-                                    />
-                                    <IconButton
-                                      size="small"
-                                      onClick={() => {
-                                        const remaining = previews.filter(
-                                          (_, i) => i !== idx,
-                                        );
-                                        const removed = previews[idx];
-                                        if (
-                                          removed?.isObjectUrl &&
-                                          removed?.url
-                                        ) {
-                                          try {
-                                            URL.revokeObjectURL(removed.url);
-                                          } catch {
-                                            /* ignore */
-                                          }
-                                        }
-                                        setPreviews(remaining);
-                                        setFieldValue(
-                                          "images",
-                                          remaining.map(
-                                            (item) => item.file || item.raw,
-                                          ),
-                                        );
-                                        setImageHelper("");
-                                      }}
+                          {previews && previews.length > 0 && (
+                            <Grid container spacing={1} sx={{ mt: 1 }}>
+                              {previews.map((p, idx) => (
+                                <Grid item key={p.key || idx}>
+                                  <Box component="div">
+                                    <Box
+                                      component="div"
                                       sx={{
-                                        position: "absolute",
-                                        top: 4,
-                                        right: 4,
-                                        bgcolor: "rgba(0,0,0,0.5)",
-                                        color: "#fff",
+                                        width: 100,
+                                        height: 100,
+                                        borderRadius: 1,
+                                        overflow: "hidden",
+                                        position: "relative",
+                                        boxShadow: 1,
                                       }}
                                     >
-                                      <DeleteIcon fontSize="small" />
-                                    </IconButton>
+                                      <img
+                                        src={p.url}
+                                        alt={`preview-${idx}`}
+                                        style={{
+                                          width: "100%",
+                                          height: "100%",
+                                          objectFit: "cover",
+                                        }}
+                                      />
+                                      <IconButton
+                                        size="small"
+                                        onClick={() => {
+                                          const remaining = previews.filter(
+                                            (_, i) => i !== idx,
+                                          );
+                                          const removed = previews[idx];
+                                          if (
+                                            removed?.isObjectUrl &&
+                                            removed?.url
+                                          ) {
+                                            try {
+                                              URL.revokeObjectURL(removed.url);
+                                            } catch {
+                                              /* ignore */
+                                            }
+                                          }
+                                          setPreviews(remaining);
+                                          setFieldValue(
+                                            "images",
+                                            remaining.map(
+                                              (item) => item.file || item.raw,
+                                            ),
+                                          );
+                                          setImageHelper("");
+                                        }}
+                                        sx={{
+                                          position: "absolute",
+                                          top: 4,
+                                          right: 4,
+                                          bgcolor: "rgba(0,0,0,0.5)",
+                                          color: "#fff",
+                                        }}
+                                      >
+                                        <DeleteIcon fontSize="small" />
+                                      </IconButton>
+                                    </Box>
+                                    <Typography
+                                      variant="caption"
+                                      sx={{
+                                        display: "block",
+                                        mt: 0.5,
+                                        maxWidth: 100,
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                      }}
+                                    >
+                                      {p.name || "image"}
+                                    </Typography>
                                   </Box>
-                                  <Typography
-                                    variant="caption"
-                                    sx={{
-                                      display: "block",
-                                      mt: 0.5,
-                                      maxWidth: 100,
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap",
-                                    }}
-                                  >
-                                    {p.name || "image"}
-                                  </Typography>
-                                </Box>
-                              </Grid>
-                            ))}
-                          </Grid>
-                        )}
-                        {imageHelper ? (
-                          <Typography
-                            variant="caption"
-                            sx={{ color: "warning.main", mt: 0.5 }}
-                          >
-                            {imageHelper}
-                          </Typography>
-                        ) : errors.images ? (
-                          <Typography
-                            variant="caption"
-                            sx={{ color: "error.main", mt: 0.5 }}
-                          >
-                            {errors.images}
-                          </Typography>
-                        ) : null}
+                                </Grid>
+                              ))}
+                            </Grid>
+                          )}
+                          {imageHelper ? (
+                            <Typography
+                              variant="caption"
+                              sx={{ color: "warning.main", mt: 0.5 }}
+                            >
+                              {imageHelper}
+                            </Typography>
+                          ) : errors.images ? (
+                            <Typography
+                              variant="caption"
+                              sx={{ color: "error.main", mt: 0.5 }}
+                            >
+                              {errors.images}
+                            </Typography>
+                          ) : null}
                       </div>
                     </Stack>
                   </Form>

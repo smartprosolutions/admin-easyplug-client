@@ -364,7 +364,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                           lineHeight: 1.1,
                         }}
                       >
-                        {isSeller ? "Easyplug Seller" : "Easyplug Admin"}
+                        {isSeller ? "EasyPlug Seller" : "EasyPlug Admin"}
                       </Typography>
                       <Typography
                         variant="caption"
@@ -694,7 +694,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                       lineHeight: 1.1,
                     }}
                   >
-                    {isSeller ? "Easyplug Seller" : "Easyplug Admin"}
+                    {isSeller ? "EasyPlug Seller" : "EasyPlug Admin"}
                   </Typography>
                   <Typography
                     component="em"
