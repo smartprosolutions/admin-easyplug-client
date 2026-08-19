@@ -76,6 +76,327 @@ import { useUnreadCounts } from "../context/UnreadCountsContext";
 const FALLBACK_AVATAR = "https://i.pravatar.cc/150?img=1";
 const FALLBACK_LISTING_IMAGE = "https://via.placeholder.com/100";
 
+const ATTACHMENT_META_TOKEN_REGEX = /\[\[epmeta:([a-zA-Z0-9_-]+)\]\]/;
+
+const getStoredUserCoordinates = () => {
+  try {
+    const raw = localStorage.getItem("user_address");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const lat = Number(parsed?.latitude);
+    const lng = Number(parsed?.longitude);
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      lat < -90 ||
+      lat > 90 ||
+      lng < -180 ||
+      lng > 180
+    ) {
+      return null;
+    }
+    return { lat, lng };
+  } catch {
+    return null;
+  }
+};
+
+const getProfileCoordinates = (profileData) => {
+  const addressCandidates = [
+    profileData?.user?.address,
+    profileData?.data?.user?.address,
+    profileData?.seller?.address,
+    profileData?.data?.seller?.address,
+    ...(Array.isArray(profileData?.user?.addresses)
+      ? profileData.user.addresses
+      : []),
+    ...(Array.isArray(profileData?.data?.user?.addresses)
+      ? profileData.data.user.addresses
+      : []),
+    ...(Array.isArray(profileData?.seller?.addresses)
+      ? profileData.seller.addresses
+      : []),
+    ...(Array.isArray(profileData?.data?.seller?.addresses)
+      ? profileData.data.seller.addresses
+      : []),
+  ].filter(Boolean);
+
+  for (const address of addressCandidates) {
+    const lat = Number(address?.latitude ?? address?.lat);
+    const lng = Number(address?.longitude ?? address?.lng ?? address?.lon);
+    if (
+      Number.isFinite(lat) &&
+      Number.isFinite(lng) &&
+      lat >= -90 &&
+      lat <= 90 &&
+      lng >= -180 &&
+      lng <= 180
+    ) {
+      return { lat, lng };
+    }
+  }
+
+  return null;
+};
+
+const getStoredLocationLabel = (profileData) => {
+  try {
+    const savedLabel = localStorage.getItem("user_location")?.trim();
+    if (savedLabel) return savedLabel;
+
+    const raw = localStorage.getItem("user_address");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const parts = [parsed?.suburb, parsed?.city].filter(Boolean);
+      if (parts.length) return parts.join(", ");
+      if (parsed?.formattedAddress || parsed?.address) {
+        return parsed.formattedAddress || parsed.address;
+      }
+    }
+
+    const address =
+      profileData?.user?.address ||
+      profileData?.data?.user?.address ||
+      profileData?.seller?.address ||
+      profileData?.data?.seller?.address;
+    if (address) {
+      const parts = [address.suburb, address.city].filter(Boolean);
+      if (parts.length) return parts.join(", ");
+    }
+  } catch {
+    // ignore
+  }
+
+  return "";
+};
+
+const isInAppBrowser = () => {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  return /WhatsApp|Instagram|FBAN|FBAV|Line\/|Twitter|LinkedInApp/i.test(ua);
+};
+
+const getGeoErrorMessage = (error) => {
+  if (!error) {
+    return "Unable to access your location. Please allow location permission and try again.";
+  }
+
+  if (error.code === 1) {
+    if (isInAppBrowser()) {
+      return "Location access is blocked in this in-app browser (e.g. WhatsApp). Open EasyPlug in Chrome or Safari, or search for your location above.";
+    }
+    return "Location permission denied. Please allow location access in your browser settings.";
+  }
+  if (error.code === 2) {
+    return "Location information is unavailable. Please try again.";
+  }
+  if (error.code === 3) {
+    return "Location request timed out. Please try again.";
+  }
+
+  return error.message || "An unknown error occurred while getting location.";
+};
+
+const reverseGeocodeShortName = async (lat, lng) => {
+  const res = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+    { headers: { "Accept-Language": "en" } },
+  );
+  const data = await res.json();
+  if (!data?.display_name) return "";
+
+  const a = data.address || {};
+  const parts = [
+    a.road || a.pedestrian || a.suburb || a.neighbourhood,
+    a.suburb || a.city_district || a.quarter,
+    a.city || a.town || a.village || a.county,
+  ].filter(Boolean);
+
+  return parts.length
+    ? parts.slice(0, 2).join(", ")
+    : data.display_name.split(",").slice(0, 2).join(",").trim();
+};
+
+const parseJsonRecord = (value) => {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const parseCoordsFromText = (text) => {
+  const match = String(text || "").match(
+    /(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)/,
+  );
+  if (!match) return null;
+
+  const lat = Number(match[1]);
+  const lng = Number(match[2]);
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    lat < -90 ||
+    lat > 90 ||
+    lng < -180 ||
+    lng > 180
+  ) {
+    return null;
+  }
+
+  return { lat, lng };
+};
+
+const normalizeLocationCoords = (raw) => {
+  const record = parseJsonRecord(raw) || raw;
+  if (!record || typeof record !== "object") return null;
+
+  const lat = Number(record.lat ?? record.latitude);
+  const lng = Number(record.lng ?? record.lon ?? record.long ?? record.longitude);
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    lat < -90 ||
+    lat > 90 ||
+    lng < -180 ||
+    lng > 180
+  ) {
+    return null;
+  }
+
+  return {
+    lat,
+    lng,
+    name: record.name || record.locationName || "",
+  };
+};
+
+const encodeMetaToken = (payload) => {
+  const encoded = btoa(JSON.stringify(payload))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  return `[[epmeta:${encoded}]]`;
+};
+
+const stripAttachmentToken = (text) =>
+  String(text || "")
+    .replace(ATTACHMENT_META_TOKEN_REGEX, "")
+    .trim();
+
+const decodeMetaToken = (text) => {
+  const match = String(text || "").match(ATTACHMENT_META_TOKEN_REGEX);
+  if (!match?.[1]) return null;
+  try {
+    const encoded = match[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = `${encoded}${"=".repeat((4 - (encoded.length % 4)) % 4)}`;
+    return JSON.parse(atob(padded));
+  } catch (error) {
+    console.warn("Failed to decode attachment metadata:", error);
+    return null;
+  }
+};
+
+const parseMessageLocation = (item, rawText, attachmentMeta) => {
+  const candidates = [
+    item?.location,
+    item?.coordinates,
+    item?.locationLat != null &&
+    item?.locationLat !== "" &&
+    item?.locationLng != null &&
+    item?.locationLng !== ""
+      ? {
+          lat: item.locationLat,
+          lng: item.locationLng,
+          name: item.locationName || "",
+        }
+      : null,
+    item?.latitude != null &&
+    item?.latitude !== "" &&
+    item?.longitude != null &&
+    item?.longitude !== ""
+      ? {
+          lat: item.latitude,
+          lng: item.longitude,
+        }
+      : null,
+    attachmentMeta?.location,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeLocationCoords(candidate);
+    if (normalized) return normalized;
+  }
+
+  const fromText = parseCoordsFromText(rawText);
+  if (fromText) return fromText;
+
+  return normalizeLocationCoords(decodeMetaToken(rawText)?.location);
+};
+
+const getOsmTileUrl = (lat, lng, zoom = 15) => {
+  const latRad = (lat * Math.PI) / 180;
+  const n = 2 ** zoom;
+  const x = Math.floor(((lng + 180) / 360) * n);
+  const y = Math.floor(
+    ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n,
+  );
+  return `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
+};
+
+const getLocationDisplayName = (location, text) => {
+  if (location?.name) return location.name;
+  const cleaned = stripAttachmentToken(text).replace(/^📍\s*/, "").trim();
+  return cleaned || "Location";
+};
+
+const LocationMapPreview = ({ lat, lng, height = 150, zoom = 15 }) => {
+  const theme = useTheme();
+
+  return (
+    <Box
+      sx={{
+        width: "100%",
+        height,
+        bgcolor: alpha(theme.palette.success.main, 0.08),
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      <Box
+        component="img"
+        src={getOsmTileUrl(lat, lng, zoom)}
+        alt="Map preview"
+        loading="lazy"
+        sx={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          display: "block",
+        }}
+        onError={(event) => {
+          event.currentTarget.style.display = "none";
+        }}
+      />
+      <LocationOnIcon
+        sx={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -100%)",
+          fontSize: 34,
+          color: "success.main",
+          filter: `drop-shadow(0 2px 4px ${alpha(theme.palette.common.black, 0.35)})`,
+        }}
+      />
+    </Box>
+  );
+};
+
 const pickFirst = (...values) =>
   values.find((value) => value !== undefined && value !== null && value !== "");
 
@@ -530,30 +851,12 @@ const normalizeMessagesResponse = (
       item?.sender === "me" ||
       item?.isMine === true ||
       item?.isFromMe === true;
-    const location = item?.location
-      ? item.location
-      : item?.locationLat !== undefined &&
-          item?.locationLat !== null &&
-          item?.locationLat !== "" &&
-          item?.locationLng !== undefined &&
-          item?.locationLng !== null &&
-          item?.locationLng !== ""
-        ? {
-            lat: item?.locationLat,
-            lng: item?.locationLng,
-            name: item?.locationName || "",
-          }
-        : null;
-    const hasLocation =
-      location &&
-      location?.lat !== undefined &&
-      location?.lat !== null &&
-      location?.lat !== "" &&
-      location?.lng !== undefined &&
-      location?.lng !== null &&
-      location?.lng !== "" &&
-      Number.isFinite(Number(location?.lat)) &&
-      Number.isFinite(Number(location?.lng));
+    const rawText =
+      pickFirst(item?.text, item?.message, item?.content, item?.body, "") ||
+      "";
+    const attachmentMeta = decodeMetaToken(rawText);
+    const parsedLocation = parseMessageLocation(item, rawText, attachmentMeta);
+    const hasLocation = Boolean(parsedLocation);
     const attachmentRaw = item?.attachment || item?.file || null;
     const fileUrlRaw =
       item?.fileUrl ||
@@ -683,16 +986,12 @@ const normalizeMessagesResponse = (
     return {
       id: pickFirst(item?.id, item?._id, item?.messageId, idx + 1),
       senderId: mine ? "me" : "other",
-      text:
-        pickFirst(item?.text, item?.message, item?.content, item?.body, "") ||
-        "(empty)",
+      text: stripAttachmentToken(rawText) || "(empty)",
       createdAt: resolveMessageCreatedAt(item),
       time: formatMessageTime(resolveMessageCreatedAt(item)),
       read: Boolean(pickFirst(item?.read, item?.isRead, mine)),
       attachment,
-      location: hasLocation
-        ? { lat: Number(location.lat), lng: Number(location.lng) }
-        : undefined,
+      location: hasLocation ? parsedLocation : undefined,
       replyTo,
     };
   });
@@ -793,6 +1092,7 @@ export default function Messages() {
   const [locationSearchResults, setLocationSearchResults] = useState([]);
   const [locationSearching, setLocationSearching] = useState(false);
   const [selectedLocationName, setSelectedLocationName] = useState("");
+  const [locationFromSavedProfile, setLocationFromSavedProfile] = useState(false);
   const [mapViewOpen, setMapViewOpen] = useState(false);
   const [viewingLocation, setViewingLocation] = useState(null);
   const [replyTo, setReplyTo] = useState(null);
@@ -1335,9 +1635,27 @@ export default function Messages() {
       case "documents":
         documentInputRef.current?.click();
         break;
-      case "location":
-        handleGetLocation();
+      case "location": {
+        setLocationDialogOpen(true);
+        setLocationError(null);
+        setLocationSearch("");
+        setLocationSearchResults([]);
+
+        const storedCoords =
+          getStoredUserCoordinates() || getProfileCoordinates(profileData);
+        if (storedCoords) {
+          setUserLocation(storedCoords);
+          setSelectedLocationName(
+            getStoredLocationLabel(profileData) || "Saved location",
+          );
+          setLocationFromSavedProfile(true);
+        } else {
+          setUserLocation(null);
+          setSelectedLocationName("");
+          setLocationFromSavedProfile(false);
+        }
         break;
+      }
       default:
         break;
     }
@@ -1489,48 +1807,77 @@ export default function Messages() {
   const handleGetLocation = () => {
     if (locationLoading) return;
     setLocationLoading(true);
-    setLocationDialogOpen(true);
     setLocationError(null);
 
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setUserLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          });
-          setLocationLoading(false);
-        },
-        (error) => {
-          console.error("Error getting location:", error);
-          setLocationLoading(false);
-
-          let errorMessage = "";
-          switch (error.code) {
-            case error.PERMISSION_DENIED:
-              errorMessage =
-                "Location permission denied. Please allow location access in your browser settings.";
-              break;
-            case error.POSITION_UNAVAILABLE:
-              errorMessage =
-                "Location information is unavailable. Please try again.";
-              break;
-            case error.TIMEOUT:
-              errorMessage = "Location request timed out. Please try again.";
-              break;
-            default:
-              errorMessage =
-                "An unknown error occurred while getting location.";
-              break;
-          }
-          setLocationError(errorMessage);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
-      );
-    } else {
+    if (!navigator.geolocation) {
       setLocationLoading(false);
       setLocationError("Geolocation is not supported by your browser.");
+      return;
     }
+
+    const restoreSavedLocation = () => {
+      const storedCoords =
+        getStoredUserCoordinates() || getProfileCoordinates(profileData);
+      if (!storedCoords) return;
+      setUserLocation(storedCoords);
+      setSelectedLocationName(
+        getStoredLocationLabel(profileData) || "Saved location",
+      );
+      setLocationFromSavedProfile(true);
+    };
+
+    const applyPosition = async (position) => {
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      setUserLocation({ lat, lng });
+      setLocationFromSavedProfile(false);
+
+      try {
+        const shortName = await reverseGeocodeShortName(lat, lng);
+        if (shortName) setSelectedLocationName(shortName);
+      } catch {
+        // Reverse geocode failed — lat/lng is still usable
+      }
+
+      setLocationLoading(false);
+    };
+
+    const handleGeoError = (error, attempt = 0) => {
+      const canRetryWithHighAccuracy =
+        attempt === 0 &&
+        error.code !== error.PERMISSION_DENIED &&
+        error.code !== error.TIMEOUT;
+
+      if (canRetryWithHighAccuracy) {
+        navigator.geolocation.getCurrentPosition(
+          applyPosition,
+          (retryError) => handleGeoError(retryError, attempt + 1),
+          {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0,
+          },
+        );
+        return;
+      }
+
+      console.error("Error getting location:", error);
+      setLocationLoading(false);
+      setLocationError(getGeoErrorMessage(error));
+
+      if (
+        getStoredUserCoordinates() ||
+        getProfileCoordinates(profileData)
+      ) {
+        restoreSavedLocation();
+      }
+    };
+
+    navigator.geolocation.getCurrentPosition(applyPosition, handleGeoError, {
+      enableHighAccuracy: false,
+      timeout: 12000,
+      maximumAge: 60000,
+    });
   };
 
   const handleSendLocation = async () => {
@@ -1552,15 +1899,26 @@ export default function Messages() {
     }
     const locationText = selectedLocationName
       ? `📍 ${selectedLocationName}`
-      : "📍 Location shared";
+      : `📍 ${userLocation.lat.toFixed(5)}, ${userLocation.lng.toFixed(5)}`;
+    const messageText = `${locationText} ${encodeMetaToken({
+      location: {
+        lat: userLocation.lat,
+        lng: userLocation.lng,
+        name: selectedLocationName || "",
+      },
+    })}`;
     try {
       await sendConversationMessage(conversationId, {
-        text: locationText,
-        message: locationText,
-        content: locationText,
+        text: messageText,
+        message: messageText,
+        content: messageText,
         receiverId,
         messageType: "location",
-        location: { lat: userLocation.lat, lng: userLocation.lng, name: selectedLocationName || "" },
+        location: {
+          lat: userLocation.lat,
+          lng: userLocation.lng,
+          name: selectedLocationName || "",
+        },
         latitude: userLocation.lat,
         longitude: userLocation.lng,
         locationLat: userLocation.lat,
@@ -1575,7 +1933,11 @@ export default function Messages() {
         createdAt: sentAt,
         time: "Just now",
         read: false,
-        location: userLocation,
+        location: {
+          lat: userLocation.lat,
+          lng: userLocation.lng,
+          name: selectedLocationName || "",
+        },
       };
       setMessages((prev) => [...prev, newMessage]);
       setConversationsList((prev) =>
@@ -1598,6 +1960,7 @@ export default function Messages() {
       setLocationSearch("");
       setLocationSearchResults([]);
       setSelectedLocationName("");
+      setLocationFromSavedProfile(false);
       showSnackbar("Location sent successfully");
     } catch (error) {
       showSnackbar(
@@ -1649,6 +2012,7 @@ export default function Messages() {
   const handleSelectSearchedLocation = (location) => {
     setUserLocation({ lat: location.lat, lng: location.lng });
     setSelectedLocationName(location.name.split(",")[0]);
+    setLocationFromSavedProfile(false);
     setLocationSearchResults([]);
     setLocationSearch("");
   };
@@ -2412,7 +2776,10 @@ export default function Messages() {
                       onClick={() => {
                         setViewingLocation({
                           ...message.location,
-                          name: message.text.replace("📍 ", ""),
+                          name: getLocationDisplayName(
+                            message.location,
+                            message.text,
+                          ),
                         });
                         setMapViewOpen(true);
                       }}
@@ -2432,20 +2799,13 @@ export default function Messages() {
                       <Box
                         sx={{
                           width: 250,
-                          height: 150,
-                          bgcolor: alpha("#4caf50", 0.1),
                           position: "relative",
                           overflow: "hidden",
                         }}
                       >
-                        <iframe
-                          title="Location Map"
-                          width="100%"
-                          height="100%"
-                          frameBorder="0"
-                          scrolling="no"
-                          style={{ border: 0, pointerEvents: "none" }}
-                          src={`https://www.openstreetmap.org/export/embed.html?bbox=${message.location.lng - 0.01},${message.location.lat - 0.01},${message.location.lng + 0.01},${message.location.lat + 0.01}&layer=mapnik&marker=${message.location.lat},${message.location.lng}`}
+                        <LocationMapPreview
+                          lat={message.location.lat}
+                          lng={message.location.lng}
                         />
                         {/* Tap to view overlay */}
                         <Box
@@ -2514,7 +2874,7 @@ export default function Messages() {
                               }
                               noWrap
                             >
-                              {message.text.replace("📍 ", "")}
+                              {getLocationDisplayName(message.location, message.text)}
                             </Typography>
                             <Typography
                               fontSize={11}
@@ -3338,6 +3698,7 @@ export default function Messages() {
           setLocationSearch("");
           setLocationSearchResults([]);
           setSelectedLocationName("");
+          setLocationFromSavedProfile(false);
         }}
         maxWidth="sm"
         fullWidth
@@ -3564,34 +3925,13 @@ export default function Messages() {
                   borderRadius: 2,
                   overflow: "hidden",
                   mb: 2,
-                  bgcolor: "#e8f5e9",
                 }}
               >
-                <img
-                  src={`https://maps.googleapis.com/maps/api/staticmap?center=${userLocation.lat},${userLocation.lng}&zoom=15&size=600x200&markers=color:green%7C${userLocation.lat},${userLocation.lng}&key=YOUR_API_KEY`}
-                  alt="Location preview"
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  onError={(e) => {
-                    e.target.style.display = "none";
-                    e.target.nextSibling.style.display = "flex";
-                  }}
+                <LocationMapPreview
+                  lat={userLocation.lat}
+                  lng={userLocation.lng}
+                  height={200}
                 />
-                <Box
-                  sx={{
-                    display: "none",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    height: "100%",
-                    bgcolor: alpha("#4caf50", 0.1),
-                  }}
-                >
-                  <Stack alignItems="center" spacing={1}>
-                    <LocationOnIcon sx={{ fontSize: 48, color: "#4caf50" }} />
-                    <Typography fontSize={14} color="text.secondary">
-                      Location ready to share
-                    </Typography>
-                  </Stack>
-                </Box>
               </Box>
               <Stack direction="row" spacing={2} alignItems="center">
                 <Box
@@ -3608,9 +3948,23 @@ export default function Messages() {
                   <LocationOnIcon sx={{ color: "#4caf50" }} />
                 </Box>
                 <Box>
-                  <Typography fontSize={14} fontWeight={500}>
-                    Current Location
-                  </Typography>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Typography fontSize={14} fontWeight={500}>
+                      {selectedLocationName || "Current Location"}
+                    </Typography>
+                    {locationFromSavedProfile && (
+                      <Chip
+                        label="Saved"
+                        size="small"
+                        sx={{
+                          height: 20,
+                          fontSize: 11,
+                          bgcolor: alpha("#667eea", 0.12),
+                          color: "#667eea",
+                        }}
+                      />
+                    )}
+                  </Stack>
                   <Typography fontSize={12} color="text.secondary">
                     {userLocation.lat.toFixed(6)}, {userLocation.lng.toFixed(6)}
                   </Typography>
@@ -3632,6 +3986,7 @@ export default function Messages() {
               setLocationSearch("");
               setLocationSearchResults([]);
               setSelectedLocationName("");
+              setLocationFromSavedProfile(false);
             }}
             sx={{ borderRadius: 2 }}
           >
@@ -4164,14 +4519,11 @@ export default function Messages() {
         <DialogContent sx={{ p: 0 }}>
           {viewingLocation && (
             <Box sx={{ width: "100%", height: 400, position: "relative" }}>
-              <iframe
-                title="Full Map View"
-                width="100%"
-                height="100%"
-                frameBorder="0"
-                scrolling="no"
-                style={{ border: 0 }}
-                src={`https://www.openstreetmap.org/export/embed.html?bbox=${viewingLocation.lng - 0.02},${viewingLocation.lat - 0.02},${viewingLocation.lng + 0.02},${viewingLocation.lat + 0.02}&layer=mapnik&marker=${viewingLocation.lat},${viewingLocation.lng}`}
+              <LocationMapPreview
+                lat={viewingLocation.lat}
+                lng={viewingLocation.lng}
+                height={400}
+                zoom={14}
               />
             </Box>
           )}
