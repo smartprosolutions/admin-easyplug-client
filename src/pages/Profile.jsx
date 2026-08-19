@@ -72,6 +72,7 @@ import FacebookIcon from "@mui/icons-material/Facebook";
 import TwitterIcon from "@mui/icons-material/Twitter";
 import InstagramIcon from "@mui/icons-material/Instagram";
 import LinkedInIcon from "@mui/icons-material/LinkedIn";
+import SvgIcon from "@mui/material/SvgIcon";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import PersonIcon from "@mui/icons-material/Person";
 import WorkOutlineIcon from "@mui/icons-material/WorkOutline";
@@ -155,6 +156,14 @@ const editUserValidationSchema = Yup.object({
   phone: createPhoneFieldSchema({ required: true, label: "Cellphone" }),
 });
 
+function TikTokIcon(props) {
+  return (
+    <SvgIcon {...props} viewBox="0 0 24 24">
+      <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.77a4.85 4.85 0 0 1-1.01-.08z" />
+    </SvgIcon>
+  );
+}
+
 const optionalUrlSchema = Yup.string()
   .transform((v) => {
     const trimmed = typeof v === "string" ? v.trim() : v;
@@ -178,6 +187,7 @@ const editCompanyValidationSchema = Yup.object({
   facebookURL: optionalUrlSchema,
   instagramURL: optionalUrlSchema,
   twitterURL: optionalUrlSchema,
+  tiktokURL: optionalUrlSchema,
   linkedInURL: optionalUrlSchema,
 });
 
@@ -360,6 +370,7 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
       facebookURL: s?.facebookURL || "",
       instagramURL: s?.instagramURL || "",
       twitterURL: s?.twitterURL || "",
+      tiktokURL: s?.tiktokURL || "",
       linkedInURL: s?.linkedInURL || "",
       verified: !!s?.verified,
       status: s?.status || "",
@@ -469,7 +480,6 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
           "Failed to update company",
       });
     },
-    onSettled: () => setEditingCompany(false),
   });
 
   const createCompanyAddressMutation = useMutation({
@@ -1354,16 +1364,7 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                 initialValues={company}
                 enableReinitialize
                 validationSchema={editCompanyValidationSchema}
-                validate={(vals) => {
-                  const errs = {};
-                  if (
-                    (vals.businessName || vals.businessEmail) &&
-                    !vals.businessPicture
-                  ) {
-                    errs.businessPicture = "Business picture is required";
-                  }
-                  return errs;
-                }}
+                validate={() => ({})}
                 onSubmit={async (v) => {
                   const payload = {
                     businessName: String(v.businessName || "").trim(),
@@ -1373,13 +1374,14 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                     facebookURL: normalizeOptionalUrl(v.facebookURL),
                     instagramURL: normalizeOptionalUrl(v.instagramURL),
                     twitterURL: normalizeOptionalUrl(v.twitterURL),
+                    tiktokURL: normalizeOptionalUrl(v.tiktokURL),
                     linkedInURL: normalizeOptionalUrl(v.linkedInURL),
                     taxNumber: v.taxNumber,
                   };
                   updateCompanyMutation.mutate(payload);
                 }}
               >
-                {({ submitForm, resetForm, values }) => (
+                {({ submitForm, resetForm, values, isSubmitting }) => (
                   <Form>
                     <Grid container spacing={2} sx={{ mt: 1 }}>
                       <Grid size={{ xs: 12, sm: 6 }}>
@@ -1687,6 +1689,19 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                                 }}
                               />
                             </Grid>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                              <TextFieldWrapper
+                                name="tiktokURL"
+                                label="TikTok"
+                                InputProps={{
+                                  startAdornment: (
+                                    <InputAdornment position="start">
+                                      <TikTokIcon fontSize="small" />
+                                    </InputAdornment>
+                                  ),
+                                }}
+                              />
+                            </Grid>
                             {/* Removed duplicate Save/Cancel here; use bottom action buttons */}
                           </Grid>
                         ) : (
@@ -1727,6 +1742,15 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                                 <LinkedInIcon />
                               </MuiLink>
                             )}
+                            {values.tiktokURL && (
+                              <MuiLink
+                                href={values.tiktokURL}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                <TikTokIcon />
+                              </MuiLink>
+                            )}
                           </Stack>
                         )}
                       </Grid>
@@ -1736,7 +1760,12 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                             <Button
                               variant="contained"
                               onClick={submitForm}
-                              startIcon={<SaveIcon />}
+                              disabled={isSubmitting || updateCompanyMutation.isPending}
+                              startIcon={
+                                isSubmitting || updateCompanyMutation.isPending
+                                  ? <CircularProgress size={16} color="inherit" />
+                                  : <SaveIcon />
+                              }
                               sx={gradientButtonSx}
                             >
                               Save All
@@ -2530,7 +2559,7 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
           </Formik>
         </Dialog>
 
-        {/* Danger Zone */}
+        {/* Account Control */}
         <Paper
           elevation={0}
           sx={{
@@ -2543,10 +2572,10 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
           }}
         >
           <Typography variant="h6" fontWeight={800} color="error" sx={{ mb: 0.5 }}>
-            Danger Zone
+            Account Control
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Deactivate to pause your account, or permanently delete it.
+            Deactivate to pause your account, or permanently delete it. If you delete, please tell us why you are leaving.
           </Typography>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25}>
             <Button
