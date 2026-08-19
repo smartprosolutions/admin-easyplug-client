@@ -128,6 +128,9 @@ export default function UserManagement() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteUser, setDeleteUser] = useState(null);
   const [deleteAdminPasswordError, setDeleteAdminPasswordError] = useState("");
+  const [editAdminPasswordOpen, setEditAdminPasswordOpen] = useState(false);
+  const [editAdminPasswordError, setEditAdminPasswordError] = useState("");
+  const [pendingEditPayload, setPendingEditPayload] = useState(null);
   const [viewUser, setViewUser] = useState(null);
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -387,18 +390,30 @@ export default function UserManagement() {
     async (values, helpers) => {
       if (!editUser) return;
       const userId = editUser.userId || editUser.id;
+      const currentRole = (editUser.userType || editUser.entityType || "").toLowerCase();
+      const newRole = (values.userType || "").toLowerCase();
+      const roleChanged = newRole !== currentRole;
+
+      const payload = {
+        title: values.title,
+        firstName: values.firstName.trim(),
+        lastName: values.lastName.trim(),
+        email: values.email.trim().toLowerCase(),
+        phone: values.phone?.trim() || undefined,
+        userType: values.userType,
+      };
+
+      // Require admin password when changing the user's role
+      if (roleChanged) {
+        setPendingEditPayload({ userId, payload, helpers });
+        setEditAdminPasswordError("");
+        setEditAdminPasswordOpen(true);
+        helpers.setSubmitting(false);
+        return;
+      }
+
       try {
-        await updateUserMutation.mutateAsync({
-          userId,
-          payload: {
-            title: values.title,
-            firstName: values.firstName.trim(),
-            lastName: values.lastName.trim(),
-            email: values.email.trim().toLowerCase(),
-            phone: values.phone?.trim() || undefined,
-            userType: values.userType,
-          },
-        });
+        await updateUserMutation.mutateAsync({ userId, payload });
         helpers.resetForm();
       } catch {
         // Error toast handled by mutation
@@ -1894,6 +1909,35 @@ export default function UserManagement() {
       </Dialog>
 
       {/* Delete User Dialog */}
+      {/* Password confirmation for role change */}
+      <AdminPasswordDialog
+        open={editAdminPasswordOpen}
+        title="Change User Role"
+        description={`Enter your admin password to change this user's role to "${pendingEditPayload?.payload?.userType}". This affects their access across the platform.`}
+        confirmText="Confirm Role Change"
+        loading={updateUserMutation.isPending}
+        error={editAdminPasswordError}
+        onClose={() => {
+          setEditAdminPasswordOpen(false);
+          setEditAdminPasswordError("");
+          setPendingEditPayload(null);
+        }}
+        onConfirm={async (adminPassword) => {
+          if (!pendingEditPayload) return;
+          const { userId, payload, helpers } = pendingEditPayload;
+          try {
+            await updateUserMutation.mutateAsync({ userId, payload: { ...payload, adminPassword } });
+            setEditAdminPasswordOpen(false);
+            setEditAdminPasswordError("");
+            setPendingEditPayload(null);
+            helpers?.resetForm();
+          } catch (err) {
+            const msg = err?.response?.data?.message || err?.message || "Incorrect password";
+            setEditAdminPasswordError(msg);
+          }
+        }}
+      />
+
       <AdminPasswordDialog
         open={deleteDialogOpen}
         title="Delete User"
