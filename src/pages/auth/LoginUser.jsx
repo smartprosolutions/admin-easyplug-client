@@ -22,6 +22,7 @@ import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import {
   canAccessAdminApp,
+  getDefaultHomePath,
   resolveUserRole,
 } from "../../utils/accessControl";
 
@@ -42,7 +43,7 @@ export default function LoginUser() {
           open: true,
           severity: "error",
           message:
-            "This portal is for admins and sellers only. Please use the marketplace app to sign in.",
+            "This portal is for admins and listers only. Please use the marketplace app to sign in.",
         });
         return;
       }
@@ -56,7 +57,7 @@ export default function LoginUser() {
         severity: "success",
         message: "Signed in successfully",
       });
-      setTimeout(() => navigate("/dashboard"), 700);
+      setTimeout(() => navigate(getDefaultHomePath(role)), 700);
     },
     onError: (err) => {
       console.error("Login failed", err);

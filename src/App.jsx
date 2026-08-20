@@ -31,6 +31,7 @@ import ResetPassword from "./pages/auth/ResetPassword";
 import PublicRoute from "./components/route/PublicRoute";
 import PrivateRoute from "./components/route/PrivateRoute";
 import RoleRoute from "./components/route/RoleRoute";
+import HomeRedirect from "./components/route/HomeRedirect";
 import UiSwitchLanding from "./pages/UiSwitchLanding";
 import { useEffect, useState } from "react";
 import { UnreadCountsProvider } from "./context/UnreadCountsContext";
@@ -122,11 +123,11 @@ const App = () => {
                 </PrivateRoute>
               }
             >
-              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route index element={<HomeRedirect />} />
               <Route
                 path="dashboard"
                 element={
-                  <RoleRoute allow={["admin", "seller"]} fallbackTo="/inventory">
+                  <RoleRoute allow={["admin"]} fallbackTo="/inventory">
                     <Dashboard />
                   </RoleRoute>
                 }

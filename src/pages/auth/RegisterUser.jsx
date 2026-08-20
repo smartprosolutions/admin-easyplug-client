@@ -328,7 +328,7 @@ function StepOneFields({
           {
             value: "sole",
             title: "Sole Provider",
-            caption: "Register as an individual seller",
+            caption: "Register as an individual lister",
             icon: PersonOutlineIcon,
           },
           {
@@ -1027,7 +1027,7 @@ export default function RegisterUser() {
         severity: "success",
         message: "Account created",
       });
-      setTimeout(() => navigate("/dashboard"), 700);
+      setTimeout(() => navigate("/inventory"), 700);
     },
     onError: (err) => {
       const msg =
@@ -1220,7 +1220,7 @@ export default function RegisterUser() {
                 mt: 0.8,
               }}
             >
-              Create Seller Account
+              Create Lister Account
             </Typography>
             <Typography
               variant="body2"
@@ -1918,7 +1918,7 @@ export default function RegisterUser() {
                     {currentStep === 4 && (
                       <StepCard title="Step 5 · Review & Submit">
                         <Typography variant="body2" color="text.secondary">
-                          Review your details and submit your seller onboarding.
+                          Review your details and submit your lister onboarding.
                         </Typography>
                         {!requiresLogin && (
                           <Button

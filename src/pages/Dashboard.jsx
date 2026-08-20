@@ -281,7 +281,7 @@ async function fetchDashboardInsights() {
         name:
           seller?.firstName || seller?.lastName
             ? `${seller?.firstName || ""} ${seller?.lastName || ""}`.trim()
-            : seller?.email || "Unknown seller",
+            : seller?.email || "Unknown lister",
         listingCount,
       };
     });
@@ -597,9 +597,9 @@ export default function Dashboard() {
           accent: "info",
         },
         {
-          label: "Sellers",
+          label: "Listers",
           count: formatCompact(totals.sellersTotal),
-          sub: "Sellers registered on platform",
+          sub: "Listers registered on platform",
           icon: <GroupsRoundedIcon fontSize="small" />,
           to: "/userManagement",
           accent: "secondary",
@@ -760,10 +760,10 @@ export default function Dashboard() {
           accent: demandTrendDirection === "up" ? "success" : "warning",
         },
         {
-          title: "Seller concentration risk",
+          title: "Lister concentration risk",
           detail:
             topSellerShare > 0
-              ? `Top seller controls ${topSellerShare}% of total listings. Monitor concentration and grow mid-tier seller supply.`
+              ? `Top lister controls ${topSellerShare}% of total listings. Monitor concentration and grow mid-tier lister supply.`
               : "No concentration signal available yet.",
           accent: topSellerShare > 20 ? "warning" : "info",
         },
@@ -807,7 +807,7 @@ export default function Dashboard() {
               Dashboard — Coming Soon
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.8 }}>
-              Your seller dashboard is being prepared and will be available shortly. Check back soon!
+              Your lister dashboard is being prepared and will be available shortly. Check back soon!
             </Typography>
           </Paper>
         </Box>
@@ -1261,12 +1261,12 @@ export default function Dashboard() {
               })}
 
               <Typography variant="subtitle2" fontWeight={700} sx={{ pt: 1 }}>
-                {isSeller ? "My Listing Status" : "Top Sellers by Listing Volume"}
+                {isSeller ? "My Listing Status" : "Top Listers by Listing Volume"}
               </Typography>
 
               {isSeller ? null : topSellers.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">
-                  No seller performance data available.
+                  No lister performance data available.
                 </Typography>
               ) : (
                 <Stack spacing={1}>

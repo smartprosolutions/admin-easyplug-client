@@ -66,7 +66,7 @@ export default function RoleModeSwitch({ compact = false, vertical = false }) {
         <ToggleButton value="shopping">
           {pending ? "Opening…" : "Shopping"}
         </ToggleButton>
-        <ToggleButton value="selling">Selling</ToggleButton>
+        <ToggleButton value="selling">Listing</ToggleButton>
       </ToggleButtonGroup>
     </Box>
   );

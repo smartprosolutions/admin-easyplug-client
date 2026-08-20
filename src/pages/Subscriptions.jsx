@@ -131,7 +131,7 @@ export default function Subscriptions() {
     {
       label: "Active Plans",
       value: activeSubscriptions.toLocaleString("en-ZA"),
-      sub: "Currently available to sellers",
+      sub: "Currently available to listers",
       accent: "success.main",
     },
     {

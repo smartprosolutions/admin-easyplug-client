@@ -5,12 +5,13 @@ import CircularProgress from "@mui/material/CircularProgress";
 import { me } from "../../services/authService";
 import {
   canAccessAdminApp,
+  getDefaultHomePath,
   resolveUserRole,
 } from "../../utils/accessControl";
 
 export default function PublicRoute({ children }) {
   const [checking, setChecking] = React.useState(true);
-  const [redirect, setRedirect] = React.useState(false);
+  const [redirectPath, setRedirectPath] = React.useState("");
 
   React.useEffect(() => {
     const token = localStorage.getItem("access_token");
@@ -25,7 +26,7 @@ export default function PublicRoute({ children }) {
         if (!mounted) return;
         const role = resolveUserRole(data);
         if (canAccessAdminApp(role)) {
-          setRedirect(true);
+          setRedirectPath(getDefaultHomePath(role));
         } else {
           localStorage.removeItem("access_token");
         }
@@ -61,6 +62,6 @@ export default function PublicRoute({ children }) {
     );
   }
 
-  if (redirect) return <Navigate to="/dashboard" replace />;
+  if (redirectPath) return <Navigate to={redirectPath} replace />;
   return children;
 }

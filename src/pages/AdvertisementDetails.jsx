@@ -393,7 +393,7 @@ export default function AdvertisementDetails() {
         <Alert severity="warning">Campaign not found.</Alert>
       ) : !canViewAdvert ? (
         <Alert severity="warning">
-          You can only access campaigns that belong to your seller account.
+          You can only access campaigns that belong to your lister account.
         </Alert>
       ) : (
         <Grid container spacing={3}>
@@ -414,8 +414,8 @@ export default function AdvertisementDetails() {
             </Stack>
             <Stack spacing={1.5}>
               <InfoCard label="Title" value={advert.title} />
-              <InfoCard label="Seller" value={sellerName} />
-              <InfoCard label="Seller Email" value={sellerEmail || "-"} />
+              <InfoCard label="Lister" value={sellerName} />
+              <InfoCard label="Lister Email" value={sellerEmail || "-"} />
               <InfoCard
                 label="Promo copy"
                 value={stripHtml(advert.description) || "No promo copy"}

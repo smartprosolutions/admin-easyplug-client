@@ -61,13 +61,17 @@ export function getAppTourSteps({ isSeller = false } = {}) {
       body: "Take a quick optional tour of the main areas. You can skip anytime and replay later from your profile.",
       placement: "center",
     },
-    {
-      id: "dashboard",
-      target: TOUR_TARGETS.dashboard,
-      title: "Dashboard",
-      body: "See an overview of activity, listings, and quick insights for your account.",
-      path: "/dashboard",
-    },
+    ...(isSeller
+      ? []
+      : [
+          {
+            id: "dashboard",
+            target: TOUR_TARGETS.dashboard,
+            title: "Dashboard",
+            body: "See an overview of activity, listings, and quick insights for your account.",
+            path: "/dashboard",
+          },
+        ]),
     {
       id: "inventory",
       target: TOUR_TARGETS.inventory,
@@ -104,7 +108,7 @@ export function getAppTourSteps({ isSeller = false } = {}) {
       id: "users",
       target: TOUR_TARGETS.users,
       title: "User Management",
-      body: "View and manage admins, sellers, and buyers — including account status.",
+      body: "View and manage admins, listers, and buyers — including account status.",
       path: "/userManagement",
       openDrawer: true,
     },

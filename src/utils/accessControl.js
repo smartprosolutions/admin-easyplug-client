@@ -48,6 +48,10 @@ export const isAdminRole = (roleValue) => {
   return role === "admin" || role === "superadmin";
 };
 
+/** Default landing page after login/switch. Sellers go to listings while dashboard is unfinished. */
+export const getDefaultHomePath = (roleValue) =>
+  isSellerRole(roleValue) ? "/inventory" : "/dashboard";
+
 /** Roles allowed to use this admin/seller dashboard app. */
 export const canAccessAdminApp = (roleValue) =>
   isAdminRole(roleValue) || isSellerRole(roleValue);

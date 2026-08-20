@@ -320,15 +320,15 @@ export default function Reports() {
     const kpiRows = [
       { metric: "Registrations", value: registrations.total },
       { metric: "Registrations - Buyers", value: registrations.byType?.user || 0 },
-      { metric: "Registrations - Sellers", value: registrations.byType?.seller || 0 },
+      { metric: "Registrations - Listers", value: registrations.byType?.seller || 0 },
       { metric: "Registrations - Admins", value: registrations.byType?.admin || 0 },
       { metric: "Closed sales", value: sales.closedCount },
       { metric: "Revenue", value: sales.revenue },
       { metric: "Listings sold (in range)", value: listings.soldInRange },
       { metric: "Active users", value: usersStatus.active },
       { metric: "Inactive users", value: usersStatus.inactive },
-      { metric: "Active sellers", value: usersStatus.sellersActive },
-      { metric: "Inactive sellers", value: usersStatus.sellersInactive },
+      { metric: "Active listers", value: usersStatus.sellersActive },
+      { metric: "Inactive listers", value: usersStatus.sellersInactive },
       { metric: "Listings active", value: listings.active },
       { metric: "Listings draft", value: listings.draft },
       { metric: "Listings expired", value: listings.expired },
@@ -348,7 +348,7 @@ export default function Reports() {
       [
         { key: "period", label: "Period" },
         { key: "user", label: "Buyers" },
-        { key: "seller", label: "Sellers" },
+        { key: "seller", label: "Listers" },
         { key: "admin", label: "Admins" },
         { key: "total", label: "Total" },
       ],
@@ -504,7 +504,7 @@ export default function Reports() {
           {
             label: "Registrations",
             value: formatCompact(registrations.total),
-            sub: `${formatCompact(registrations.byType?.user)} buyers · ${formatCompact(registrations.byType?.seller)} sellers`,
+            sub: `${formatCompact(registrations.byType?.user)} buyers · ${formatCompact(registrations.byType?.seller)} listers`,
             icon: <PeopleAltRoundedIcon fontSize="small" />,
             accent: "info",
           },
@@ -537,9 +537,9 @@ export default function Reports() {
             accent: "info",
           },
           {
-            label: "Active sellers",
+            label: "Active listers",
             value: formatCompact(usersStatus.sellersActive),
-            sub: `${formatCompact(usersStatus.sellersInactive)} inactive sellers`,
+            sub: `${formatCompact(usersStatus.sellersInactive)} inactive listers`,
             icon: <StorefrontIcon fontSize="small" />,
             accent: "primary",
           },
@@ -557,7 +557,7 @@ export default function Reports() {
             action={
               <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                 <Chip size="small" label={`Buyers ${formatCompact(registrations.byType?.user)}`} />
-                <Chip size="small" label={`Sellers ${formatCompact(registrations.byType?.seller)}`} color="secondary" />
+                <Chip size="small" label={`Listers ${formatCompact(registrations.byType?.seller)}`} color="secondary" />
                 <Chip size="small" label={`Admins ${formatCompact(registrations.byType?.admin)}`} color="primary" />
               </Stack>
             }
@@ -573,7 +573,7 @@ export default function Reports() {
                 height={280}
                 series={[
                   { data: registrationBuyerSeries, label: "Buyers", color: "#00bcd4", stack: "reg" },
-                  { data: registrationSellerSeries, label: "Sellers", color: "#9c27b0", stack: "reg" },
+                  { data: registrationSellerSeries, label: "Listers", color: "#9c27b0", stack: "reg" },
                   { data: registrationAdminSeries, label: "Admins", color: "#667eea", stack: "reg" },
                 ]}
                 xAxis={[{ data: registrationLabels, scaleType: "band" }]}
@@ -652,7 +652,7 @@ export default function Reports() {
         </Grid>
 
         <Grid size={{ xs: 12, lg: 5 }}>
-          <SectionCard title="Users & sellers status">
+          <SectionCard title="Users & listers status">
             {loading && !report ? (
               <Skeleton variant="rounded" height={280} />
             ) : (
@@ -679,7 +679,7 @@ export default function Reports() {
                     stack: "status",
                   },
                 ]}
-                yAxis={[{ data: ["All users", "Sellers"], scaleType: "band", width: 80 }]}
+                yAxis={[{ data: ["All users", "Listers"], scaleType: "band", width: 80 }]}
                 margin={{ left: 10, right: 10, top: 20, bottom: 30 }}
               />
             )}

@@ -59,7 +59,7 @@ const replyLabelFrom = (review) => {
     .trim()
     .toLowerCase();
   if (role === "admin" || role === "superadmin") return "Admin reply";
-  return "Seller reply";
+  return "Lister reply";
 };
 
 const formatDate = (value) => {

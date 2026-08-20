@@ -204,7 +204,6 @@ const adminNav = [
 ];
 
 const sellerNav = [
-  { title: "Dashboard", icon: DashboardIcon, url: "/dashboard" },
   { title: "My Listings", icon: Inventory2RoundedIcon, url: "/inventory" },
   {
     title: "Advertisements",
@@ -265,7 +264,6 @@ export default function Navigation({ currentTheme, setThemeMode }) {
   const mobileNavItems = React.useMemo(() => {
     if (isSeller) {
       return [
-        { title: "Dashboard", icon: DashboardIcon, url: "/dashboard" },
         { title: "My Listings", icon: Inventory2RoundedIcon, url: "/inventory" },
         { title: "Adverts", icon: CampaignRoundedIcon, url: "/advertisements" },
         { title: "Messages", icon: MarkunreadIcon, url: "/messages" },
@@ -364,7 +362,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                           lineHeight: 1.1,
                         }}
                       >
-                        {isSeller ? "EasyPlug Seller" : "EasyPlug Admin"}
+                        {isSeller ? "EasyPlug Lister" : "EasyPlug Admin"}
                       </Typography>
                       <Typography
                         variant="caption"
@@ -694,7 +692,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                       lineHeight: 1.1,
                     }}
                   >
-                    {isSeller ? "EasyPlug Seller" : "EasyPlug Admin"}
+                    {isSeller ? "EasyPlug Lister" : "EasyPlug Admin"}
                   </Typography>
                   <Typography
                     component="em"

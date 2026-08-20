@@ -1448,7 +1448,7 @@ export default function Messages() {
     { id: "all", label: "All" },
     { id: "unread", label: "Unread" },
     { id: "buying", label: "Buying" },
-    { id: "selling", label: "Selling" },
+    { id: "selling", label: "Listing" },
     { id: "archived", label: "Archived" },
   ];
 

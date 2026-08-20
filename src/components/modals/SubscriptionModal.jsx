@@ -903,7 +903,7 @@ export default function SubscriptionModal() {
                           "Priority placement",
                           "Analytics dashboard",
                           "Customer support",
-                          "Verified seller badge",
+                          "Verified lister badge",
                           "Promotional tools"
                         ].map((benefit, index) => (
                           <Grid size={{ xs: 12, sm: 6 }} key={index}>

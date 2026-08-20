@@ -278,7 +278,7 @@ export default function Advertisements() {
             Advertisements — Coming Soon
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.8 }}>
-            Advertisement management for sellers is being prepared and will be available shortly. Check back soon!
+            Advertisement management for listers is being prepared and will be available shortly. Check back soon!
           </Typography>
         </Paper>
       </Box>

@@ -9,7 +9,7 @@ import { persistUiSwitchSession } from "../utils/uiSwitch";
 export default function UiSwitchLanding() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [message, setMessage] = useState("Switching to selling…");
+  const [message, setMessage] = useState("Switching to listing…");
 
   useEffect(() => {
     let cancelled = false;
@@ -25,13 +25,13 @@ export default function UiSwitchLanding() {
         const response = await consumeUiSwitchTicket(ticket);
         if (cancelled) return;
         persistUiSwitchSession(response);
-        navigate("/dashboard", { replace: true });
+        navigate("/inventory", { replace: true });
       } catch (err) {
         if (cancelled) return;
         setMessage(
           err?.response?.data?.message ||
             err.message ||
-            "Could not switch to selling. Please sign in.",
+            "Could not switch to listing. Please sign in.",
         );
         setTimeout(() => navigate("/login", { replace: true }), 1400);
       }

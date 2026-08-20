@@ -84,7 +84,7 @@ const TAB_USER_TYPES = ["admin", "seller", "user"];
 
 const ADD_USER_LABELS = {
   admin: "Admin",
-  seller: "Seller",
+  seller: "Lister",
   user: "User",
 };
 
@@ -474,7 +474,7 @@ export default function UserManagement() {
 
     if (activeTab === 1) {
       if (filteredSellers.length === 0) {
-        showSnackbar("No sellers to export", "warning");
+        showSnackbar("No listers to export", "warning");
         return;
       }
       const csv = rowsToCsv(
@@ -512,7 +512,7 @@ export default function UserManagement() {
         filteredSellers,
       );
       downloadCsv(`easyplug-sellers-${stamp}.csv`, csv);
-      showSnackbar(`Exported ${filteredSellers.length} seller(s)`, "success");
+      showSnackbar(`Exported ${filteredSellers.length} lister(s)`, "success");
       return;
     }
 
@@ -967,13 +967,13 @@ export default function UserManagement() {
       accent: "primary.main",
     },
     {
-      label: "Seller Accounts",
+      label: "Lister Accounts",
       value: `${sellerRows.length}`,
-      sub: `${activeSellersCount} active sellers`,
+      sub: `${activeSellersCount} active listers`,
       accent: "success.main",
     },
     {
-      label: "Verified Sellers",
+      label: "Verified Listers",
       value: `${verifiedSellersCount}`,
       sub: "Trusted and verified businesses",
       accent: "warning.main",
@@ -1011,7 +1011,7 @@ export default function UserManagement() {
             User Management
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Manage admins, sellers, and users
+            Manage admins, listers, and users
           </Typography>
         </Box>
       </Stack>
@@ -1096,7 +1096,7 @@ export default function UserManagement() {
           <Tab
             icon={<StorefrontIcon sx={{ fontSize: 20 }} />}
             iconPosition="start"
-            label={`Sellers (${filteredSellers.length})`}
+            label={`Listers (${filteredSellers.length})`}
           />
           <Tab
             icon={<PeopleIcon sx={{ fontSize: 20 }} />}
@@ -1312,7 +1312,7 @@ export default function UserManagement() {
               <TextField
                 value={sellerQuery}
                 onChange={(e) => setSellerQuery(e.target.value)}
-                placeholder="Search seller name, business or email..."
+                placeholder="Search lister name, business or email..."
                 size="small"
                 fullWidth
                 InputProps={{
@@ -1350,7 +1350,7 @@ export default function UserManagement() {
                     px: 3,
                   }}
                 >
-                  Add Seller
+                  Add Lister
                 </Button>
               </Stack>
             </Stack>
@@ -1487,7 +1487,7 @@ export default function UserManagement() {
                 {filteredSellers.length === 0 && (
                   <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
                     <Typography color="text.secondary" fontSize={13}>
-                      No sellers found.
+                      No listers found.
                     </Typography>
                   </Paper>
                 )}
@@ -1855,7 +1855,7 @@ export default function UserManagement() {
                     name="userType"
                     label="Role"
                     options={[
-                      { value: "seller", label: "Seller" },
+                      { value: "seller", label: "Lister" },
                       { value: "admin", label: "Admin" },
                       { value: "user", label: "User" },
                     ]}

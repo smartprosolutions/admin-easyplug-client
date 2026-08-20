@@ -723,7 +723,7 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
       label: "Verification",
       value: company?.verified ? "Verified" : "Pending",
       sub: company?.verified
-        ? "Trusted seller profile"
+        ? "Trusted lister profile"
         : "Complete checks to verify",
     },
     {
@@ -912,7 +912,7 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
           <Grid size={{ xs: 12 }} sx={{ display: { xs: "block", md: "none" } }}>
             <Paper sx={{ p: 2, borderRadius: 2 }} elevation={3}>
               <Typography variant="subtitle2" color="text.secondary">
-                Seller Stats
+                Lister Stats
               </Typography>
               <Grid container spacing={1} sx={{ mt: 1 }}>
                 {sellerStats.map((stat) => (
@@ -2096,7 +2096,7 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
               elevation={3}
             >
               <Typography variant="subtitle2" color="text.secondary">
-                Seller Stats
+                Lister Stats
               </Typography>
               <Grid container spacing={1} sx={{ mt: 1 }}>
                 {sellerStats.map((stat) => (
