@@ -2074,7 +2074,7 @@ export default function Profile({ currentTheme = true, setThemeMode }) {
                   sx={gradientButtonSx}
                   onClick={() => navigate("/inventory/add")}
                 >
-                  Sell old items
+                  List old items
                 </Button>
                 <Button
                   variant="outlined"

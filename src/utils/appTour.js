@@ -76,7 +76,7 @@ export function getAppTourSteps({ isSeller = false } = {}) {
     id: "inventory",
     target: TOUR_TARGETS.inventory,
     title: "My Listings",
-    body: "Create and manage the listings you sell on the marketplace.",
+    body: "Create and manage the listings you post on the marketplace.",
     path: "/inventory",
   };
 

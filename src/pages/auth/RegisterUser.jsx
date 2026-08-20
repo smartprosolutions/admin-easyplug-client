@@ -1952,7 +1952,7 @@ export default function RegisterUser() {
                                 </span>
                               </Stack>
                             ) : (
-                              "Register to sell on EasyPlug"
+                              "Register to list on EasyPlug"
                             )}
                           </Button>
                         )}
