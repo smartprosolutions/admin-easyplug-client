@@ -37,21 +37,30 @@ function isElementOnScreen(el) {
   );
 }
 
-function getTargetRect(targetId) {
+function getTargetElement(targetId) {
   if (!targetId || typeof document === "undefined") return null;
   const els = document.querySelectorAll(`[data-tour="${targetId}"]`);
   let best = null;
   els.forEach((el) => {
-    if (!isElementOnScreen(el)) return;
-    const rect = el.getBoundingClientRect();
-    best = {
-      top: Math.max(0, rect.top - PAD),
-      left: Math.max(0, rect.left - PAD),
-      width: rect.width + PAD * 2,
-      height: rect.height + PAD * 2,
-    };
+    if (!isElementOnScreen(el) && !best) {
+      best = el;
+      return;
+    }
+    if (isElementOnScreen(el)) best = el;
   });
   return best;
+}
+
+function getTargetRect(targetId) {
+  const el = getTargetElement(targetId);
+  if (!el || !isElementOnScreen(el)) return null;
+  const rect = el.getBoundingClientRect();
+  return {
+    top: Math.max(0, rect.top - PAD),
+    left: Math.max(0, rect.left - PAD),
+    width: rect.width + PAD * 2,
+    height: rect.height + PAD * 2,
+  };
 }
 
 function emitTourState(active) {
@@ -149,6 +158,16 @@ export default function AppTour({
       if (!step.target) {
         setSpotlight(null);
         return;
+      }
+
+      const targetEl = getTargetElement(step.target);
+      if (targetEl && (step.scrollIntoView || !isElementOnScreen(targetEl))) {
+        targetEl.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+          inline: "nearest",
+        });
+        await new Promise((resolve) => setTimeout(resolve, 320));
       }
 
       let rect = getTargetRect(step.target);
