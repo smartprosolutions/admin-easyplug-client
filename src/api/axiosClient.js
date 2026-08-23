@@ -45,7 +45,7 @@ axiosClient.interceptors.response.use(
         error?.config?.data instanceof FormData;
       const enhancedError = new Error(
         isUpload
-          ? `Upload to ${API_URL} failed. Phone photos are often too large. Try fewer or smaller images.`
+          ? `Upload to ${API_URL} failed before the server responded. Check your connection, or try again.`
           : `Unable to reach API at ${API_URL}. Check backend availability and CORS settings.`,
       );
       enhancedError.name = "ApiNetworkError";

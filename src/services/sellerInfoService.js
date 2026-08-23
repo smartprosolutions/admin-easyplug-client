@@ -34,11 +34,7 @@ export async function uploadBusinessPicture(file) {
   const form = new FormData();
   // Backend expects field name 'businessPicture'
   form.append("businessPicture", file, file?.name || "business.jpg");
-  const resp = await axiosClient.post(
-    "/seller-info/me/business-picture",
-    form,
-    { headers: { "Content-Type": "multipart/form-data" } },
-  );
+  const resp = await axiosClient.post("/seller-info/me/business-picture", form);
   return resp.data;
 }
 

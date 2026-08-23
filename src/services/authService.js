@@ -15,10 +15,6 @@ export async function register(formData) {
 export async function registerSeller(formData, onProgress) {
   // New seller registration endpoint (supports FormData with files)
   const resp = await axiosClient.post("/auth/register/seller", formData, {
-    headers:
-      formData instanceof FormData
-        ? { "Content-Type": "multipart/form-data" }
-        : {},
     onUploadProgress: (evt) => {
       try {
         if (!evt || !evt.total) return;
@@ -123,8 +119,6 @@ export async function uploadProfilePicture(file) {
   const form = new FormData();
   // Backend expects field name 'profilePicture'
   form.append("profilePicture", file, file?.name || "profile.jpg");
-  const resp = await axiosClient.post("/users/me/profile-picture", form, {
-    headers: { "Content-Type": "multipart/form-data" }
-  });
+  const resp = await axiosClient.post("/users/me/profile-picture", form);
   return resp.data;
 }
