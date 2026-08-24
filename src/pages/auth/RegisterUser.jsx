@@ -1514,7 +1514,8 @@ export default function RegisterUser() {
                   if (k === "registrationType") return;
                   if (k === "profilePicture" || k === "businessPicture") return;
                   if (v === null || v === undefined || v === "") return;
-                  formData.append(k, v);
+                  if (typeof v === "object") return;
+                  formData.append(k, String(v));
                 });
                 formData.append(
                   "profilePicture",
@@ -1532,7 +1533,11 @@ export default function RegisterUser() {
                   "alreadyHasAccount",
                   values.alreadyHasAccount ?? "",
                 );
-                await mutation.mutateAsync(formData);
+                try {
+                  await mutation.mutateAsync(formData);
+                } catch {
+                  // Toast handled by mutation.onError
+                }
               } finally {
                 setSubmitting(false);
               }
