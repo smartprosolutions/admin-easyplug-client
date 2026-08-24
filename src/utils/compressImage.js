@@ -104,7 +104,14 @@ export async function compressImageFile(file, maxBytes = MAX_IMAGE_BYTES) {
 
   const type = String(file.type || "").toLowerCase();
   if (type && !type.startsWith("image/")) return file;
-  if (type === "image/gif" || type === "image/svg+xml") return file;
+  if (type === "image/gif" || type === "image/svg+xml") {
+    if (file.size > maxBytes) {
+      throw new Error(
+        "GIF and SVG images must be under the size limit. Please use a smaller JPEG or PNG.",
+      );
+    }
+    return file;
+  }
 
   let source;
   try {

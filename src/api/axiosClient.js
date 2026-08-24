@@ -65,11 +65,15 @@ axiosClient.interceptors.response.use(
       } catch {
         // ignore
       }
-      if (
-        typeof window !== "undefined" &&
-        !window.location.pathname.startsWith("/login")
-      ) {
-        window.location.assign("/login");
+      if (typeof window !== "undefined") {
+        const path = window.location.pathname || "";
+        // Don't kick users off registration when a stale token fails /auth/me
+        if (
+          !path.startsWith("/login") &&
+          !path.startsWith("/register")
+        ) {
+          window.location.assign("/login");
+        }
       }
     }
 

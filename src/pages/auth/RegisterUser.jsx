@@ -1523,9 +1523,35 @@ export default function RegisterUser() {
                 }
 
                 const formData = new FormData();
+                const linkingExisting = values.alreadyHasAccount === "yes";
+                const skipKeys = new Set([
+                  "registrationType",
+                  "profilePicture",
+                  "businessPicture",
+                  "verificationCode",
+                  // Avoid sending fields from the other account mode
+                  ...(linkingExisting
+                    ? [
+                        "email",
+                        "password",
+                        "confirmPassword",
+                        "title",
+                        "firstName",
+                        "lastName",
+                        "phone",
+                      ]
+                    : ["existingEmail", "existingPassword"]),
+                  ...(values.registrationType === "sole"
+                    ? [
+                        "businessName",
+                        "businessEmail",
+                        "businessRegistrationNumber",
+                        "taxNumber",
+                      ]
+                    : []),
+                ]);
                 Object.entries(values).forEach(([k, v]) => {
-                  if (k === "registrationType") return;
-                  if (k === "profilePicture" || k === "businessPicture") return;
+                  if (skipKeys.has(k)) return;
                   if (v === null || v === undefined || v === "") return;
                   if (typeof v === "object") return;
                   formData.append(k, String(v));
@@ -1535,7 +1561,10 @@ export default function RegisterUser() {
                   profilePicture,
                   profilePicture?.name || "profile.jpg",
                 );
-                if (businessPicture instanceof Blob) {
+                if (
+                  values.registrationType === "business" &&
+                  businessPicture instanceof Blob
+                ) {
                   formData.append(
                     "businessPicture",
                     businessPicture,
@@ -1546,6 +1575,9 @@ export default function RegisterUser() {
                   "alreadyHasAccount",
                   values.alreadyHasAccount ?? "",
                 );
+                if (linkingExisting) {
+                  formData.set("existingEmail", values.existingEmail || "");
+                }
                 try {
                   await mutation.mutateAsync(formData);
                 } catch {
