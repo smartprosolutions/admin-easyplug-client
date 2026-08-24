@@ -152,6 +152,19 @@ function clearRegistrationDraft() {
   }
 }
 
+function clearRegistrationCache() {
+  clearRegistrationDraft();
+  try {
+    // Draft is normally sessionStorage; clear both in case of older/local copies
+    localStorage.removeItem(REGISTRATION_DRAFT_KEY);
+    sessionStorage.removeItem(REGISTRATION_DRAFT_KEY);
+    // Token set by "I already have an account" during registration
+    localStorage.removeItem("access_token");
+  } catch {
+    /* no-op */
+  }
+}
+
 function RegistrationDraftSaver({
   values,
   step,
@@ -1548,6 +1561,7 @@ export default function RegisterUser() {
               setFieldValue,
               setFieldTouched,
               validateForm,
+              resetForm,
               submitForm,
               isSubmitting,
               errors,
@@ -1685,7 +1699,23 @@ export default function RegisterUser() {
                 return [];
               };
 
-              const handleNext = async () => {
+                const handleRestartRegistration = () => {
+                  clearRegistrationCache();
+                  setCodeSentTo("");
+                  setVerifiedEmail("");
+                  setVerificationToken("");
+                  setUploadProgress(0);
+                  resetForm({ values: { ...DEFAULT_REGISTRATION_VALUES } });
+                  goToStep(0);
+                  setAuthToast({
+                    open: true,
+                    severity: "info",
+                    message:
+                      "Registration restarted. Cleared saved draft and login cache.",
+                  });
+                };
+
+                const handleNext = async () => {
                 const fields = getStepFields(currentStep);
                 const formErrors = await validateForm();
 
@@ -2167,19 +2197,30 @@ export default function RegisterUser() {
                       direction="row"
                       spacing={1}
                       justifyContent="space-between"
+                      alignItems="center"
                     >
-                      <Button
-                        variant="outlined"
-                        disabled={currentStep === 0}
-                        onClick={() =>
-                          goToStep((prev) => {
-                            if (prev === 3 && !isBusiness) return 1;
-                            return Math.max(0, prev - 1);
-                          })
-                        }
-                      >
-                        Back
-                      </Button>
+                      <Stack direction="row" spacing={1}>
+                        <Button
+                          variant="outlined"
+                          disabled={currentStep === 0}
+                          onClick={() =>
+                            goToStep((prev) => {
+                              if (prev === 3 && !isBusiness) return 1;
+                              return Math.max(0, prev - 1);
+                            })
+                          }
+                        >
+                          Back
+                        </Button>
+                        <Button
+                          variant="text"
+                          color="inherit"
+                          disabled={mutation.isPending}
+                          onClick={handleRestartRegistration}
+                        >
+                          Restart registration
+                        </Button>
+                      </Stack>
                       {currentStep < 4 && (
                         <Button
                           variant="contained"
