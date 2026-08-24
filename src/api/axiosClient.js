@@ -46,7 +46,7 @@ axiosClient.interceptors.response.use(
         error?.config?.data instanceof FormData;
       const enhancedError = new Error(
         isUpload
-          ? `Upload to ${API_URL} failed before the server responded. Check your connection, or try again.`
+          ? `Upload to ${API_URL} failed before the server responded. If you attached photos, try again after they compress, or use a smaller image.`
           : `Unable to reach API at ${API_URL}. Check backend availability and CORS settings.`,
       );
       enhancedError.name = "ApiNetworkError";

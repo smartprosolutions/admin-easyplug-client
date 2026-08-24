@@ -45,6 +45,7 @@ import {
   sanitizePhoneInput,
 } from "../../utils/phoneValidation";
 import { createSouthAfricanIdSchema } from "../../utils/idValidation";
+import { compressImageFile } from "../../utils/compressImage";
 
 const REGISTRATION_STEP_KEYS = [
   "account",
@@ -1484,12 +1485,49 @@ export default function RegisterUser() {
                   return;
                 }
 
+                let profilePicture = values.profilePicture;
+                let businessPicture = values.businessPicture;
+                try {
+                  profilePicture = await compressImageFile(
+                    values.profilePicture,
+                    250 * 1024,
+                  );
+                  if (values.businessPicture instanceof File) {
+                    businessPicture = await compressImageFile(
+                      values.businessPicture,
+                      250 * 1024,
+                    );
+                  }
+                } catch (err) {
+                  setAuthToast({
+                    open: true,
+                    severity: "error",
+                    message:
+                      err?.message ||
+                      "Could not compress pictures. Try a smaller JPEG or PNG.",
+                  });
+                  return;
+                }
+
                 const formData = new FormData();
                 Object.entries(values).forEach(([k, v]) => {
                   if (k === "registrationType") return;
+                  if (k === "profilePicture" || k === "businessPicture") return;
                   if (v === null || v === undefined || v === "") return;
                   formData.append(k, v);
                 });
+                formData.append(
+                  "profilePicture",
+                  profilePicture,
+                  profilePicture?.name || "profile.jpg",
+                );
+                if (businessPicture instanceof Blob) {
+                  formData.append(
+                    "businessPicture",
+                    businessPicture,
+                    businessPicture?.name || "business.jpg",
+                  );
+                }
                 formData.set(
                   "alreadyHasAccount",
                   values.alreadyHasAccount ?? "",

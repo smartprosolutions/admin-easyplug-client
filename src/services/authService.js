@@ -15,6 +15,7 @@ export async function register(formData) {
 export async function registerSeller(formData, onProgress) {
   // New seller registration endpoint (supports FormData with files)
   const resp = await axiosClient.post("/auth/register/seller", formData, {
+    timeout: 180000,
     onUploadProgress: (evt) => {
       try {
         if (!evt || !evt.total) return;
@@ -23,7 +24,7 @@ export async function registerSeller(formData, onProgress) {
       } catch {
         /* no-op */
       }
-    }
+    },
   });
   return resp.data;
 }
