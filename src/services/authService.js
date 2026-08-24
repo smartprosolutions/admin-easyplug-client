@@ -28,6 +28,14 @@ export async function registerSeller(formData, onProgress) {
   return resp.data;
 }
 
+export async function checkSellerRegistrationConflict(payload = {}) {
+  const resp = await axiosClient.post(
+    "/auth/check-seller-registration",
+    payload,
+  );
+  return resp.data;
+}
+
 export async function sendVerificationCode({ email, firstName, lastName }) {
   // Adjust endpoint path as needed
   const resp = await axiosClient.post("/auth/send-code", {

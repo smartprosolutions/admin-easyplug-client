@@ -33,6 +33,7 @@ import {
   sendVerificationCode,
   verifyVerificationCode,
   login as loginRequest,
+  checkSellerRegistrationConflict,
 } from "../../services/authService";
 import { createPasswordSchema } from "../../utils/passwordValidation";
 import {
@@ -53,6 +54,31 @@ const REGISTRATION_STEP_KEYS = [
   "review",
 ];
 const REGISTRATION_DRAFT_KEY = "easyplug_seller_registration_draft";
+
+const isSellerOrAdminUserType = (userType) => {
+  const role = String(userType || "")
+    .trim()
+    .toLowerCase();
+  return role === "seller" || role.includes("admin");
+};
+
+const registrationConflictMessage = (err, fallback) =>
+  err?.response?.data?.message || err?.message || fallback;
+
+async function assertNoSellerRegistrationConflict(payload) {
+  try {
+    await checkSellerRegistrationConflict(payload);
+    return null;
+  } catch (err) {
+    if (err?.response?.status === 409 || err?.response?.data?.conflict) {
+      return registrationConflictMessage(
+        err,
+        "This account cannot be used for seller registration.",
+      );
+    }
+    throw err;
+  }
+}
 
 const DEFAULT_REGISTRATION_VALUES = {
   registrationType: "sole",
@@ -1038,8 +1064,36 @@ export default function RegisterUser() {
   });
 
   const loginMutation = useMutation({
-    mutationFn: ({ email, password }) => loginRequest({ email, password }),
+    mutationFn: async ({ email, password }) => {
+      const conflictMessage = await assertNoSellerRegistrationConflict({
+        email,
+      });
+      if (conflictMessage) {
+        const error = new Error(conflictMessage);
+        error.code = "SELLER_ADMIN_CONFLICT";
+        throw error;
+      }
+      return loginRequest({ email, password });
+    },
     onSuccess: (data) => {
+      const userType =
+        data?.user?.userType ||
+        data?.user?.role ||
+        data?.data?.user?.userType ||
+        data?.userType;
+      if (isSellerOrAdminUserType(userType)) {
+        try {
+          localStorage.removeItem("access_token");
+        } catch {
+          /* ignore */
+        }
+        setAuthToast({
+          open: true,
+          severity: "error",
+          message: "This email is already registered as a seller or admin.",
+        });
+        return;
+      }
       const token = data?.accessToken || data?.token;
       if (token) localStorage.setItem("access_token", token);
       setAuthToast({
@@ -1050,7 +1104,9 @@ export default function RegisterUser() {
     },
     onError: (err) => {
       const msg =
-        err?.response?.data?.message || err?.message || "Login failed";
+        err?.code === "SELLER_ADMIN_CONFLICT"
+          ? err.message
+          : err?.response?.data?.message || err?.message || "Login failed";
       setAuthToast({ open: true, severity: "error", message: msg });
     },
   });
@@ -1624,6 +1680,111 @@ export default function RegisterUser() {
                       "Use Login & Continue before moving to the next step",
                   });
                   return;
+                }
+
+                // New-account email: block seller/admin and any existing account
+                if (currentStep === 0 && values.alreadyHasAccount === "no") {
+                  try {
+                    const conflictMessage =
+                      await assertNoSellerRegistrationConflict({
+                        email: values.email,
+                        checkExistingEmail: true,
+                      });
+                    if (conflictMessage) {
+                      setAuthToast({
+                        open: true,
+                        severity: "error",
+                        message: conflictMessage,
+                      });
+                      return;
+                    }
+                  } catch (err) {
+                    setAuthToast({
+                      open: true,
+                      severity: "error",
+                      message: registrationConflictMessage(
+                        err,
+                        "Could not verify email. Please try again.",
+                      ),
+                    });
+                    return;
+                  }
+                }
+
+                // Existing-account email: block seller/admin before later steps
+                if (
+                  currentStep === 0 &&
+                  values.alreadyHasAccount === "yes" &&
+                  localStorage.getItem("access_token")
+                ) {
+                  try {
+                    const conflictMessage =
+                      await assertNoSellerRegistrationConflict({
+                        email: values.existingEmail,
+                      });
+                    if (conflictMessage) {
+                      try {
+                        localStorage.removeItem("access_token");
+                      } catch {
+                        /* ignore */
+                      }
+                      setAuthToast({
+                        open: true,
+                        severity: "error",
+                        message: conflictMessage,
+                      });
+                      return;
+                    }
+                  } catch (err) {
+                    setAuthToast({
+                      open: true,
+                      severity: "error",
+                      message: registrationConflictMessage(
+                        err,
+                        "Could not verify email. Please try again.",
+                      ),
+                    });
+                    return;
+                  }
+                }
+
+                // Identity step: block seller/admin ID or passport before continue
+                if (currentStep === 1) {
+                  const idPayload =
+                    values.hasIdNumber === "yes"
+                      ? { idNumber: values.idNumber }
+                      : { passportNumber: values.passportNumber };
+                  const hasIdentityValue = Boolean(
+                    String(
+                      values.hasIdNumber === "yes"
+                        ? values.idNumber
+                        : values.passportNumber || "",
+                    ).trim(),
+                  );
+                  if (hasIdentityValue) {
+                    try {
+                      const conflictMessage =
+                        await assertNoSellerRegistrationConflict(idPayload);
+                      if (conflictMessage) {
+                        setAuthToast({
+                          open: true,
+                          severity: "error",
+                          message: conflictMessage,
+                        });
+                        return;
+                      }
+                    } catch (err) {
+                      setAuthToast({
+                        open: true,
+                        severity: "error",
+                        message: registrationConflictMessage(
+                          err,
+                          "Could not verify ID number. Please try again.",
+                        ),
+                      });
+                      return;
+                    }
+                  }
                 }
 
                 // Email verification is sent from Identity step with first/last name

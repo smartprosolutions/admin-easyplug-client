@@ -8,6 +8,7 @@ const PUBLIC_AUTH_ENDPOINTS = [
   "/auth/login/google",
   "/auth/register",
   "/auth/register/seller",
+  "/auth/check-seller-registration",
   "/auth/send-code",
   "/auth/forgot-password",
   "/auth/reset-password",
