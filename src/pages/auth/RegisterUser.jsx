@@ -104,7 +104,7 @@ const DEFAULT_REGISTRATION_VALUES = {
   latitude: "",
   longitude: "",
   accuracy: "",
-  radius: "10",
+  radius: "50",
   streetNumber: "",
   streetName: "",
   suburb: "",

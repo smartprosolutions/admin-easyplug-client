@@ -16,7 +16,7 @@ export async function createUserByAdmin(payload) {
 }
 
 export async function updateUserByAdmin(userId, payload) {
-  const resp = await axiosClient.patch(`/users/${userId}`, payload);
+  const resp = await axiosClient.put(`/users/${userId}`, payload);
   return resp.data;
 }
 

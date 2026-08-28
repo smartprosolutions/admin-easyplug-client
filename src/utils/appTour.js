@@ -141,9 +141,9 @@ export function getAppTourSteps({ isSeller = false } = {}) {
     return [
       welcome,
       inventory,
-      advertisements,
       messages,
       notifications,
+      advertisements,
       profile,
       done,
     ];

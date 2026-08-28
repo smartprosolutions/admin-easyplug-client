@@ -205,16 +205,16 @@ const adminNav = [
 
 const sellerNav = [
   { title: "My Listings", icon: Inventory2RoundedIcon, url: "/inventory" },
-  {
-    title: "Advertisements",
-    icon: CampaignRoundedIcon,
-    url: "/advertisements",
-  },
   { title: "Messages", icon: MarkunreadIcon, url: "/messages" },
   {
     title: "Notifications",
     icon: NotificationsRoundedIcon,
     url: "/notifications",
+  },
+  {
+    title: "Advertisements",
+    icon: CampaignRoundedIcon,
+    url: "/advertisements",
   },
 ];
 
@@ -265,9 +265,9 @@ export default function Navigation({ currentTheme, setThemeMode }) {
     if (isSeller) {
       return [
         { title: "My Listings", icon: Inventory2RoundedIcon, url: "/inventory" },
-        { title: "Adverts", icon: CampaignRoundedIcon, url: "/advertisements" },
         { title: "Messages", icon: MarkunreadIcon, url: "/messages" },
         { title: "Alerts", icon: NotificationsRoundedIcon, url: "/notifications" },
+        { title: "Adverts", icon: CampaignRoundedIcon, url: "/advertisements" },
       ];
     }
 
@@ -362,7 +362,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                           lineHeight: 1.1,
                         }}
                       >
-                        {isSeller ? "EasyPlug Lister" : "EasyPlug Admin"}
+                        {isSeller ? "EasyPlug" : "EasyPlug Admin"}
                       </Typography>
                       <Typography
                         variant="caption"
@@ -692,7 +692,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                       lineHeight: 1.1,
                     }}
                   >
-                    {isSeller ? "EasyPlug Lister" : "EasyPlug Admin"}
+                    {isSeller ? "EasyPlug" : "EasyPlug Admin"}
                   </Typography>
                   <Typography
                     component="em"
