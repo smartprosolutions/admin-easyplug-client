@@ -474,10 +474,10 @@ function StepOneFields({
 
       <SelectFieldWrapper
         name="alreadyHasAccount"
-        label="Already have an account?"
+        label="Already have a shopper account"
         options={[
           { value: "no", label: "No - Create New" },
-          { value: "yes", label: "Yes - Link Business" },
+          { value: "yes", label: "Use shopper account to link business" },
         ]}
       />
 
