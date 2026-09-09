@@ -706,7 +706,7 @@ export default function InventoryForm() {
                         />
                         <TextFieldWrapper
                           name="price"
-                          label={values.type === "SERVICES" ? "Rating From" : "Price"}
+                          label={values.type === "SERVICES" ? "Starting from" : "Price"}
                           placeholder="e.g. 150.00"
                           InputProps={{
                             startAdornment: (
