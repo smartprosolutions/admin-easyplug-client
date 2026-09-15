@@ -32,6 +32,7 @@ import {
   Radio,
   Snackbar,
   Alert,
+  CircularProgress,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import SearchIcon from "@mui/icons-material/Search";
@@ -47,8 +48,6 @@ import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import VideoLibraryIcon from "@mui/icons-material/VideoLibrary";
 import DescriptionIcon from "@mui/icons-material/Description";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
-import ContactsIcon from "@mui/icons-material/Contacts";
-import PhoneIcon from "@mui/icons-material/Phone";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import PersonIcon from "@mui/icons-material/Person";
 import CloseIcon from "@mui/icons-material/Close";
@@ -58,6 +57,7 @@ import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import ReplyIcon from "@mui/icons-material/Reply";
+import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import { useNavigate } from "react-router-dom";
 import { gradientPrimary } from "../theme/theme";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -73,164 +73,329 @@ import { useUserProfileQuery } from "../services/queries";
 import { connectSocket, getSocket } from "../socket/socketClient";
 import { useUnreadCounts } from "../context/UnreadCountsContext";
 
-// Dummy conversations data
-const conversations = [
-  {
-    id: 1,
-    user: {
-      name: "John Mensah",
-      avatar: "https://i.pravatar.cc/150?img=12",
-      verified: true,
-      online: true,
-      rating: 4.8,
-      reviews: 127,
-    },
-    lastMessage: "Is this still available?",
-    time: "2 min ago",
-    unread: 2,
-    listing: {
-      title: "iPhone 13 Pro Max",
-      price: "R 12,999",
-      image:
-        "https://images.unsplash.com/photo-1632661674596-df8be070a5c5?w=100",
-    },
-  },
-  {
-    id: 2,
-    user: {
-      name: "Sarah Williams",
-      avatar: "https://i.pravatar.cc/150?img=5",
-      verified: true,
-      online: false,
-      rating: 4.9,
-      reviews: 89,
-    },
-    lastMessage: "Thank you for your interest! Yes, it's available.",
-    time: "1 hour ago",
-    unread: 0,
-    listing: {
-      title: "MacBook Pro M2",
-      price: "R 28,999",
-      image:
-        "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=100",
-    },
-  },
-  {
-    id: 3,
-    user: {
-      name: "Mike Johnson",
-      avatar: "https://i.pravatar.cc/150?img=8",
-      verified: false,
-      online: true,
-      rating: 4.2,
-      reviews: 34,
-    },
-    lastMessage: "Can you do R10,000?",
-    time: "3 hours ago",
-    unread: 1,
-    listing: {
-      title: "Samsung Galaxy S23",
-      price: "R 11,999",
-      image:
-        "https://images.unsplash.com/photo-1610945415295-d9bbf067e59c?w=100",
-    },
-  },
-  {
-    id: 4,
-    user: {
-      name: "Emma Davis",
-      avatar: "https://i.pravatar.cc/150?img=9",
-      verified: true,
-      online: false,
-      rating: 5.0,
-      reviews: 156,
-    },
-    lastMessage: "Great, I'll take it. When can we meet?",
-    time: "Yesterday",
-    unread: 0,
-    listing: {
-      title: "Sony WH-1000XM5",
-      price: "R 6,999",
-      image: "https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=100",
-    },
-  },
-  {
-    id: 5,
-    user: {
-      name: "David Brown",
-      avatar: "https://i.pravatar.cc/150?img=11",
-      verified: false,
-      online: false,
-      rating: 3.8,
-      reviews: 12,
-    },
-    lastMessage: "Is the price negotiable?",
-    time: "2 days ago",
-    unread: 0,
-    listing: {
-      title: "Gaming Laptop RTX 4060",
-      price: "R 22,500",
-      image:
-        "https://images.unsplash.com/photo-1603302576837-37561b2e2302?w=100",
-    },
-  },
-];
-
-// Dummy messages for selected conversation
-const dummyMessages = [
-  {
-    id: 1,
-    senderId: "other",
-    text: "Hi! I saw your listing for the iPhone 13 Pro Max. Is it still available?",
-    time: "10:30 AM",
-    read: true,
-  },
-  {
-    id: 2,
-    senderId: "me",
-    text: "Yes, it's still available! Are you interested?",
-    time: "10:32 AM",
-    read: true,
-  },
-  {
-    id: 3,
-    senderId: "other",
-    text: "Yes! What's the condition like? Any scratches or damage?",
-    time: "10:35 AM",
-    read: true,
-  },
-  {
-    id: 4,
-    senderId: "me",
-    text: "It's in excellent condition. No scratches on the screen, and the body is pristine. Battery health is at 95%.",
-    time: "10:38 AM",
-    read: true,
-  },
-  {
-    id: 5,
-    senderId: "other",
-    text: "That sounds great! Does it come with original accessories?",
-    time: "10:40 AM",
-    read: true,
-  },
-  {
-    id: 6,
-    senderId: "me",
-    text: "Yes, it comes with the original box, charger, cable, and earphones. Everything is included.",
-    time: "10:42 AM",
-    read: true,
-  },
-  {
-    id: 7,
-    senderId: "other",
-    text: "Is this still available?",
-    time: "2 min ago",
-    read: false,
-  },
-];
-
 const FALLBACK_AVATAR = "https://i.pravatar.cc/150?img=1";
 const FALLBACK_LISTING_IMAGE = "https://via.placeholder.com/100";
+
+const ATTACHMENT_META_TOKEN_REGEX = /\[\[epmeta:([a-zA-Z0-9_-]+)\]\]/;
+
+const getStoredUserCoordinates = () => {
+  try {
+    const raw = localStorage.getItem("user_address");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const lat = Number(parsed?.latitude);
+    const lng = Number(parsed?.longitude);
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      lat < -90 ||
+      lat > 90 ||
+      lng < -180 ||
+      lng > 180
+    ) {
+      return null;
+    }
+    return { lat, lng };
+  } catch {
+    return null;
+  }
+};
+
+const getProfileCoordinates = (profileData) => {
+  const addressCandidates = [
+    profileData?.user?.address,
+    profileData?.data?.user?.address,
+    profileData?.seller?.address,
+    profileData?.data?.seller?.address,
+    ...(Array.isArray(profileData?.user?.addresses)
+      ? profileData.user.addresses
+      : []),
+    ...(Array.isArray(profileData?.data?.user?.addresses)
+      ? profileData.data.user.addresses
+      : []),
+    ...(Array.isArray(profileData?.seller?.addresses)
+      ? profileData.seller.addresses
+      : []),
+    ...(Array.isArray(profileData?.data?.seller?.addresses)
+      ? profileData.data.seller.addresses
+      : []),
+  ].filter(Boolean);
+
+  for (const address of addressCandidates) {
+    const lat = Number(address?.latitude ?? address?.lat);
+    const lng = Number(address?.longitude ?? address?.lng ?? address?.lon);
+    if (
+      Number.isFinite(lat) &&
+      Number.isFinite(lng) &&
+      lat >= -90 &&
+      lat <= 90 &&
+      lng >= -180 &&
+      lng <= 180
+    ) {
+      return { lat, lng };
+    }
+  }
+
+  return null;
+};
+
+const getStoredLocationLabel = (profileData) => {
+  try {
+    const savedLabel = localStorage.getItem("user_location")?.trim();
+    if (savedLabel) return savedLabel;
+
+    const raw = localStorage.getItem("user_address");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const parts = [parsed?.suburb, parsed?.city].filter(Boolean);
+      if (parts.length) return parts.join(", ");
+      if (parsed?.formattedAddress || parsed?.address) {
+        return parsed.formattedAddress || parsed.address;
+      }
+    }
+
+    const address =
+      profileData?.user?.address ||
+      profileData?.data?.user?.address ||
+      profileData?.seller?.address ||
+      profileData?.data?.seller?.address;
+    if (address) {
+      const parts = [address.suburb, address.city].filter(Boolean);
+      if (parts.length) return parts.join(", ");
+    }
+  } catch {
+    // ignore
+  }
+
+  return "";
+};
+
+const isInAppBrowser = () => {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  return /WhatsApp|Instagram|FBAN|FBAV|Line\/|Twitter|LinkedInApp/i.test(ua);
+};
+
+const getGeoErrorMessage = (error) => {
+  if (!error) {
+    return "Unable to access your location. Please allow location permission and try again.";
+  }
+
+  if (error.code === 1) {
+    if (isInAppBrowser()) {
+      return "Location access is blocked in this in-app browser (e.g. WhatsApp). Open EasyPlug in Chrome or Safari, or search for your location above.";
+    }
+    return "Location permission denied. Please allow location access in your browser settings.";
+  }
+  if (error.code === 2) {
+    return "Location information is unavailable. Please try again.";
+  }
+  if (error.code === 3) {
+    return "Location request timed out. Please try again.";
+  }
+
+  return error.message || "An unknown error occurred while getting location.";
+};
+
+const reverseGeocodeShortName = async (lat, lng) => {
+  const res = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+    { headers: { "Accept-Language": "en" } },
+  );
+  const data = await res.json();
+  if (!data?.display_name) return "";
+
+  const a = data.address || {};
+  const parts = [
+    a.road || a.pedestrian || a.suburb || a.neighbourhood,
+    a.suburb || a.city_district || a.quarter,
+    a.city || a.town || a.village || a.county,
+  ].filter(Boolean);
+
+  return parts.length
+    ? parts.slice(0, 2).join(", ")
+    : data.display_name.split(",").slice(0, 2).join(",").trim();
+};
+
+const parseJsonRecord = (value) => {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const parseCoordsFromText = (text) => {
+  const match = String(text || "").match(
+    /(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)/,
+  );
+  if (!match) return null;
+
+  const lat = Number(match[1]);
+  const lng = Number(match[2]);
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    lat < -90 ||
+    lat > 90 ||
+    lng < -180 ||
+    lng > 180
+  ) {
+    return null;
+  }
+
+  return { lat, lng };
+};
+
+const normalizeLocationCoords = (raw) => {
+  const record = parseJsonRecord(raw) || raw;
+  if (!record || typeof record !== "object") return null;
+
+  const lat = Number(record.lat ?? record.latitude);
+  const lng = Number(record.lng ?? record.lon ?? record.long ?? record.longitude);
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    lat < -90 ||
+    lat > 90 ||
+    lng < -180 ||
+    lng > 180
+  ) {
+    return null;
+  }
+
+  return {
+    lat,
+    lng,
+    name: record.name || record.locationName || "",
+  };
+};
+
+const encodeMetaToken = (payload) => {
+  const encoded = btoa(JSON.stringify(payload))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  return `[[epmeta:${encoded}]]`;
+};
+
+const stripAttachmentToken = (text) =>
+  String(text || "")
+    .replace(ATTACHMENT_META_TOKEN_REGEX, "")
+    .trim();
+
+const decodeMetaToken = (text) => {
+  const match = String(text || "").match(ATTACHMENT_META_TOKEN_REGEX);
+  if (!match?.[1]) return null;
+  try {
+    const encoded = match[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = `${encoded}${"=".repeat((4 - (encoded.length % 4)) % 4)}`;
+    return JSON.parse(atob(padded));
+  } catch (error) {
+    console.warn("Failed to decode attachment metadata:", error);
+    return null;
+  }
+};
+
+const parseMessageLocation = (item, rawText, attachmentMeta) => {
+  const candidates = [
+    item?.location,
+    item?.coordinates,
+    item?.locationLat != null &&
+    item?.locationLat !== "" &&
+    item?.locationLng != null &&
+    item?.locationLng !== ""
+      ? {
+          lat: item.locationLat,
+          lng: item.locationLng,
+          name: item.locationName || "",
+        }
+      : null,
+    item?.latitude != null &&
+    item?.latitude !== "" &&
+    item?.longitude != null &&
+    item?.longitude !== ""
+      ? {
+          lat: item.latitude,
+          lng: item.longitude,
+        }
+      : null,
+    attachmentMeta?.location,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeLocationCoords(candidate);
+    if (normalized) return normalized;
+  }
+
+  const fromText = parseCoordsFromText(rawText);
+  if (fromText) return fromText;
+
+  return normalizeLocationCoords(decodeMetaToken(rawText)?.location);
+};
+
+const getOsmTileUrl = (lat, lng, zoom = 15) => {
+  const latRad = (lat * Math.PI) / 180;
+  const n = 2 ** zoom;
+  const x = Math.floor(((lng + 180) / 360) * n);
+  const y = Math.floor(
+    ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n,
+  );
+  return `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
+};
+
+const getLocationDisplayName = (location, text) => {
+  if (location?.name) return location.name;
+  const cleaned = stripAttachmentToken(text).replace(/^📍\s*/, "").trim();
+  return cleaned || "Location";
+};
+
+const LocationMapPreview = ({ lat, lng, height = 150, zoom = 15 }) => {
+  const theme = useTheme();
+
+  return (
+    <Box
+      sx={{
+        width: "100%",
+        height,
+        bgcolor: alpha(theme.palette.success.main, 0.08),
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      <Box
+        component="img"
+        src={getOsmTileUrl(lat, lng, zoom)}
+        alt="Map preview"
+        loading="lazy"
+        sx={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          display: "block",
+        }}
+        onError={(event) => {
+          event.currentTarget.style.display = "none";
+        }}
+      />
+      <LocationOnIcon
+        sx={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -100%)",
+          fontSize: 34,
+          color: "success.main",
+          filter: `drop-shadow(0 2px 4px ${alpha(theme.palette.common.black, 0.35)})`,
+        }}
+      />
+    </Box>
+  );
+};
 
 const pickFirst = (...values) =>
   values.find((value) => value !== undefined && value !== null && value !== "");
@@ -287,6 +452,83 @@ const formatMessageTime = (value) => {
     minute: "2-digit",
     hour12: false,
   });
+};
+
+const toTimestamp = (value) => {
+  if (value == null || value === "") return 0;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value > 1e12) return value;
+    if (value > 1e9) return value * 1000;
+    return 0;
+  }
+  if (typeof value === "object") {
+    return toTimestamp(
+      value.$date ||
+        value.seconds ||
+        value._seconds ||
+        value.iso ||
+        value.date,
+    );
+  }
+  const text = String(value).trim();
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(text)) return 0;
+  const parsed = Date.parse(text);
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const resolveMessageCreatedAt = (item) =>
+  pickFirst(
+    item?.createdAt,
+    item?.created_at,
+    item?.sentAt,
+    item?.sent_at,
+    item?.timestamp,
+    item?.updatedAt,
+    item?.updated_at,
+    item?.date,
+  );
+
+const sortMessagesOldestFirst = (messages = []) => {
+  if (!Array.isArray(messages) || messages.length < 2) return messages;
+
+  const decorated = messages.map((msg, index) => ({
+    msg,
+    index,
+    time: toTimestamp(msg?.createdAt),
+    idNum: Number(msg?.id),
+  }));
+
+  const hasTime = decorated.some((item) => item.time > 0);
+  if (hasTime) {
+    decorated.sort((a, b) => {
+      if (a.time !== b.time) return a.time - b.time;
+      return a.index - b.index;
+    });
+    return decorated.map((item) => item.msg);
+  }
+
+  const hasNumericIds = decorated.every((item) => Number.isFinite(item.idNum));
+  if (hasNumericIds) {
+    decorated.sort((a, b) => a.idNum - b.idNum);
+    return decorated.map((item) => item.msg);
+  }
+
+  return messages;
+};
+
+const promoteConversation = (list, chatId, patch = {}) => {
+  const id = String(chatId ?? "");
+  if (!id) return list;
+  let promoted = null;
+  const rest = [];
+  for (const conv of list) {
+    if (String(conv.id) === id) {
+      promoted = { ...conv, ...patch };
+    } else {
+      rest.push(conv);
+    }
+  }
+  return promoted ? [promoted, ...rest] : list;
 };
 
 const resolveAssetUrl = (raw) => {
@@ -353,7 +595,7 @@ const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
     payload;
   const rows = Array.isArray(source) ? source : [];
 
-  return rows.map((item, idx) => {
+  const mapped = rows.map((item, idx) => {
     // Determine the "other" participant based on who is logged in
     const buyerId = pickFirst(
       item?.buyerId,
@@ -508,11 +750,17 @@ const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
       lastMessageSenderId,
       lastMessageRead,
       lastMessageIsMine,
+      lastMessageAt: pickFirst(
+        item?.lastMessageAt,
+        lastMessageObj?.createdAt,
+        item?.updatedAt,
+        item?.createdAt,
+      ),
       time: formatMessageTime(
         pickFirst(
-          item?.updatedAt,
           item?.lastMessageAt,
           lastMessageObj?.createdAt,
+          item?.updatedAt,
           item?.createdAt,
         ),
       ),
@@ -547,17 +795,27 @@ const normalizeConversationsResponse = (payload, { currentUserId } = {}) => {
       },
     };
   });
+
+  return mapped.sort(
+    (a, b) => toTimestamp(b.lastMessageAt) - toTimestamp(a.lastMessageAt),
+  );
 };
 
 const normalizeMessagesResponse = (
   payload,
   { currentUserId, sellerId, otherUserId } = {},
 ) => {
+  const nestedData = payload?.data;
   const source =
-    payload?.messages || payload?.items || payload?.data || payload;
+    payload?.messages ||
+    payload?.items ||
+    (Array.isArray(nestedData) ? nestedData : null) ||
+    nestedData?.messages ||
+    nestedData?.items ||
+    payload;
   const rows = Array.isArray(source) ? source : [];
 
-  return rows.map((item, idx) => {
+  const mapped = rows.map((item, idx) => {
     const senderIdentifier = pickFirst(
       item?.senderId,
       item?.sender?.userId,
@@ -593,30 +851,12 @@ const normalizeMessagesResponse = (
       item?.sender === "me" ||
       item?.isMine === true ||
       item?.isFromMe === true;
-    const location = item?.location
-      ? item.location
-      : item?.locationLat !== undefined &&
-          item?.locationLat !== null &&
-          item?.locationLat !== "" &&
-          item?.locationLng !== undefined &&
-          item?.locationLng !== null &&
-          item?.locationLng !== ""
-        ? {
-            lat: item?.locationLat,
-            lng: item?.locationLng,
-            name: item?.locationName || "",
-          }
-        : null;
-    const hasLocation =
-      location &&
-      location?.lat !== undefined &&
-      location?.lat !== null &&
-      location?.lat !== "" &&
-      location?.lng !== undefined &&
-      location?.lng !== null &&
-      location?.lng !== "" &&
-      Number.isFinite(Number(location?.lat)) &&
-      Number.isFinite(Number(location?.lng));
+    const rawText =
+      pickFirst(item?.text, item?.message, item?.content, item?.body, "") ||
+      "";
+    const attachmentMeta = decodeMetaToken(rawText);
+    const parsedLocation = parseMessageLocation(item, rawText, attachmentMeta);
+    const hasLocation = Boolean(parsedLocation);
     const attachmentRaw = item?.attachment || item?.file || null;
     const fileUrlRaw =
       item?.fileUrl ||
@@ -746,20 +986,17 @@ const normalizeMessagesResponse = (
     return {
       id: pickFirst(item?.id, item?._id, item?.messageId, idx + 1),
       senderId: mine ? "me" : "other",
-      text:
-        pickFirst(item?.text, item?.message, item?.content, item?.body, "") ||
-        "(empty)",
-      time: formatMessageTime(
-        pickFirst(item?.createdAt, item?.timestamp, item?.time),
-      ),
+      text: stripAttachmentToken(rawText) || "(empty)",
+      createdAt: resolveMessageCreatedAt(item),
+      time: formatMessageTime(resolveMessageCreatedAt(item)),
       read: Boolean(pickFirst(item?.read, item?.isRead, mine)),
       attachment,
-      location: hasLocation
-        ? { lat: Number(location.lat), lng: Number(location.lng) }
-        : undefined,
+      location: hasLocation ? parsedLocation : undefined,
       replyTo,
     };
   });
+
+  return sortMessagesOldestFirst(mapped);
 };
 
 const hydrateRepliesFromPrevious = (nextMessages, previousMessages = []) => {
@@ -827,6 +1064,7 @@ export default function Messages() {
   const { data: profileData } = useUserProfileQuery({ retry: false });
   const [selectedConversationId, setSelectedConversationId] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [messageInput, setMessageInput] = useState("");
   const [messages, setMessages] = useState([]);
   const [activeFilter, setActiveFilter] = useState("all");
@@ -843,7 +1081,6 @@ export default function Messages() {
   const [clearChatDialogOpen, setClearChatDialogOpen] = useState(false);
   const [deleteChatDialogOpen, setDeleteChatDialogOpen] = useState(false);
   const [locationDialogOpen, setLocationDialogOpen] = useState(false);
-  const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const [attachmentComposeOpen, setAttachmentComposeOpen] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState(null);
   const [attachmentCaption, setAttachmentCaption] = useState("");
@@ -855,9 +1092,13 @@ export default function Messages() {
   const [locationSearchResults, setLocationSearchResults] = useState([]);
   const [locationSearching, setLocationSearching] = useState(false);
   const [selectedLocationName, setSelectedLocationName] = useState("");
+  const [locationFromSavedProfile, setLocationFromSavedProfile] = useState(false);
   const [mapViewOpen, setMapViewOpen] = useState(false);
   const [viewingLocation, setViewingLocation] = useState(null);
   const [replyTo, setReplyTo] = useState(null);
+  const [sendingAttachment, setSendingAttachment] = useState(false);
+  const [sendingLocation, setSendingLocation] = useState(false);
+  const [savingAttachment, setSavingAttachment] = useState(false);
 
   // File input refs
   const cameraInputRef = useRef(null);
@@ -865,6 +1106,10 @@ export default function Messages() {
   const documentInputRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const messageEndRef = useRef(null);
+  const sendLockRef = useRef(false);
+  const attachmentLockRef = useRef(false);
+  const locationLockRef = useRef(false);
+  const saveAttachmentLockRef = useRef(false);
 
   // Snackbar state
   const [snackbar, setSnackbar] = useState({
@@ -1015,7 +1260,11 @@ export default function Messages() {
 
   useEffect(() => {
     if (selectedConversationId) {
-      setMessages((prev) => hydrateRepliesFromPrevious(normalizedMessages, prev));
+      setMessages((prev) =>
+        sortMessagesOldestFirst(
+          hydrateRepliesFromPrevious(normalizedMessages, prev),
+        ),
+      );
       return;
     }
     setMessages([]);
@@ -1075,24 +1324,24 @@ export default function Messages() {
         markChatAsRead(incomingChatId);
       }
 
-      // Update conversation list in-place (last message preview + unread badge)
-      setConversationsList((prev) =>
-        prev.map((conv) =>
-          String(conv.id) === String(incomingChatId)
-            ? {
-                ...conv,
-                lastMessage: normalized.text,
-                lastMessageIsMine: isMine,
-                lastMessageRead: false,
-                time: formatMessageTime(incoming?.createdAt),
-                unread:
-                  !isMine && String(conv.id) !== String(selectedConversationId)
-                    ? (conv.unread || 0) + 1
-                    : conv.unread,
-              }
-            : conv,
-        ),
-      );
+      const incomingAt = incoming?.createdAt || new Date().toISOString();
+      setConversationsList((prev) => {
+        const existing = prev.find(
+          (conv) => String(conv.id) === String(incomingChatId),
+        );
+        const unread =
+          !isMine && String(incomingChatId) !== String(selectedConversationId)
+            ? (existing?.unread || 0) + 1
+            : existing?.unread;
+        return promoteConversation(prev, incomingChatId, {
+          lastMessage: normalized.text,
+          lastMessageIsMine: isMine,
+          lastMessageRead: false,
+          lastMessageAt: incomingAt,
+          time: formatMessageTime(incomingAt),
+          unread,
+        });
+      });
     };
 
     socket.on("new_message", handleNewMessage);
@@ -1149,6 +1398,9 @@ export default function Messages() {
     },
   });
 
+  const isComposerBusy =
+    sendMessageMutation.isPending || sendingAttachment || sendingLocation;
+
   const chatMenuOptions = [
     { id: "profile", label: "Profile", icon: PersonIcon, color: "#667eea" },
     { id: "close", label: "Close Chat", icon: CloseIcon, color: "#757575" },
@@ -1190,14 +1442,13 @@ export default function Messages() {
       icon: LocationOnIcon,
       color: "#4caf50",
     },
-    { id: "contact", label: "Contact", icon: ContactsIcon, color: "#00bcd4" },
   ];
 
   const filterTags = [
     { id: "all", label: "All" },
     { id: "unread", label: "Unread" },
     { id: "buying", label: "Buying" },
-    { id: "selling", label: "Selling" },
+    { id: "selling", label: "Listing" },
     { id: "archived", label: "Archived" },
   ];
 
@@ -1216,8 +1467,14 @@ export default function Messages() {
 
   const handleSendMessage = () => {
     const text = messageInput.trim();
-    if (!text || !selectedConversationId || sendMessageMutation.isPending)
+    if (
+      !text ||
+      !selectedConversationId ||
+      sendLockRef.current ||
+      sendMessageMutation.isPending
+    )
       return;
+    sendLockRef.current = true;
     const receiverId =
       selectedConversation?.user?.id ||
       (String(currentUserId) === String(selectedConversation?.sellerId)
@@ -1233,29 +1490,48 @@ export default function Messages() {
       : null;
 
     // Optimistically add message with reply data
+    const sentAt = new Date().toISOString();
     const optimisticMessage = {
       id: `${Date.now()}-${Math.random()}`,
       senderId: "me",
       text,
+      createdAt: sentAt,
       time: "Just now",
       read: false,
       ...(replyData ? { replyTo: replyData } : {}),
     };
     setMessages((prev) => [...prev, optimisticMessage]);
+    setConversationsList((prev) =>
+      promoteConversation(prev, selectedConversationId, {
+        lastMessage: text,
+        lastMessageIsMine: true,
+        lastMessageRead: false,
+        lastMessageAt: sentAt,
+        time: formatMessageTime(sentAt),
+      }),
+    );
     setMessageInput("");
     setReplyTo(null);
 
-    sendMessageMutation.mutate({
-      conversationId: selectedConversationId,
-      text,
-      receiverId,
-      replyTo: replyData,
-    });
+    sendMessageMutation.mutate(
+      {
+        conversationId: selectedConversationId,
+        text,
+        receiverId,
+        replyTo: replyData,
+      },
+      {
+        onSettled: () => {
+          sendLockRef.current = false;
+        },
+      },
+    );
   };
 
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+      if (isComposerBusy) return;
       handleSendMessage();
     }
   };
@@ -1359,23 +1635,41 @@ export default function Messages() {
       case "documents":
         documentInputRef.current?.click();
         break;
-      case "location":
-        handleGetLocation();
+      case "location": {
+        setLocationDialogOpen(true);
+        setLocationError(null);
+        setLocationSearch("");
+        setLocationSearchResults([]);
+
+        const storedCoords =
+          getStoredUserCoordinates() || getProfileCoordinates(profileData);
+        if (storedCoords) {
+          setUserLocation(storedCoords);
+          setSelectedLocationName(
+            getStoredLocationLabel(profileData) || "Saved location",
+          );
+          setLocationFromSavedProfile(true);
+        } else {
+          setUserLocation(null);
+          setSelectedLocationName("");
+          setLocationFromSavedProfile(false);
+        }
         break;
-      case "contact":
-        setContactDialogOpen(true);
-        break;
+      }
       default:
         break;
     }
   };
 
   const handleSaveAttachment = async (attachment) => {
+    if (saveAttachmentLockRef.current) return;
     const attachmentUrl = attachment?.url;
     if (!attachmentUrl) {
       showSnackbar("No attachment URL available", "error");
       return;
     }
+    saveAttachmentLockRef.current = true;
+    setSavingAttachment(true);
     const fallbackName =
       attachment?.name ||
       String(attachmentUrl).split("?")[0].split("#")[0].split("/").pop() ||
@@ -1403,6 +1697,9 @@ export default function Messages() {
       link.click();
       link.remove();
       showSnackbar("Save started");
+    } finally {
+      saveAttachmentLockRef.current = false;
+      setSavingAttachment(false);
     }
   };
 
@@ -1419,9 +1716,12 @@ export default function Messages() {
   };
 
   const handleSendPendingAttachment = async () => {
+    if (attachmentLockRef.current) return;
     if (!pendingAttachment?.file || !pendingAttachment?.type) return;
     const { file, type } = pendingAttachment;
     const captionText = attachmentCaption.trim();
+    attachmentLockRef.current = true;
+    setSendingAttachment(true);
     try {
       const attachmentMessage = captionText || `📎 ${type} attachment`;
       const conversationId = selectedConversationId;
@@ -1442,10 +1742,12 @@ export default function Messages() {
         });
         const fileUrl = response?.fileUrl || "";
         const localPreviewUrl = URL.createObjectURL(file);
+        const sentAt = new Date().toISOString();
         const newMessage = {
           id: `${Date.now()}-${Math.random()}`,
           senderId: "me",
           text: attachmentMessage,
+          createdAt: sentAt,
           time: "Just now",
           read: false,
           attachment: {
@@ -1457,6 +1759,15 @@ export default function Messages() {
           },
         };
         setMessages((prev) => [...prev, newMessage]);
+        setConversationsList((prev) =>
+          promoteConversation(prev, conversationId, {
+            lastMessage: attachmentMessage,
+            lastMessageIsMine: true,
+            lastMessageRead: false,
+            lastMessageAt: sentAt,
+            time: formatMessageTime(sentAt),
+          }),
+        );
         showSnackbar(`${type} attached successfully`);
         setMessageInput("");
         resetAttachmentComposer();
@@ -1476,6 +1787,9 @@ export default function Messages() {
       }
     } catch (error) {
       showSnackbar("Failed to send attachment", "error");
+    } finally {
+      attachmentLockRef.current = false;
+      setSendingAttachment(false);
     }
   };
 
@@ -1491,53 +1805,85 @@ export default function Messages() {
   };
 
   const handleGetLocation = () => {
+    if (locationLoading) return;
     setLocationLoading(true);
-    setLocationDialogOpen(true);
     setLocationError(null);
 
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setUserLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          });
-          setLocationLoading(false);
-        },
-        (error) => {
-          console.error("Error getting location:", error);
-          setLocationLoading(false);
-
-          let errorMessage = "";
-          switch (error.code) {
-            case error.PERMISSION_DENIED:
-              errorMessage =
-                "Location permission denied. Please allow location access in your browser settings.";
-              break;
-            case error.POSITION_UNAVAILABLE:
-              errorMessage =
-                "Location information is unavailable. Please try again.";
-              break;
-            case error.TIMEOUT:
-              errorMessage = "Location request timed out. Please try again.";
-              break;
-            default:
-              errorMessage =
-                "An unknown error occurred while getting location.";
-              break;
-          }
-          setLocationError(errorMessage);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
-      );
-    } else {
+    if (!navigator.geolocation) {
       setLocationLoading(false);
       setLocationError("Geolocation is not supported by your browser.");
+      return;
     }
+
+    const restoreSavedLocation = () => {
+      const storedCoords =
+        getStoredUserCoordinates() || getProfileCoordinates(profileData);
+      if (!storedCoords) return;
+      setUserLocation(storedCoords);
+      setSelectedLocationName(
+        getStoredLocationLabel(profileData) || "Saved location",
+      );
+      setLocationFromSavedProfile(true);
+    };
+
+    const applyPosition = async (position) => {
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      setUserLocation({ lat, lng });
+      setLocationFromSavedProfile(false);
+
+      try {
+        const shortName = await reverseGeocodeShortName(lat, lng);
+        if (shortName) setSelectedLocationName(shortName);
+      } catch {
+        // Reverse geocode failed — lat/lng is still usable
+      }
+
+      setLocationLoading(false);
+    };
+
+    const handleGeoError = (error, attempt = 0) => {
+      const canRetryWithHighAccuracy =
+        attempt === 0 &&
+        error.code !== error.PERMISSION_DENIED &&
+        error.code !== error.TIMEOUT;
+
+      if (canRetryWithHighAccuracy) {
+        navigator.geolocation.getCurrentPosition(
+          applyPosition,
+          (retryError) => handleGeoError(retryError, attempt + 1),
+          {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0,
+          },
+        );
+        return;
+      }
+
+      console.error("Error getting location:", error);
+      setLocationLoading(false);
+      setLocationError(getGeoErrorMessage(error));
+
+      if (
+        getStoredUserCoordinates() ||
+        getProfileCoordinates(profileData)
+      ) {
+        restoreSavedLocation();
+      }
+    };
+
+    navigator.geolocation.getCurrentPosition(applyPosition, handleGeoError, {
+      enableHighAccuracy: false,
+      timeout: 12000,
+      maximumAge: 60000,
+    });
   };
 
   const handleSendLocation = async () => {
-    if (!userLocation) return;
+    if (!userLocation || locationLockRef.current || sendingLocation) return;
+    locationLockRef.current = true;
+    setSendingLocation(true);
     const conversationId = selectedConversationId;
     const receiverId =
       selectedConversation?.user?.id ||
@@ -1546,35 +1892,63 @@ export default function Messages() {
         : selectedConversation?.sellerId) ||
       selectedConversation?.buyerId;
     if (!conversationId || !receiverId) {
+      locationLockRef.current = false;
+      setSendingLocation(false);
       showSnackbar("Select a conversation first", "warning");
       return;
     }
     const locationText = selectedLocationName
       ? `📍 ${selectedLocationName}`
-      : "📍 Location shared";
+      : `📍 ${userLocation.lat.toFixed(5)}, ${userLocation.lng.toFixed(5)}`;
+    const messageText = `${locationText} ${encodeMetaToken({
+      location: {
+        lat: userLocation.lat,
+        lng: userLocation.lng,
+        name: selectedLocationName || "",
+      },
+    })}`;
     try {
       await sendConversationMessage(conversationId, {
-        text: locationText,
-        message: locationText,
-        content: locationText,
+        text: messageText,
+        message: messageText,
+        content: messageText,
         receiverId,
         messageType: "location",
-        location: { lat: userLocation.lat, lng: userLocation.lng, name: selectedLocationName || "" },
+        location: {
+          lat: userLocation.lat,
+          lng: userLocation.lng,
+          name: selectedLocationName || "",
+        },
         latitude: userLocation.lat,
         longitude: userLocation.lng,
         locationLat: userLocation.lat,
         locationLng: userLocation.lng,
         locationName: selectedLocationName || "",
       });
+      const sentAt = new Date().toISOString();
       const newMessage = {
         id: `${Date.now()}-${Math.random()}`,
         senderId: "me",
         text: locationText,
+        createdAt: sentAt,
         time: "Just now",
         read: false,
-        location: userLocation,
+        location: {
+          lat: userLocation.lat,
+          lng: userLocation.lng,
+          name: selectedLocationName || "",
+        },
       };
       setMessages((prev) => [...prev, newMessage]);
+      setConversationsList((prev) =>
+        promoteConversation(prev, conversationId, {
+          lastMessage: locationText,
+          lastMessageIsMine: true,
+          lastMessageRead: false,
+          lastMessageAt: sentAt,
+          time: formatMessageTime(sentAt),
+        }),
+      );
       await queryClient.invalidateQueries({
         queryKey: ["messages", "conversation", selectedConversationId],
       });
@@ -1586,6 +1960,7 @@ export default function Messages() {
       setLocationSearch("");
       setLocationSearchResults([]);
       setSelectedLocationName("");
+      setLocationFromSavedProfile(false);
       showSnackbar("Location sent successfully");
     } catch (error) {
       showSnackbar(
@@ -1594,11 +1969,14 @@ export default function Messages() {
           "Failed to send location",
         "error",
       );
+    } finally {
+      locationLockRef.current = false;
+      setSendingLocation(false);
     }
   };
 
   const handleLocationSearch = async () => {
-    if (!locationSearch.trim()) return;
+    if (!locationSearch.trim() || locationSearching) return;
 
     setLocationSearching(true);
     setLocationError(null);
@@ -1634,22 +2012,9 @@ export default function Messages() {
   const handleSelectSearchedLocation = (location) => {
     setUserLocation({ lat: location.lat, lng: location.lng });
     setSelectedLocationName(location.name.split(",")[0]);
+    setLocationFromSavedProfile(false);
     setLocationSearchResults([]);
     setLocationSearch("");
-  };
-
-  const handleSendContact = (contact) => {
-    const newMessage = {
-      id: `${Date.now()}-${Math.random()}`,
-      senderId: "me",
-      text: `👤 Contact: ${contact.name}`,
-      time: "Just now",
-      read: false,
-      contact,
-    };
-    setMessages((prev) => [...prev, newMessage]);
-    setContactDialogOpen(false);
-    showSnackbar("Contact sent successfully");
   };
 
   const filteredConversations = conversationsList.filter((conv) => {
@@ -1678,7 +2043,11 @@ export default function Messages() {
     }
 
     return matchesSearch && matchesFilter;
-  });
+  }).sort(
+    (a, b) => toTimestamp(b.lastMessageAt) - toTimestamp(a.lastMessageAt),
+  );
+
+  const threadMessages = sortMessagesOldestFirst(messages);
 
   const selectedListingPath = useMemo(() => {
     const listingId = selectedConversation?.listing?.id;
@@ -1697,50 +2066,140 @@ export default function Messages() {
       elevation={0}
       sx={{
         height: "100%",
-        bgcolor: isMobile ? "transparent" : "background.paper",
-        border: isMobile ? "none" : "1px solid",
+        bgcolor: "background.paper",
+        border: "1px solid",
         borderColor: "divider",
-        borderRadius: isMobile ? 0 : 3,
-        boxShadow: "none",
-        overflow: "hidden",
+        borderRadius: { xs: isMobile && selectedConversation ? 0 : 3, sm: 3 },
         display: "flex",
         flexDirection: "column",
+        overflow: "hidden",
       }}
     >
-      {/* Header */}
-      <Box sx={{ p: { xs: 1.5, sm: 2 }, borderBottom: "1px solid", borderColor: "divider" }}>
-        <Typography variant="h6" fontWeight={800} mb={0.25}>
-          Messages
-        </Typography>
-        <Typography fontSize={12.5} color="text.secondary" mb={1.4}>
-          Buyer and seller conversations
-        </Typography>
-        <TextField
-          fullWidth
-          placeholder="Search by product or person..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          size="small"
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon sx={{ color: "text.secondary" }} />
-              </InputAdornment>
-            ),
-          }}
-          sx={{
-            "& .MuiOutlinedInput-root": {
-              borderRadius: 2,
-              bgcolor: alpha(theme.palette.primary.main, 0.05),
-            },
-          }}
-        />
-        {/* Filter Tags */}
+      <Box
+        sx={{
+          px: 1.5,
+          py: 1,
+          minHeight: 58,
+          background: gradientPrimary,
+          color: "common.white",
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          boxSizing: "border-box",
+        }}
+      >
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={1.25}
+          sx={{ width: "100%" }}
+        >
+          <IconButton
+            onClick={() => navigate(-1)}
+            size="small"
+            sx={{
+              color: "white",
+              bgcolor: alpha("#fff", 0.2),
+              "&:hover": { bgcolor: alpha("#fff", 0.3) },
+            }}
+          >
+            <ArrowBackIcon fontSize="small" />
+          </IconButton>
+          <Box
+            sx={{
+              width: 42,
+              height: 42,
+              borderRadius: 1.5,
+              bgcolor: alpha("#fff", 0.2),
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <ChatBubbleOutlineIcon sx={{ color: "white", fontSize: 22 }} />
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography
+              fontWeight={700}
+              color="white"
+              fontSize={15}
+              sx={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Messages
+            </Typography>
+            <Typography fontSize={12} sx={{ color: alpha("#fff", 0.85) }}>
+              {conversationsList.length} conversation
+              {conversationsList.length !== 1 ? "s" : ""}
+            </Typography>
+          </Box>
+          <IconButton
+            onClick={() => {
+              setSearchOpen((prev) => {
+                if (prev) setSearchQuery("");
+                return !prev;
+              });
+            }}
+            size="small"
+            sx={{
+              color: "white",
+              bgcolor: alpha("#fff", searchOpen ? 0.3 : 0.2),
+              "&:hover": { bgcolor: alpha("#fff", 0.35) },
+            }}
+          >
+            {searchOpen ? (
+              <CloseIcon fontSize="small" />
+            ) : (
+              <SearchIcon fontSize="small" />
+            )}
+          </IconButton>
+        </Stack>
+      </Box>
+
+      <Box sx={{ p: 2, borderBottom: "1px solid", borderColor: "divider" }}>
+        {searchOpen && (
+          <TextField
+            fullWidth
+            autoFocus
+            placeholder="Search by product or person..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            size="small"
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ color: "text.secondary" }} />
+                </InputAdornment>
+              ),
+              endAdornment: searchQuery ? (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    onClick={() => setSearchQuery("")}
+                    edge="end"
+                  >
+                    <CloseIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </InputAdornment>
+              ) : null,
+            }}
+            sx={{
+              mb: 2,
+              "& .MuiOutlinedInput-root": {
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.primary.main, 0.05),
+              },
+            }}
+          />
+        )}
         <Stack
           direction="row"
           spacing={1}
           sx={{
-            mt: 2,
             overflowX: "auto",
             pb: 0.5,
             "&::-webkit-scrollbar": { display: "none" },
@@ -1759,15 +2218,18 @@ export default function Messages() {
                 px: 0.5,
                 bgcolor:
                   activeFilter === tag.id
-                    ? "primary.main"
+                    ? theme.palette.primary.main
                     : alpha(theme.palette.primary.main, 0.08),
-                color: activeFilter === tag.id ? "white" : "text.primary",
+                color:
+                  activeFilter === tag.id
+                    ? "primary.contrastText"
+                    : "text.primary",
                 border: "none",
                 transition: "all 0.2s ease",
                 "&:hover": {
                   bgcolor:
                     activeFilter === tag.id
-                      ? "primary.main"
+                      ? theme.palette.primary.main
                       : alpha(theme.palette.primary.main, 0.15),
                 },
               }}
@@ -1776,39 +2238,40 @@ export default function Messages() {
         </Stack>
       </Box>
 
-      {/* Conversation List */}
-      <List sx={{
-            flex: 1,
-            overflow: "auto",
-            p: 0,
-            "&::-webkit-scrollbar": { width: 6 },
-            "&::-webkit-scrollbar-track": {
-              bgcolor: alpha(theme.palette.primary.main, 0.05),
-              borderRadius: 3,
-            },
-            "&::-webkit-scrollbar-thumb": {
-              bgcolor: alpha(theme.palette.primary.main, 0.25),
-              borderRadius: 3,
-              "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.4) },
-            },
-            scrollbarWidth: "thin",
-            scrollbarColor: `${alpha(theme.palette.primary.main, 0.25)} ${alpha(theme.palette.primary.main, 0.05)}`,
-          }}>
+      <List
+        sx={{
+          flex: 1,
+          overflow: "auto",
+          p: 0,
+          "&::-webkit-scrollbar": { width: 6 },
+          "&::-webkit-scrollbar-track": {
+            bgcolor: alpha(theme.palette.primary.main, 0.05),
+            borderRadius: 3,
+          },
+          "&::-webkit-scrollbar-thumb": {
+            bgcolor: alpha(theme.palette.primary.main, 0.25),
+            borderRadius: 3,
+            "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.4) },
+          },
+          scrollbarWidth: "thin",
+          scrollbarColor: `${alpha(theme.palette.primary.main, 0.25)} ${alpha(theme.palette.primary.main, 0.05)}`,
+        }}
+      >
         {isLoadingConversations ? (
-          <Box sx={{ p: 3 }}>
-            <Typography fontSize={13} color="text.secondary">
+          <Box sx={{ p: 3, textAlign: "center" }}>
+            <Typography fontSize={14} color="text.secondary">
               Loading conversations...
             </Typography>
           </Box>
         ) : isConversationsError ? (
-          <Box sx={{ p: 3 }}>
-            <Typography fontSize={13} color="error.main">
+          <Box sx={{ p: 3, textAlign: "center" }}>
+            <Typography fontSize={14} color="error.main">
               Unable to load conversations.
             </Typography>
           </Box>
         ) : filteredConversations.length === 0 ? (
-          <Box sx={{ p: 3 }}>
-            <Typography fontSize={13} color="text.secondary">
+          <Box sx={{ p: 3, textAlign: "center" }}>
+            <Typography fontSize={14} color="text.secondary">
               No conversations found.
             </Typography>
           </Box>
@@ -1820,17 +2283,26 @@ export default function Messages() {
               sx={{
                 cursor: "pointer",
                 borderBottom: "1px solid",
-                borderColor: "divider",
+                borderBottomColor: "divider",
+                borderLeft: "3px solid",
+                borderLeftColor:
+                  conversation.unread > 0 ? "primary.main" : "transparent",
                 bgcolor:
                   selectedConversation?.id === conversation.id
                     ? alpha(theme.palette.primary.main, 0.08)
-                    : "transparent",
-                "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.05) },
+                    : conversation.unread > 0
+                      ? alpha(theme.palette.primary.main, 0.04)
+                      : "transparent",
+                "&:hover": {
+                  bgcolor:
+                    selectedConversation?.id === conversation.id
+                      ? alpha(theme.palette.primary.main, 0.1)
+                      : alpha(theme.palette.primary.main, 0.06),
+                },
                 py: 1.5,
                 px: 2,
               }}
             >
-              {/* Product Image - Primary */}
               <ListItemAvatar>
                 <Box
                   sx={{
@@ -1852,7 +2324,6 @@ export default function Messages() {
                       objectFit: "cover",
                     }}
                   />
-                  {/* User avatar overlay */}
                   <Badge
                     overlap="circular"
                     anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
@@ -1879,7 +2350,7 @@ export default function Messages() {
                         height: 24,
                         border: "2px solid",
                         borderColor: "background.paper",
-                        boxShadow: `0 1px 3px ${alpha(theme.palette.common.black, 0.2)}`,
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
                       }}
                     />
                   </Badge>
@@ -1906,34 +2377,30 @@ export default function Messages() {
                         <VerifiedIcon sx={{ fontSize: 14, color: "primary.main" }} />
                       )}
                     </Stack>
-                    <Typography
-                      component="span"
-                      fontSize={13}
-                      fontWeight={600}
-                      sx={{ color: "primary.main", display: "block" }}
-                    >
-                      {conversation.listing.price}
-                    </Typography>
+                    {conversation.listing.price && (
+                      <Typography
+                        component="span"
+                        fontSize={13}
+                        fontWeight={600}
+                        sx={{ color: "primary.main", display: "block" }}
+                      >
+                        {conversation.listing.price}
+                      </Typography>
+                    )}
                   </Stack>
                 }
                 primaryTypographyProps={{ component: "div" }}
                 secondary={
                   <Stack
                     direction="row"
-                    spacing={0.4}
                     alignItems="center"
-                    sx={{
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      maxWidth: 180,
-                      display: "flex",
-                    }}
+                    spacing={0.5}
+                    sx={{ maxWidth: 180 }}
                   >
                     {conversation.lastMessageIsMine && (
                       <DoneAllIcon
                         sx={{
-                          fontSize: 14,
+                          fontSize: 13,
                           color: conversation.lastMessageRead
                             ? "success.main"
                             : "text.disabled",
@@ -1969,17 +2436,19 @@ export default function Messages() {
                 {conversation.unread > 0 && (
                   <Box
                     sx={{
-                      minWidth: 20,
-                      height: 20,
-                      borderRadius: "50%",
+                      minWidth: 22,
+                      height: 22,
+                      borderRadius: 99,
                       background: gradientPrimary,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
+                      px: 0.75,
+                      boxShadow: "0 2px 8px rgba(102,126,234,0.35)",
                     }}
                   >
                     <Typography fontSize={11} fontWeight={700} color="white">
-                      {conversation.unread}
+                      {conversation.unread > 99 ? "99+" : conversation.unread}
                     </Typography>
                   </Box>
                 )}
@@ -1997,14 +2466,13 @@ export default function Messages() {
       elevation={0}
       sx={{
         height: "100%",
-        bgcolor: isMobile ? "transparent" : "background.paper",
-        border: isMobile ? "none" : "1px solid",
+        bgcolor: "background.paper",
+        border: "1px solid",
         borderColor: "divider",
-        borderRadius: isMobile ? 0 : 3,
-        boxShadow: "none",
-        overflow: "hidden",
+        borderRadius: { xs: isMobile && selectedConversation ? 0 : 3, sm: 3 },
         display: "flex",
         flexDirection: "column",
+        overflow: "hidden",
       }}
     >
       {selectedConversation ? (
@@ -2014,11 +2482,14 @@ export default function Messages() {
             sx={{
               px: 1.5,
               py: 1,
+              minHeight: 58,
               borderBottom: "1px solid",
               borderColor: "divider",
               display: "flex",
               alignItems: "center",
               gap: 1,
+              boxSizing: "border-box",
+              flexShrink: 0,
             }}
           >
             {isMobile && (
@@ -2150,36 +2621,6 @@ export default function Messages() {
                 <SearchIcon sx={{ fontSize: 18 }} />
               </IconButton>
               <IconButton
-                sx={{
-                  color: "primary.main",
-                  bgcolor: alpha(theme.palette.primary.main, 0.1),
-                  width: 34,
-                  height: 34,
-                  transition: "all 0.2s ease",
-                  "&:hover": {
-                    bgcolor: alpha(theme.palette.primary.main, 0.2),
-                    transform: "scale(1.05)",
-                  },
-                }}
-              >
-                <PhoneIcon sx={{ fontSize: 18 }} />
-              </IconButton>
-              <IconButton
-                sx={{
-                  color: "primary.main",
-                  bgcolor: alpha(theme.palette.primary.main, 0.1),
-                  width: 34,
-                  height: 34,
-                  transition: "all 0.2s ease",
-                  "&:hover": {
-                    bgcolor: alpha(theme.palette.primary.main, 0.2),
-                    transform: "scale(1.05)",
-                  },
-                }}
-              >
-                <VideocamIcon sx={{ fontSize: 18 }} />
-              </IconButton>
-              <IconButton
                 onClick={(e) => setChatMenuAnchor(e.currentTarget)}
                 sx={{
                   color: "#666",
@@ -2259,6 +2700,7 @@ export default function Messages() {
               p: 2,
               display: "flex",
               flexDirection: "column",
+              justifyContent: "flex-start",
               gap: 1.5,
               bgcolor: "#fafafa",
               "&::-webkit-scrollbar": { width: 6 },
@@ -2283,12 +2725,12 @@ export default function Messages() {
               <Typography fontSize={13} color="error.main">
                 Unable to load messages for this conversation.
               </Typography>
-            ) : messages.length === 0 ? (
+            ) : threadMessages.length === 0 ? (
               <Typography fontSize={13} color="text.secondary">
                 No messages yet.
               </Typography>
             ) : (
-              messages.map((message) => (
+              threadMessages.map((message) => (
                 <Box
                   key={message.id}
                   id={`msg-${message.id}`}
@@ -2334,7 +2776,10 @@ export default function Messages() {
                       onClick={() => {
                         setViewingLocation({
                           ...message.location,
-                          name: message.text.replace("📍 ", ""),
+                          name: getLocationDisplayName(
+                            message.location,
+                            message.text,
+                          ),
                         });
                         setMapViewOpen(true);
                       }}
@@ -2354,20 +2799,13 @@ export default function Messages() {
                       <Box
                         sx={{
                           width: 250,
-                          height: 150,
-                          bgcolor: alpha("#4caf50", 0.1),
                           position: "relative",
                           overflow: "hidden",
                         }}
                       >
-                        <iframe
-                          title="Location Map"
-                          width="100%"
-                          height="100%"
-                          frameBorder="0"
-                          scrolling="no"
-                          style={{ border: 0, pointerEvents: "none" }}
-                          src={`https://www.openstreetmap.org/export/embed.html?bbox=${message.location.lng - 0.01},${message.location.lat - 0.01},${message.location.lng + 0.01},${message.location.lat + 0.01}&layer=mapnik&marker=${message.location.lat},${message.location.lng}`}
+                        <LocationMapPreview
+                          lat={message.location.lat}
+                          lng={message.location.lng}
                         />
                         {/* Tap to view overlay */}
                         <Box
@@ -2436,7 +2874,7 @@ export default function Messages() {
                               }
                               noWrap
                             >
-                              {message.text.replace("📍 ", "")}
+                              {getLocationDisplayName(message.location, message.text)}
                             </Typography>
                             <Typography
                               fontSize={11}
@@ -2770,6 +3208,7 @@ export default function Messages() {
                                         e.stopPropagation();
                                         handleSaveAttachment(attachment);
                                       }}
+                                      disabled={savingAttachment}
                                       sx={{
                                         textTransform: "none",
                                         color: "#25D366",
@@ -2928,7 +3367,7 @@ export default function Messages() {
                         "&:hover": { color: "#667eea", bgcolor: alpha("#667eea", 0.08) },
                       }}
                     >
-                      <ReplyIcon sx={{ fontSize: 18, transform: "scaleX(-1)" }} />
+                      <ReplyIcon sx={{ fontSize: 18 }} />
                     </IconButton>
                   )}
                 </Box>
@@ -2961,7 +3400,7 @@ export default function Messages() {
                   borderLeft: `3px solid ${theme.palette.primary.main}`,
                 }}
               >
-                <ReplyIcon sx={{ fontSize: 18, color: "primary.main", mr: 1, transform: "scaleX(-1)" }} />
+                <ReplyIcon sx={{ fontSize: 18, color: "primary.main", mr: 1 }} />
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography fontSize={12} fontWeight={600} color="primary.main">
                     Replying to {replyTo.senderId === "me" ? "yourself" : selectedConversation?.user?.name || "User"}
@@ -3028,6 +3467,7 @@ export default function Messages() {
               <IconButton
                 size="small"
                 onClick={(e) => setAttachmentMenuAnchor(e.currentTarget)}
+                disabled={isComposerBusy}
                 sx={{
                   color: "white",
                   background: gradientPrimary,
@@ -3064,6 +3504,7 @@ export default function Messages() {
                   <MenuItem
                     key={option.id}
                     onClick={() => handleAttachmentAction(option.id)}
+                    disabled={isComposerBusy}
                     sx={{
                       borderRadius: 2,
                       py: 1.5,
@@ -3105,6 +3546,7 @@ export default function Messages() {
                 value={messageInput}
                 onChange={(e) => setMessageInput(e.target.value)}
                 onKeyPress={handleKeyPress}
+                disabled={isComposerBusy}
                 size="small"
                 multiline
                 maxRows={4}
@@ -3119,24 +3561,31 @@ export default function Messages() {
               {/* Send Button */}
               <IconButton
                 onClick={handleSendMessage}
-                disabled={!messageInput.trim() || sendMessageMutation.isPending}
+                disabled={!messageInput.trim() || isComposerBusy}
                 sx={{
                   width: 38,
                   height: 38,
-                  background: messageInput.trim()
+                  background: messageInput.trim() && !isComposerBusy
                     ? gradientPrimary
                     : alpha("#667eea", 0.1),
-                  color: messageInput.trim() ? "white" : alpha("#667eea", 0.4),
+                  color:
+                    messageInput.trim() && !isComposerBusy
+                      ? "white"
+                      : alpha("#667eea", 0.4),
                   borderRadius: 2.5,
                   transition: "all 0.3s ease",
                   "&:hover": {
-                    background: messageInput.trim()
+                    background: messageInput.trim() && !isComposerBusy
                       ? gradientPrimary
                       : alpha("#667eea", 0.15),
-                    transform: messageInput.trim() ? "scale(1.05)" : "none",
-                    boxShadow: messageInput.trim()
-                      ? "0 4px 15px rgba(102, 126, 234, 0.4)"
-                      : "none",
+                    transform:
+                      messageInput.trim() && !isComposerBusy
+                        ? "scale(1.05)"
+                        : "none",
+                    boxShadow:
+                      messageInput.trim() && !isComposerBusy
+                        ? "0 4px 15px rgba(102, 126, 234, 0.4)"
+                        : "none",
                   },
                   "&:disabled": {
                     background: alpha("#667eea", 0.1),
@@ -3144,7 +3593,11 @@ export default function Messages() {
                   },
                 }}
               >
-                <SendIcon sx={{ fontSize: 20 }} />
+                {isComposerBusy ? (
+                  <CircularProgress size={16} sx={{ color: "primary.main" }} />
+                ) : (
+                  <SendIcon sx={{ fontSize: 20 }} />
+                )}
               </IconButton>
             </Box>
           </Box>
@@ -3189,37 +3642,50 @@ export default function Messages() {
   return (
     <Box
       sx={{
-        bgcolor: "background.default",
-        height: { xs: "calc(100vh - 124px)", md: "100vh" },
-        overflow: "hidden",
+        position: "fixed",
+        inset: 0,
+        width: "100%",
+        height: "100dvh",
         display: "flex",
         flexDirection: "column",
-        p: { xs: 0.5, sm: 1, md: 1.5 },
-        borderRadius: { xs: 2, md: 2.5 },
+        bgcolor: "background.default",
+        overflow: "hidden",
+        zIndex: 1,
       }}
     >
       <Container
         maxWidth={false}
         sx={{
+          width: "100%",
           flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0,
+          height: "100%",
           overflow: "hidden",
-          px: { xs: 0, md: 0.5 },
+          pt: isMobile && selectedConversation ? 0 : { xs: 1.5, sm: 2 },
+          pb: isMobile && selectedConversation ? 0 : { xs: 1.5, sm: 2 },
+          px: isMobile && selectedConversation ? 0 : { xs: 1.5, sm: 2 },
         }}
       >
-        {isMobile ? (
-          selectedConversation ? (
-            renderChatView()
+        <Box sx={{ flex: 1, minHeight: 0, height: "100%" }}>
+          {isMobile ? (
+            selectedConversation ? (
+              renderChatView()
+            ) : (
+              renderConversationList()
+            )
           ) : (
-            renderConversationList()
-          )
-        ) : (
-          <Box sx={{ display: "flex", gap: 1.5, height: "100%" }}>
-            <Box sx={{ width: 360, flexShrink: 0 }}>
-              {renderConversationList()}
+            <Box sx={{ display: "flex", gap: 2, height: "100%" }}>
+              <Box sx={{ width: 380, flexShrink: 0, minHeight: 0 }}>
+                {renderConversationList()}
+              </Box>
+              <Box sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+                {renderChatView()}
+              </Box>
             </Box>
-            <Box sx={{ flex: 1 }}>{renderChatView()}</Box>
-          </Box>
-        )}
+          )}
+        </Box>
       </Container>
 
       {/* Location Dialog */}
@@ -3232,6 +3698,7 @@ export default function Messages() {
           setLocationSearch("");
           setLocationSearchResults([]);
           setSelectedLocationName("");
+          setLocationFromSavedProfile(false);
         }}
         maxWidth="sm"
         fullWidth
@@ -3365,6 +3832,7 @@ export default function Messages() {
               fullWidth
               variant="outlined"
               onClick={handleGetLocation}
+              disabled={locationLoading}
               startIcon={<LocationOnIcon />}
               sx={{
                 borderRadius: 2,
@@ -3434,6 +3902,7 @@ export default function Messages() {
                     setLocationError(null);
                     handleGetLocation();
                   }}
+                  disabled={locationLoading}
                   sx={{
                     borderRadius: 2,
                     bgcolor: "#4caf50",
@@ -3456,34 +3925,13 @@ export default function Messages() {
                   borderRadius: 2,
                   overflow: "hidden",
                   mb: 2,
-                  bgcolor: "#e8f5e9",
                 }}
               >
-                <img
-                  src={`https://maps.googleapis.com/maps/api/staticmap?center=${userLocation.lat},${userLocation.lng}&zoom=15&size=600x200&markers=color:green%7C${userLocation.lat},${userLocation.lng}&key=YOUR_API_KEY`}
-                  alt="Location preview"
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  onError={(e) => {
-                    e.target.style.display = "none";
-                    e.target.nextSibling.style.display = "flex";
-                  }}
+                <LocationMapPreview
+                  lat={userLocation.lat}
+                  lng={userLocation.lng}
+                  height={200}
                 />
-                <Box
-                  sx={{
-                    display: "none",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    height: "100%",
-                    bgcolor: alpha("#4caf50", 0.1),
-                  }}
-                >
-                  <Stack alignItems="center" spacing={1}>
-                    <LocationOnIcon sx={{ fontSize: 48, color: "#4caf50" }} />
-                    <Typography fontSize={14} color="text.secondary">
-                      Location ready to share
-                    </Typography>
-                  </Stack>
-                </Box>
               </Box>
               <Stack direction="row" spacing={2} alignItems="center">
                 <Box
@@ -3500,9 +3948,23 @@ export default function Messages() {
                   <LocationOnIcon sx={{ color: "#4caf50" }} />
                 </Box>
                 <Box>
-                  <Typography fontSize={14} fontWeight={500}>
-                    Current Location
-                  </Typography>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Typography fontSize={14} fontWeight={500}>
+                      {selectedLocationName || "Current Location"}
+                    </Typography>
+                    {locationFromSavedProfile && (
+                      <Chip
+                        label="Saved"
+                        size="small"
+                        sx={{
+                          height: 20,
+                          fontSize: 11,
+                          bgcolor: alpha("#667eea", 0.12),
+                          color: "#667eea",
+                        }}
+                      />
+                    )}
+                  </Stack>
                   <Typography fontSize={12} color="text.secondary">
                     {userLocation.lat.toFixed(6)}, {userLocation.lng.toFixed(6)}
                   </Typography>
@@ -3524,6 +3986,7 @@ export default function Messages() {
               setLocationSearch("");
               setLocationSearchResults([]);
               setSelectedLocationName("");
+              setLocationFromSavedProfile(false);
             }}
             sx={{ borderRadius: 2 }}
           >
@@ -3531,16 +3994,22 @@ export default function Messages() {
           </Button>
           <Button
             variant="contained"
-            disabled={!userLocation || locationLoading}
+            disabled={!userLocation || locationLoading || sendingLocation}
             onClick={handleSendLocation}
-            startIcon={<SendIcon />}
+            startIcon={
+              sendingLocation ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : (
+                <SendIcon />
+              )
+            }
             sx={{
               borderRadius: 2,
               bgcolor: "#4caf50",
               "&:hover": { bgcolor: "#43a047" },
             }}
           >
-            Send Location
+            {sendingLocation ? "Sending..." : "Send Location"}
           </Button>
         </DialogActions>
       </Dialog>
@@ -3966,19 +4435,29 @@ export default function Messages() {
           />
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={resetAttachmentComposer} sx={{ borderRadius: 2 }}>
+          <Button
+            onClick={resetAttachmentComposer}
+            disabled={sendingAttachment}
+            sx={{ borderRadius: 2 }}
+          >
             Discard
           </Button>
           <Button
             variant="contained"
             onClick={handleSendPendingAttachment}
+            disabled={sendingAttachment || !pendingAttachment?.file}
+            startIcon={
+              sendingAttachment ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : null
+            }
             sx={{
               borderRadius: 2,
               background: gradientPrimary,
               "&:hover": { background: gradientPrimary, opacity: 0.9 },
             }}
           >
-            Send
+            {sendingAttachment ? "Sending..." : "Send"}
           </Button>
         </DialogActions>
       </Dialog>
@@ -4040,14 +4519,11 @@ export default function Messages() {
         <DialogContent sx={{ p: 0 }}>
           {viewingLocation && (
             <Box sx={{ width: "100%", height: 400, position: "relative" }}>
-              <iframe
-                title="Full Map View"
-                width="100%"
-                height="100%"
-                frameBorder="0"
-                scrolling="no"
-                style={{ border: 0 }}
-                src={`https://www.openstreetmap.org/export/embed.html?bbox=${viewingLocation.lng - 0.02},${viewingLocation.lat - 0.02},${viewingLocation.lng + 0.02},${viewingLocation.lat + 0.02}&layer=mapnik&marker=${viewingLocation.lat},${viewingLocation.lng}`}
+              <LocationMapPreview
+                lat={viewingLocation.lat}
+                lng={viewingLocation.lng}
+                height={400}
+                zoom={14}
               />
             </Box>
           )}

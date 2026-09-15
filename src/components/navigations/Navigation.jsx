@@ -17,7 +17,6 @@ import BottomNavigation from "@mui/material/BottomNavigation";
 import BottomNavigationAction from "@mui/material/BottomNavigationAction";
 import Paper from "@mui/material/Paper";
 import LogoutIcon from "@mui/icons-material/Logout";
-import logo from "../../assets/images/Sample Logo 1 (4).png";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import NotificationsRoundedIcon from "@mui/icons-material/NotificationsRounded";
 import MarkunreadIcon from "@mui/icons-material/Markunread";
@@ -25,6 +24,9 @@ import Inventory2RoundedIcon from "@mui/icons-material/Inventory2Rounded";
 import CampaignRoundedIcon from "@mui/icons-material/CampaignRounded";
 import ReceiptLongRoundedIcon from "@mui/icons-material/ReceiptLongRounded";
 import GroupRoundedIcon from "@mui/icons-material/GroupRounded";
+import AssessmentRoundedIcon from "@mui/icons-material/AssessmentRounded";
+import ConfirmationNumberOutlinedIcon from "@mui/icons-material/ConfirmationNumberOutlined";
+import ManageSearchIcon from "@mui/icons-material/ManageSearch";
 import Badge from "@mui/material/Badge";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
@@ -39,7 +41,14 @@ import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { useUnreadCounts } from "../../context/UnreadCountsContext";
 import { useUserProfileQuery } from "../../services/queries";
-import { isSellerRole, resolveUserRole } from "../../utils/accessControl";
+import {
+  isSellerRole,
+  resolveUserRole,
+} from "../../utils/accessControl";
+import AppTour from "../tour/AppTour";
+import { tourIdForNavUrl, TOUR_TARGETS } from "../../utils/appTour";
+import RoleModeSwitch from "./RoleModeSwitch";
+import BrandLogo from "../brand/BrandLogo";
 
 // AppBar removed; toolbar contents moved into the drawer
 
@@ -88,48 +97,72 @@ const Drawer = styled(MuiDrawer)(({ theme, open, variant }) => ({
 }));
 
 const Main = styled("main", {
-  shouldForwardProp: (prop) => prop !== "open",
-})(({ theme, open }) => ({
+  shouldForwardProp: (prop) => prop !== "open" && prop !== "fullBleed",
+})(({ theme, open, fullBleed }) => ({
   flexGrow: 1,
-  padding: theme.spacing(3),
+  padding: fullBleed ? 0 : theme.spacing(3),
   minHeight: "100vh",
   width: "100%",
   minWidth: 0,
-  overflowX: "auto",
-  [theme.breakpoints.down("sm")]: {
-    padding: theme.spacing(1.25),
-    paddingBottom: theme.spacing(10),
-    width: "100%",
-    minWidth: 0,
-  },
-  [theme.breakpoints.between("sm", "md")]: {
-    padding: theme.spacing(2),
-    paddingBottom: theme.spacing(2.5),
-    ...(open
-      ? {
-          width: `calc(100vw - ${drawerWidth}px)`,
-          minWidth: `calc(100vw - ${drawerWidth}px)`,
-        }
-      : {
-          width: `calc(100vw - calc(${theme.spacing(10)} + 1px))`,
-          minWidth: `calc(100vw - calc(${theme.spacing(10)} + 1px))`,
-        }),
-  },
-  [theme.breakpoints.up("md")]: {
-    ...(open
-      ? {
-          width: `calc(100vw - ${drawerWidth}px)`,
-          minWidth: `calc(100vw - ${drawerWidth}px)`,
-        }
-      : {
-          width: `calc(100vw - calc(${theme.spacing(9)} + 1px))`,
-          minWidth: `calc(100vw - calc(${theme.spacing(9)} + 1px))`,
-          [theme.breakpoints.up("lg")]: {
-            width: `calc(100vw - calc(${theme.spacing(10)} + 1px))`,
-            minWidth: `calc(100vw - calc(${theme.spacing(10)} + 1px))`,
-          },
-        }),
-  },
+  overflowX: fullBleed ? "hidden" : "auto",
+  ...(fullBleed
+    ? {
+        width: "100vw",
+        minWidth: "100vw",
+        maxWidth: "100vw",
+        padding: 0,
+        [theme.breakpoints.down("sm")]: {
+          padding: 0,
+          paddingBottom: 0,
+          width: "100vw",
+          minWidth: "100vw",
+        },
+        [theme.breakpoints.between("sm", "md")]: {
+          padding: 0,
+          width: "100vw",
+          minWidth: "100vw",
+        },
+        [theme.breakpoints.up("md")]: {
+          width: "100vw",
+          minWidth: "100vw",
+        },
+      }
+    : {
+        [theme.breakpoints.down("sm")]: {
+          padding: theme.spacing(1.25),
+          paddingBottom: theme.spacing(10),
+          width: "100%",
+          minWidth: 0,
+        },
+        [theme.breakpoints.between("sm", "md")]: {
+          padding: theme.spacing(2),
+          paddingBottom: theme.spacing(2.5),
+          ...(open
+            ? {
+                width: `calc(100vw - ${drawerWidth}px)`,
+                minWidth: `calc(100vw - ${drawerWidth}px)`,
+              }
+            : {
+                width: `calc(100vw - calc(${theme.spacing(10)} + 1px))`,
+                minWidth: `calc(100vw - calc(${theme.spacing(10)} + 1px))`,
+              }),
+        },
+        [theme.breakpoints.up("md")]: {
+          ...(open
+            ? {
+                width: `calc(100vw - ${drawerWidth}px)`,
+                minWidth: `calc(100vw - ${drawerWidth}px)`,
+              }
+            : {
+                width: `calc(100vw - calc(${theme.spacing(9)} + 1px))`,
+                minWidth: `calc(100vw - calc(${theme.spacing(9)} + 1px))`,
+                [theme.breakpoints.up("lg")]: {
+                  width: `calc(100vw - calc(${theme.spacing(10)} + 1px))`,
+                  minWidth: `calc(100vw - calc(${theme.spacing(10)} + 1px))`,
+                },
+              }),
+        },
+      }),
   transition: theme.transitions.create(["width"], {
     easing: theme.transitions.easing.sharp,
     duration: theme.transitions.duration.leavingScreen,
@@ -147,7 +180,13 @@ const DrawerHeader = styled("div")(({ theme }) => ({
 
 const adminNav = [
   { title: "Dashboard", icon: DashboardIcon, url: "/dashboard" },
-  { title: "Inventory", icon: Inventory2RoundedIcon, url: "/inventory" },
+  { title: "Reports", icon: AssessmentRoundedIcon, url: "/reports" },
+  {
+    title: "Support Tickets",
+    icon: ConfirmationNumberOutlinedIcon,
+    url: "/support-tickets",
+  },
+  { title: "My Listings", icon: Inventory2RoundedIcon, url: "/inventory" },
   {
     title: "Advertisements",
     icon: CampaignRoundedIcon,
@@ -155,6 +194,7 @@ const adminNav = [
   },
   { title: "Transactions", icon: ReceiptLongRoundedIcon, url: "/transactions" },
   { title: "User Management", icon: GroupRoundedIcon, url: "/userManagement" },
+  { title: "Activity Logs", icon: ManageSearchIcon, url: "/activity-logs" },
   { title: "Messages", icon: MarkunreadIcon, url: "/messages" },
   {
     title: "Notifications",
@@ -164,18 +204,17 @@ const adminNav = [
 ];
 
 const sellerNav = [
-  { title: "Dashboard", icon: DashboardIcon, url: "/dashboard" },
-  { title: "Inventory", icon: Inventory2RoundedIcon, url: "/inventory" },
-  {
-    title: "Advertisements",
-    icon: CampaignRoundedIcon,
-    url: "/advertisements",
-  },
+  { title: "My Listings", icon: Inventory2RoundedIcon, url: "/inventory" },
   { title: "Messages", icon: MarkunreadIcon, url: "/messages" },
   {
     title: "Notifications",
     icon: NotificationsRoundedIcon,
     url: "/notifications",
+  },
+  {
+    title: "Advertisements",
+    icon: CampaignRoundedIcon,
+    url: "/advertisements",
   },
 ];
 
@@ -189,6 +228,27 @@ export default function Navigation({ currentTheme, setThemeMode }) {
   const { messagesUnreadCount, notificationsUnreadCount } = useUnreadCounts();
   const { data: profileData } = useUserProfileQuery({ retry: false });
   const isSeller = isSellerRole(resolveUserRole(profileData));
+  const [forceTour, setForceTour] = useState(false);
+  const [tourActive, setTourActive] = useState(false);
+
+  React.useEffect(() => {
+    const onReplay = () => setForceTour(true);
+    const onTourState = (event) => {
+      setTourActive(Boolean(event?.detail?.active));
+      if (!event?.detail?.active) setOpen(false);
+    };
+    const onTourPrepare = (event) => {
+      if (event?.detail?.openDrawer) setOpen(true);
+    };
+    window.addEventListener("easyplug:start-tour", onReplay);
+    window.addEventListener("easyplug:tour-state", onTourState);
+    window.addEventListener("easyplug:tour-prepare", onTourPrepare);
+    return () => {
+      window.removeEventListener("easyplug:start-tour", onReplay);
+      window.removeEventListener("easyplug:tour-state", onTourState);
+      window.removeEventListener("easyplug:tour-prepare", onTourPrepare);
+    };
+  }, []);
 
   const handleDrawerOpen = () => setOpen(true);
   const handleDrawerClose = () => setOpen(false);
@@ -204,17 +264,16 @@ export default function Navigation({ currentTheme, setThemeMode }) {
   const mobileNavItems = React.useMemo(() => {
     if (isSeller) {
       return [
-        { title: "Dashboard", icon: DashboardIcon, url: "/dashboard" },
-        { title: "Inventory", icon: Inventory2RoundedIcon, url: "/inventory" },
-        { title: "Adverts", icon: CampaignRoundedIcon, url: "/advertisements" },
+        { title: "My Listings", icon: Inventory2RoundedIcon, url: "/inventory" },
         { title: "Messages", icon: MarkunreadIcon, url: "/messages" },
         { title: "Alerts", icon: NotificationsRoundedIcon, url: "/notifications" },
+        { title: "Adverts", icon: CampaignRoundedIcon, url: "/advertisements" },
       ];
     }
 
     return [
       { title: "Dashboard", icon: DashboardIcon, url: "/dashboard" },
-      { title: "Inventory", icon: Inventory2RoundedIcon, url: "/inventory" },
+      { title: "My Listings", icon: Inventory2RoundedIcon, url: "/inventory" },
       { title: "Adverts", icon: CampaignRoundedIcon, url: "/advertisements" },
       { title: "Messages", icon: MarkunreadIcon, url: "/messages" },
       { title: "Alerts", icon: NotificationsRoundedIcon, url: "/notifications" },
@@ -229,6 +288,9 @@ export default function Navigation({ currentTheme, setThemeMode }) {
     return matchedIndex === -1 ? 0 : matchedIndex;
   }, [location.pathname, mobileNavItems]);
 
+  const isMessagesRoute = location.pathname.startsWith("/messages");
+  const hideChrome = isMessagesRoute && !tourActive;
+
   return (
     <Box
       sx={{
@@ -239,7 +301,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
     >
       <CssBaseline />
 
-      {menuToRender.length > 0 && (
+      {!hideChrome && menuToRender.length > 0 && (
         <Drawer
           variant={isMobile ? "temporary" : "permanent"}
           open={open}
@@ -278,10 +340,10 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                           bgcolor: "#fff",
                         }}
                       >
-                        <img
-                          src={logo}
+                        <BrandLogo
                           alt="EasyPlug Logo"
-                          style={{
+                          updateDocumentIcons
+                          sx={{
                             width: "100%",
                             height: "100%",
                             objectFit: "cover",
@@ -300,7 +362,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                           lineHeight: 1.1,
                         }}
                       >
-                        {isSeller ? "Easyplug Seller" : "Easyplug Admin"}
+                        {isSeller ? "EasyPlug" : "EasyPlug Admin"}
                       </Typography>
                       <Typography
                         variant="caption"
@@ -355,6 +417,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                     <ListItemButton
                       component={Link}
                       to={listItem.url}
+                      data-tour={tourIdForNavUrl(listItem.url) || undefined}
                       onClick={isMobile ? handleDrawerClose : undefined}
                       centerRipple
                       sx={{
@@ -510,11 +573,20 @@ export default function Navigation({ currentTheme, setThemeMode }) {
 
             <Box
               sx={{
-                p: 1.5,
+                px: open ? 1.5 : 1,
+                pb: 1,
+                pt: 1.25,
                 borderTop: (theme) =>
                   `1px solid ${
                     theme.palette.mode === "light" ? "#eee" : "#2a2a2a"
                   }`,
+              }}
+            >
+              <RoleModeSwitch compact={!open} vertical={!open} />
+            </Box>
+            <Box
+              sx={{
+                p: 1.5,
                 display: "flex",
                 flexDirection: open ? "row" : "column",
                 alignItems: "center",
@@ -545,6 +617,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                     component={Link}
                     to="/profile"
                     aria-label="Open profile"
+                    data-tour={TOUR_TARGETS.profile}
                     sx={{ p: 0, bgcolor: "primary.main" }}
                   >
                     <Avatar>T</Avatar>
@@ -568,8 +641,8 @@ export default function Navigation({ currentTheme, setThemeMode }) {
         </Drawer>
       )}
 
-      <Main open={open}>
-        {isMobile && (
+      <Main open={hideChrome ? false : open} fullBleed={hideChrome}>
+        {!hideChrome && isMobile && (
           <AppBar
             position="fixed"
             color="inherit"
@@ -619,7 +692,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                       lineHeight: 1.1,
                     }}
                   >
-                    {isSeller ? "Easyplug Seller" : "Easyplug Admin"}
+                    {isSeller ? "EasyPlug" : "EasyPlug Admin"}
                   </Typography>
                   <Typography
                     component="em"
@@ -651,6 +724,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                     component={Link}
                     to="/profile"
                     aria-label="Open profile"
+                    data-tour={TOUR_TARGETS.profile}
                     sx={{ p: 0, bgcolor: "primary.main" }}
                     size="medium"
                   >
@@ -671,10 +745,10 @@ export default function Navigation({ currentTheme, setThemeMode }) {
             </Toolbar>
           </AppBar>
         )}
-        {isMobile && <Toolbar sx={{ minHeight: 62, mb: 1 }} />}
+        {!hideChrome && isMobile && <Toolbar sx={{ minHeight: 62, mb: 1 }} />}
         <Outlet />
 
-        {isMobile && (
+        {!hideChrome && isMobile && (
           <Paper
             elevation={0}
             sx={{
@@ -732,6 +806,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                   <BottomNavigationAction
                     key={item.url}
                     label={item.title}
+                    data-tour={tourIdForNavUrl(item.url) || undefined}
                     icon={
                       isNotification || isMessage ? (
                         <Badge
@@ -753,6 +828,12 @@ export default function Navigation({ currentTheme, setThemeMode }) {
           </Paper>
         )}
       </Main>
+      <AppTour
+        profileData={profileData}
+        isSeller={isSeller}
+        forceOpen={forceTour}
+        onForceHandled={() => setForceTour(false)}
+      />
     </Box>
   );
 }

@@ -15,10 +15,7 @@ export async function register(formData) {
 export async function registerSeller(formData, onProgress) {
   // New seller registration endpoint (supports FormData with files)
   const resp = await axiosClient.post("/auth/register/seller", formData, {
-    headers:
-      formData instanceof FormData
-        ? { "Content-Type": "multipart/form-data" }
-        : {},
+    timeout: 180000,
     onUploadProgress: (evt) => {
       try {
         if (!evt || !evt.total) return;
@@ -27,14 +24,39 @@ export async function registerSeller(formData, onProgress) {
       } catch {
         /* no-op */
       }
-    }
+    },
   });
   return resp.data;
 }
 
-export async function sendVerificationCode({ email }) {
+export async function checkSellerRegistrationConflict(payload = {}) {
+  const resp = await axiosClient.post(
+    "/auth/check-seller-registration",
+    payload,
+  );
+  return resp.data;
+}
+
+export async function sendVerificationCode({ email, firstName, lastName }) {
   // Adjust endpoint path as needed
-  const resp = await axiosClient.post("/auth/send-code", { email });
+  const resp = await axiosClient.post("/auth/send-code", {
+    email,
+    firstName,
+    lastName,
+  });
+  return resp.data;
+}
+
+export async function verifyVerificationCode({
+  email,
+  code,
+  verificationToken,
+}) {
+  const resp = await axiosClient.post("/auth/verify-code", {
+    email,
+    code,
+    verificationToken,
+  });
   return resp.data;
 }
 
@@ -50,9 +72,32 @@ export async function resetPassword({ token, password, email }) {
   return resp.data;
 }
 
+export async function changePassword({
+  currentPassword,
+  newPassword,
+  confirmPassword,
+}) {
+  const resp = await axiosClient.post("/auth/change-password", {
+    currentPassword,
+    newPassword,
+    confirmPassword,
+  });
+  return resp.data;
+}
+
 export async function me() {
   // Calls the backend to verify the current token and return user info
   const resp = await axiosClient.get("/auth/me");
+  return resp.data;
+}
+
+export async function issueUiSwitchTicket() {
+  const resp = await axiosClient.post("/auth/ui-switch-ticket");
+  return resp.data;
+}
+
+export async function consumeUiSwitchTicket(ticket) {
+  const resp = await axiosClient.post("/auth/ui-switch-consume", { ticket });
   return resp.data;
 }
 
@@ -68,13 +113,21 @@ export async function updateUser(id, payload) {
   return resp.data;
 }
 
+export async function deactivateMyAccount(reason = "") {
+  const resp = await axiosClient.post("/users/me/deactivate", { reason });
+  return resp.data;
+}
+
+export async function deleteMyAccount(reason = "") {
+  const resp = await axiosClient.delete("/users/me", { data: { reason } });
+  return resp.data;
+}
+
 // Upload current user's profile picture
 export async function uploadProfilePicture(file) {
   const form = new FormData();
   // Backend expects field name 'profilePicture'
   form.append("profilePicture", file, file?.name || "profile.jpg");
-  const resp = await axiosClient.post("/users/me/profile-picture", form, {
-    headers: { "Content-Type": "multipart/form-data" }
-  });
+  const resp = await axiosClient.post("/users/me/profile-picture", form);
   return resp.data;
 }

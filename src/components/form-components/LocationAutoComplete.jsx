@@ -153,7 +153,7 @@ export default function LocationAutoComplete({
   const [inputValue, setInputValue] = React.useState("");
   const [query, setQuery] = React.useState("");
   const [options, setOptions] = React.useState([]);
-  const [radius, setRadius] = React.useState(10);
+  const [radius, setRadius] = React.useState(50);
   const loaded = React.useRef(false);
   const locationInitialized = React.useRef(false);
   const hasManualSelection = React.useRef(false);

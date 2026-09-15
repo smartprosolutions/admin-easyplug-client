@@ -21,9 +21,9 @@ import { alpha } from "@mui/material/styles";
 import { Formik, Form, getIn } from "formik";
 import * as Yup from "yup";
 import { useMutation } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { gradientPrimary } from "../../theme/theme";
-import logo from "../../assets/images/Sample Logo 1 (3).png";
+import BrandLogo from "../../components/brand/BrandLogo";
 import TextFieldWrapper from "../../components/forms/TextFieldWrapper";
 import SelectFieldWrapper from "../../components/forms/SelectFieldWrapper";
 import LocationAutoComplete from "../../components/form-components/LocationAutoComplete";
@@ -31,23 +31,166 @@ import ToastAlert from "../../components/alerts/ToastAlert";
 import {
   registerSeller as registerSellerRequest,
   sendVerificationCode,
+  verifyVerificationCode,
   login as loginRequest,
+  checkSellerRegistrationConflict,
 } from "../../services/authService";
+import { createPasswordSchema } from "../../utils/passwordValidation";
+import {
+  createNameFieldSchema,
+  sanitizeNameInput,
+} from "../../utils/nameValidation";
+import {
+  createPhoneFieldSchema,
+  sanitizePhoneInput,
+} from "../../utils/phoneValidation";
+import { createSouthAfricanIdSchema } from "../../utils/idValidation";
+import { compressImageFile } from "../../utils/compressImage";
 
-function isValidSouthAfricanId(id) {
-  if (!/^\d{13}$/.test(id)) return false;
-  let sum = 0;
-  let alt = false;
-  for (let i = id.length - 1; i >= 0; i--) {
-    let n = parseInt(id[i], 10);
-    if (alt) {
-      n *= 2;
-      if (n > 9) n -= 9;
+const REGISTRATION_STEP_KEYS = [
+  "account",
+  "identity",
+  "business",
+  "address",
+  "review",
+];
+const REGISTRATION_DRAFT_KEY = "easyplug_seller_registration_draft";
+
+const isSellerOrAdminUserType = (userType) => {
+  const role = String(userType || "")
+    .trim()
+    .toLowerCase();
+  return role === "seller" || role.includes("admin");
+};
+
+const registrationConflictMessage = (err, fallback) =>
+  err?.response?.data?.message || err?.message || fallback;
+
+async function assertNoSellerRegistrationConflict(payload) {
+  try {
+    await checkSellerRegistrationConflict(payload);
+    return null;
+  } catch (err) {
+    if (err?.response?.status === 409 || err?.response?.data?.conflict) {
+      return registrationConflictMessage(
+        err,
+        "This account cannot be used for seller registration.",
+      );
     }
-    sum += n;
-    alt = !alt;
+    throw err;
   }
-  return sum % 10 === 0;
+}
+
+const DEFAULT_REGISTRATION_VALUES = {
+  registrationType: "sole",
+  alreadyHasAccount: "no",
+  existingEmail: "",
+  existingPassword: "",
+  title: "",
+  firstName: "",
+  lastName: "",
+  email: "",
+  phone: "",
+  password: "",
+  confirmPassword: "",
+  hasIdNumber: "yes",
+  idNumber: "",
+  passportNumber: "",
+  profilePicture: null,
+  businessName: "",
+  businessEmail: "",
+  businessRegistrationNumber: "",
+  taxNumber: "",
+  latitude: "",
+  longitude: "",
+  accuracy: "",
+  radius: "50",
+  streetNumber: "",
+  streetName: "",
+  suburb: "",
+  city: "",
+  province: "",
+  country: "",
+  postalCode: "",
+  businessPicture: null,
+  verificationCode: "",
+};
+
+function parseRegistrationStep(param) {
+  if (param == null || param === "") return null;
+  const asNumber = Number(param);
+  if (Number.isInteger(asNumber) && asNumber >= 0 && asNumber <= 4) {
+    return asNumber;
+  }
+  const idx = REGISTRATION_STEP_KEYS.indexOf(String(param).toLowerCase());
+  return idx >= 0 ? idx : null;
+}
+
+function loadRegistrationDraft() {
+  try {
+    const raw = sessionStorage.getItem(REGISTRATION_DRAFT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function saveRegistrationDraft(draft) {
+  try {
+    sessionStorage.setItem(REGISTRATION_DRAFT_KEY, JSON.stringify(draft));
+  } catch {
+    /* ignore quota / private mode errors */
+  }
+}
+
+function clearRegistrationDraft() {
+  try {
+    sessionStorage.removeItem(REGISTRATION_DRAFT_KEY);
+  } catch {
+    /* no-op */
+  }
+}
+
+function clearRegistrationCache() {
+  clearRegistrationDraft();
+  try {
+    // Draft is normally sessionStorage; clear both in case of older/local copies
+    localStorage.removeItem(REGISTRATION_DRAFT_KEY);
+    sessionStorage.removeItem(REGISTRATION_DRAFT_KEY);
+    // Token set by "I already have an account" during registration
+    localStorage.removeItem("access_token");
+  } catch {
+    /* no-op */
+  }
+}
+
+function RegistrationDraftSaver({
+  values,
+  step,
+  codeSentTo,
+  verifiedEmail,
+  verificationToken,
+}) {
+  React.useEffect(() => {
+    const {
+      password,
+      confirmPassword,
+      existingPassword,
+      profilePicture,
+      businessPicture,
+      ...persistable
+    } = values;
+    saveRegistrationDraft({
+      step: REGISTRATION_STEP_KEYS[step],
+      values: persistable,
+      codeSentTo,
+      verifiedEmail,
+      verificationToken,
+    });
+  }, [values, step, codeSentTo, verifiedEmail, verificationToken]);
+
+  return null;
 }
 
 function getRegistrationProgress(
@@ -65,6 +208,7 @@ function getRegistrationProgress(
 
   if (showUserFields) {
     checks.push(Boolean(values.email));
+    checks.push(Boolean(values.phone));
     checks.push(Boolean(values.password));
     checks.push(Boolean(values.confirmPassword));
     checks.push(Boolean(values.firstName));
@@ -117,6 +261,78 @@ function isAddressStepComplete(values) {
   });
 }
 
+function firstFormErrorMessage(formErrors, fields) {
+  const candidates =
+    Array.isArray(fields) && fields.length
+      ? fields
+      : Object.keys(formErrors || {});
+  for (const field of candidates) {
+    const message = getIn(formErrors, field);
+    if (message) return String(message);
+  }
+  return "Please fix the highlighted fields before continuing";
+}
+
+function stepForRegistrationField(field, { isBusiness } = {}) {
+  if (
+    [
+      "registrationType",
+      "alreadyHasAccount",
+      "existingEmail",
+      "existingPassword",
+      "email",
+      "phone",
+      "password",
+      "confirmPassword",
+    ].includes(field)
+  ) {
+    return 0;
+  }
+  if (
+    [
+      "title",
+      "firstName",
+      "lastName",
+      "hasIdNumber",
+      "idNumber",
+      "passportNumber",
+      "profilePicture",
+      "verificationCode",
+    ].includes(field)
+  ) {
+    return 1;
+  }
+  if (
+    [
+      "businessName",
+      "businessEmail",
+      "businessPicture",
+      "businessRegistrationNumber",
+      "taxNumber",
+    ].includes(field)
+  ) {
+    return isBusiness ? 2 : 1;
+  }
+  if (
+    [
+      "latitude",
+      "longitude",
+      "accuracy",
+      "radius",
+      "streetNumber",
+      "streetName",
+      "suburb",
+      "city",
+      "province",
+      "country",
+      "postalCode",
+    ].includes(field)
+  ) {
+    return 3;
+  }
+  return 4;
+}
+
 function StepCard({ title, children }) {
   return (
     <Box
@@ -152,7 +368,7 @@ function StepOneFields({
           {
             value: "sole",
             title: "Sole Provider",
-            caption: "Register as an individual seller",
+            caption: "Register as an individual lister",
             icon: PersonOutlineIcon,
           },
           {
@@ -258,10 +474,10 @@ function StepOneFields({
 
       <SelectFieldWrapper
         name="alreadyHasAccount"
-        label="Already have an account?"
+        label="Already have a shopper account"
         options={[
           { value: "no", label: "No - Create New" },
-          { value: "yes", label: "Yes - Link Business" },
+          { value: "yes", label: "Use shopper account to link business" },
         ]}
       />
 
@@ -308,6 +524,16 @@ function StepOneFields({
         <>
           <TextFieldWrapper name="email" label="Email" size="medium" />
           <TextFieldWrapper
+            name="phone"
+            label="Cellphone"
+            size="medium"
+            inputMode="tel"
+            autoComplete="tel"
+            placeholder="e.g. 0821234567"
+            sanitize={sanitizePhoneInput}
+            allowOnlyPattern={/[\d+]/}
+          />
+          <TextFieldWrapper
             name="password"
             label="Password"
             {...passwordInputProps}
@@ -335,11 +561,19 @@ function StepTwoFields({
   submitCount,
   sendCodeMutation,
   setAuthToast,
+  codeSentTo,
+  isEmailVerified,
+  onVerificationCodeChange,
 }) {
   const showSoleLinkedVerification =
     values.registrationType === "sole" &&
     values.alreadyHasAccount === "yes" &&
     !requiresLogin;
+
+  const emailForCode = values.email || values.existingEmail;
+  const codeAlreadySent =
+    Boolean(codeSentTo) &&
+    codeSentTo.toLowerCase() === String(emailForCode || "").toLowerCase();
 
   return (
     <StepCard title="Step 2 · Identity & Verification">
@@ -367,11 +601,19 @@ function StepTwoFields({
                   name="firstName"
                   label="First name"
                   size="medium"
+                  sanitize={sanitizeNameInput}
+                  blockDigits
+                  inputMode="text"
+                  autoComplete="given-name"
                 />
                 <TextFieldWrapper
                   name="lastName"
                   label="Last name"
                   size="medium"
+                  sanitize={sanitizeNameInput}
+                  blockDigits
+                  inputMode="text"
+                  autoComplete="family-name"
                 />
               </Stack>
             </>
@@ -426,29 +668,72 @@ function StepTwoFields({
                 </Typography>
               )}
 
-              <Stack direction="row" spacing={1} alignItems="center">
-                <TextFieldWrapper
-                  name="verificationCode"
-                  label="Verification code"
-                  size="medium"
-                />
-                <Button
-                  variant="outlined"
-                  onClick={() => {
-                    const email = values.email || values.existingEmail;
-                    if (!email) {
-                      setAuthToast({
-                        open: true,
-                        severity: "error",
-                        message: "Enter email to receive code",
-                      });
-                      return;
+              <Stack spacing={1}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <TextFieldWrapper
+                    name="verificationCode"
+                    label="Verification code"
+                    size="medium"
+                    disabled={isEmailVerified}
+                    onChange={(e) => {
+                      onVerificationCodeChange?.(e.target.value);
+                    }}
+                  />
+                  <Button
+                    variant="outlined"
+                    disabled={
+                      sendCodeMutation.isPending ||
+                      isEmailVerified ||
+                      !emailForCode
                     }
-                    sendCodeMutation.mutate({ email });
-                  }}
-                >
-                  {sendCodeMutation.isPending ? "Sending..." : "Get Code"}
-                </Button>
+                    onClick={() => {
+                      if (!emailForCode) {
+                        setAuthToast({
+                          open: true,
+                          severity: "error",
+                          message: "Enter email to receive code",
+                        });
+                        return;
+                      }
+                      if (
+                        showUserFields &&
+                        (!String(values.firstName || "").trim() ||
+                          !String(values.lastName || "").trim())
+                      ) {
+                        setAuthToast({
+                          open: true,
+                          severity: "error",
+                          message: "Enter first and last name before sending the code",
+                        });
+                        return;
+                      }
+                      sendCodeMutation.mutate({
+                        email: emailForCode,
+                        firstName: values.firstName,
+                        lastName: values.lastName,
+                      });
+                    }}
+                  >
+                    {sendCodeMutation.isPending
+                      ? "Sending..."
+                      : codeAlreadySent
+                        ? "Resend"
+                        : "Get Code"}
+                  </Button>
+                </Stack>
+                {isEmailVerified ? (
+                  <Typography variant="caption" color="success.main">
+                    Email verified. You can continue to the next step.
+                  </Typography>
+                ) : codeAlreadySent ? (
+                  <Typography variant="caption" color="text.secondary">
+                    Code sent to {codeSentTo}. Enter it to continue.
+                  </Typography>
+                ) : (
+                  <Typography variant="caption" color="text.secondary">
+                    Request a verification code before continuing.
+                  </Typography>
+                )}
               </Stack>
             </>
           )}
@@ -689,19 +974,90 @@ function StepAddressFields({ setFieldValue, values }) {
 
 export default function RegisterUser() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const draft = React.useMemo(() => loadRegistrationDraft(), []);
+
   const [uploadProgress, setUploadProgress] = React.useState(0);
-  const [activeStep, setActiveStep] = React.useState(0);
+  const [activeStep, setActiveStepState] = React.useState(() => {
+    return (
+      parseRegistrationStep(searchParams.get("step")) ??
+      parseRegistrationStep(draft?.step) ??
+      0
+    );
+  });
   const [showPassword, setShowPassword] = React.useState(false);
+  const [codeSentTo, setCodeSentTo] = React.useState(
+    () => draft?.codeSentTo || "",
+  );
+  const [verifiedEmail, setVerifiedEmail] = React.useState(
+    () => draft?.verifiedEmail || "",
+  );
+  const [verificationToken, setVerificationToken] = React.useState(
+    () => draft?.verificationToken || "",
+  );
   const [authToast, setAuthToast] = React.useState({
     open: false,
     severity: "info",
     message: "",
   });
 
+  const [initialValues] = React.useState(() => ({
+    ...DEFAULT_REGISTRATION_VALUES,
+    ...(draft?.values || {}),
+    // File inputs cannot be restored after refresh
+    profilePicture: null,
+    businessPicture: null,
+    // Keep passwords empty after refresh for safety
+    password: "",
+    confirmPassword: "",
+    existingPassword: "",
+  }));
+
+  const goToStep = React.useCallback(
+    (stepOrUpdater) => {
+      setActiveStepState((prev) => {
+        const next =
+          typeof stepOrUpdater === "function"
+            ? stepOrUpdater(prev)
+            : stepOrUpdater;
+        const clamped = Math.min(4, Math.max(0, Number(next) || 0));
+        setSearchParams(
+          (params) => {
+            const nextParams = new URLSearchParams(params);
+            nextParams.set("step", REGISTRATION_STEP_KEYS[clamped]);
+            return nextParams;
+          },
+          { replace: true },
+        );
+        return clamped;
+      });
+    },
+    [setSearchParams],
+  );
+
+  // Keep URL in sync on first load
+  React.useEffect(() => {
+    const fromUrl = parseRegistrationStep(searchParams.get("step"));
+    if (fromUrl == null) {
+      setSearchParams(
+        (params) => {
+          const nextParams = new URLSearchParams(params);
+          nextParams.set("step", REGISTRATION_STEP_KEYS[activeStep]);
+          return nextParams;
+        },
+        { replace: true },
+      );
+    } else if (fromUrl !== activeStep) {
+      setActiveStepState(fromUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const mutation = useMutation({
     mutationFn: (values) =>
       registerSellerRequest(values, (pct) => setUploadProgress(pct)),
     onSuccess: (data) => {
+      clearRegistrationDraft();
       if (data?.accessToken || data?.token) {
         const token = data.accessToken || data.token;
         localStorage.setItem("access_token", token);
@@ -711,7 +1067,7 @@ export default function RegisterUser() {
         severity: "success",
         message: "Account created",
       });
-      setTimeout(() => navigate("/dashboard"), 700);
+      setTimeout(() => navigate("/inventory"), 700);
     },
     onError: (err) => {
       const msg =
@@ -722,8 +1078,36 @@ export default function RegisterUser() {
   });
 
   const loginMutation = useMutation({
-    mutationFn: ({ email, password }) => loginRequest({ email, password }),
+    mutationFn: async ({ email, password }) => {
+      const conflictMessage = await assertNoSellerRegistrationConflict({
+        email,
+      });
+      if (conflictMessage) {
+        const error = new Error(conflictMessage);
+        error.code = "SELLER_ADMIN_CONFLICT";
+        throw error;
+      }
+      return loginRequest({ email, password });
+    },
     onSuccess: (data) => {
+      const userType =
+        data?.user?.userType ||
+        data?.user?.role ||
+        data?.data?.user?.userType ||
+        data?.userType;
+      if (isSellerOrAdminUserType(userType)) {
+        try {
+          localStorage.removeItem("access_token");
+        } catch {
+          /* ignore */
+        }
+        setAuthToast({
+          open: true,
+          severity: "error",
+          message: "This email is already registered as a seller or admin.",
+        });
+        return;
+      }
       const token = data?.accessToken || data?.token;
       if (token) localStorage.setItem("access_token", token);
       setAuthToast({
@@ -734,23 +1118,53 @@ export default function RegisterUser() {
     },
     onError: (err) => {
       const msg =
-        err?.response?.data?.message || err?.message || "Login failed";
+        err?.code === "SELLER_ADMIN_CONFLICT"
+          ? err.message
+          : err?.response?.data?.message || err?.message || "Login failed";
       setAuthToast({ open: true, severity: "error", message: msg });
     },
   });
 
   const sendCodeMutation = useMutation({
-    mutationFn: ({ email }) => sendVerificationCode({ email }),
-    onSuccess: (data) => {
+    mutationFn: ({ email, firstName, lastName }) =>
+      sendVerificationCode({ email, firstName, lastName }),
+    onSuccess: (data, variables) => {
+      setCodeSentTo(variables.email);
+      setVerifiedEmail("");
+      setVerificationToken(data?.verificationToken || "");
+      const message = data?.devCode
+        ? `SMTP unavailable locally. Your code is ${data.devCode}`
+        : data?.message || "Verification code sent";
       setAuthToast({
         open: true,
-        severity: "success",
-        message: data?.message || "Verification code sent",
+        severity: data?.devCode ? "warning" : "success",
+        message,
       });
     },
     onError: (err) => {
       const msg =
         err?.response?.data?.message || err?.message || "Failed to send code";
+      setAuthToast({ open: true, severity: "error", message: msg });
+    },
+  });
+
+  const verifyCodeMutation = useMutation({
+    mutationFn: ({ email, code, verificationToken: token }) =>
+      verifyVerificationCode({ email, code, verificationToken: token }),
+    onSuccess: (data, variables) => {
+      setVerifiedEmail(variables.email);
+      setAuthToast({
+        open: true,
+        severity: "success",
+        message: data?.message || "Email verified",
+      });
+    },
+    onError: (err) => {
+      setVerifiedEmail("");
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Invalid verification code";
       setAuthToast({ open: true, severity: "error", message: msg });
     },
   });
@@ -778,14 +1192,16 @@ export default function RegisterUser() {
     <Box
       sx={{
         minHeight: "100vh",
-        width: "100vw",
+        width: "100%",
+        maxWidth: "100%",
         background: (theme) =>
           `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.2)} 0%, ${alpha(theme.palette.secondary.main, 0.1)} 34%, ${theme.palette.background.default} 100%)`,
         pt: 0,
         pb: { xs: 2.5, md: 3 },
         px: 0,
         position: "relative",
-        overflow: "hidden",
+        overflowX: "hidden",
+        overflowY: "auto",
       }}
     >
       <Box
@@ -815,10 +1231,8 @@ export default function RegisterUser() {
           },
         }}
       >
-        <Box
-          component="img"
-          src={logo}
-          alt="Easyplug Logo"
+        <BrandLogo
+          alt="EasyPlug Logo"
           sx={{
             width: { xs: 185, md: 235 },
             height: { xs: 185, md: 235 },
@@ -865,7 +1279,7 @@ export default function RegisterUser() {
                 textAlign: "center",
               }}
             >
-              Powering Easyplug Commerce
+              Powering EasyPlug Commerce
             </Typography>
             <Typography
               variant="h4"
@@ -876,7 +1290,7 @@ export default function RegisterUser() {
                 mt: 0.8,
               }}
             >
-              Create Seller Account
+              Create Lister Account
             </Typography>
             <Typography
               variant="body2"
@@ -896,59 +1310,8 @@ export default function RegisterUser() {
             />
           </Box>
 
-          <Box
-            sx={{
-              p: { xs: 0.5, md: 1 },
-            }}
-          >
-            <Typography
-              variant="h5"
-              sx={{ fontWeight: 800, textAlign: "center" }}
-            >
-              Seller Onboarding
-            </Typography>
-            <Typography
-              variant="body2"
-              sx={{ mt: 0.5, textAlign: "center", color: "text.secondary" }}
-            >
-              Guided setup flow for your Easyplug seller account.
-            </Typography>
-          </Box>
-
           <Formik
-            initialValues={{
-              registrationType: "sole",
-              alreadyHasAccount: "no",
-              existingEmail: "",
-              existingPassword: "",
-              title: "",
-              firstName: "",
-              lastName: "",
-              email: "",
-              password: "",
-              confirmPassword: "",
-              hasIdNumber: "yes",
-              idNumber: "",
-              passportNumber: "",
-              profilePicture: null,
-              businessName: "",
-              businessEmail: "",
-              businessRegistrationNumber: "",
-              taxNumber: "",
-              latitude: "",
-              longitude: "",
-              accuracy: "",
-              radius: "10",
-              streetNumber: "",
-              streetName: "",
-              suburb: "",
-              city: "",
-              province: "",
-              country: "",
-              postalCode: "",
-              businessPicture: null,
-              verificationCode: "",
-            }}
+            initialValues={initialValues}
             validationSchema={Yup.lazy(() =>
               Yup.object({
                 registrationType: Yup.string()
@@ -969,11 +1332,11 @@ export default function RegisterUser() {
                 }),
                 firstName: Yup.string().when("alreadyHasAccount", {
                   is: "no",
-                  then: (s) => s.required("Required"),
+                  then: () => createNameFieldSchema("First name"),
                 }),
                 lastName: Yup.string().when("alreadyHasAccount", {
                   is: "no",
-                  then: (s) => s.required("Required"),
+                  then: () => createNameFieldSchema("Last name"),
                 }),
                 email: Yup.string()
                   .email("Invalid email")
@@ -981,16 +1344,13 @@ export default function RegisterUser() {
                     is: "no",
                     then: (s) => s.required("Required"),
                   }),
-                password: Yup.string().when("alreadyHasAccount", {
+                phone: Yup.string().when("alreadyHasAccount", {
                   is: "no",
-                  then: (s) =>
-                    s
-                      .required("Required")
-                      .min(10, "Min 10 chars")
-                      .matches(/[0-9]/, "Need number")
-                      .matches(/[a-z]/, "Need lowercase")
-                      .matches(/[A-Z]/, "Need uppercase")
-                      .matches(/[^A-Za-z0-9]/, "Need special"),
+                  then: () => createPhoneFieldSchema({ required: true }),
+                }),
+                password: Yup.string().when(["alreadyHasAccount", "email"], {
+                  is: (alreadyHasAccount) => alreadyHasAccount === "no",
+                  then: () => createPasswordSchema({ emailField: "email" }),
                 }),
                 confirmPassword: Yup.string().when("alreadyHasAccount", {
                   is: "no",
@@ -1003,17 +1363,34 @@ export default function RegisterUser() {
                       .required("Required"),
                 }),
                 idNumber: Yup.string().when(
-                  ["hasIdNumber", "alreadyHasAccount"],
+                  ["hasIdNumber", "alreadyHasAccount", "registrationType"],
                   {
-                    is: (has, acct) => has === "yes" && acct === "no",
+                    is: (has, acct, type) =>
+                      has === "yes" &&
+                      (acct === "no" || (acct === "yes" && type === "sole")),
+                    then: () => createSouthAfricanIdSchema(),
+                    otherwise: (s) => s.notRequired(),
+                  },
+                ),
+                passportNumber: Yup.string().when(
+                  ["hasIdNumber", "alreadyHasAccount", "registrationType"],
+                  {
+                    is: (has, acct, type) =>
+                      has === "no" &&
+                      (acct === "no" || (acct === "yes" && type === "sole")),
+                    then: (s) => s.required("Required"),
+                    otherwise: (s) => s.notRequired(),
+                  },
+                ),
+                verificationCode: Yup.string().when(
+                  ["alreadyHasAccount", "registrationType"],
+                  {
+                    is: (acct, type) =>
+                      acct === "no" || (acct === "yes" && type === "sole"),
                     then: (s) =>
                       s
-                        .required("Required")
-                        .test(
-                          "rsa-id",
-                          "Invalid ID",
-                          (v) => !v || isValidSouthAfricanId(v),
-                        ),
+                        .required("Verification code is required")
+                        .min(4, "Enter the verification code sent to your email"),
                     otherwise: (s) => s.notRequired(),
                   },
                 ),
@@ -1081,17 +1458,131 @@ export default function RegisterUser() {
             )}
             onSubmit={async (values, { setSubmitting }) => {
               try {
+                const needsVerification =
+                  values.alreadyHasAccount === "no" ||
+                  (values.alreadyHasAccount === "yes" &&
+                    values.registrationType === "sole");
+                const email = values.email || values.existingEmail || "";
+
+                if (
+                  needsVerification &&
+                  verifiedEmail.toLowerCase() !== String(email).toLowerCase()
+                ) {
+                  setAuthToast({
+                    open: true,
+                    severity: "error",
+                    message:
+                      "Verify your email with the code before submitting",
+                  });
+                  goToStep(1);
+                  return;
+                }
+
+                if (
+                  !(values.profilePicture instanceof File) ||
+                  (values.registrationType === "business" &&
+                    !(values.businessPicture instanceof File))
+                ) {
+                  setAuthToast({
+                    open: true,
+                    severity: "error",
+                    message:
+                      "Please re-upload required pictures before submitting (they are cleared if the page was refreshed)",
+                  });
+                  goToStep(
+                    values.registrationType === "business" &&
+                      !(values.businessPicture instanceof File)
+                      ? 2
+                      : 1,
+                  );
+                  return;
+                }
+
+                let profilePicture = values.profilePicture;
+                let businessPicture = values.businessPicture;
+                try {
+                  profilePicture = await compressImageFile(
+                    values.profilePicture,
+                    250 * 1024,
+                  );
+                  if (values.businessPicture instanceof File) {
+                    businessPicture = await compressImageFile(
+                      values.businessPicture,
+                      250 * 1024,
+                    );
+                  }
+                } catch (err) {
+                  setAuthToast({
+                    open: true,
+                    severity: "error",
+                    message:
+                      err?.message ||
+                      "Could not compress pictures. Try a smaller JPEG or PNG.",
+                  });
+                  return;
+                }
+
                 const formData = new FormData();
+                const linkingExisting = values.alreadyHasAccount === "yes";
+                const skipKeys = new Set([
+                  "registrationType",
+                  "profilePicture",
+                  "businessPicture",
+                  "verificationCode",
+                  // Avoid sending fields from the other account mode
+                  ...(linkingExisting
+                    ? [
+                        "email",
+                        "password",
+                        "confirmPassword",
+                        "title",
+                        "firstName",
+                        "lastName",
+                        "phone",
+                      ]
+                    : ["existingEmail", "existingPassword"]),
+                  ...(values.registrationType === "sole"
+                    ? [
+                        "businessName",
+                        "businessEmail",
+                        "businessRegistrationNumber",
+                        "taxNumber",
+                      ]
+                    : []),
+                ]);
                 Object.entries(values).forEach(([k, v]) => {
-                  if (k === "registrationType") return;
+                  if (skipKeys.has(k)) return;
                   if (v === null || v === undefined || v === "") return;
-                  formData.append(k, v);
+                  if (typeof v === "object") return;
+                  formData.append(k, String(v));
                 });
+                formData.append(
+                  "profilePicture",
+                  profilePicture,
+                  profilePicture?.name || "profile.jpg",
+                );
+                if (
+                  values.registrationType === "business" &&
+                  businessPicture instanceof Blob
+                ) {
+                  formData.append(
+                    "businessPicture",
+                    businessPicture,
+                    businessPicture?.name || "business.jpg",
+                  );
+                }
                 formData.set(
                   "alreadyHasAccount",
                   values.alreadyHasAccount ?? "",
                 );
-                await mutation.mutateAsync(formData);
+                if (linkingExisting) {
+                  formData.set("existingEmail", values.existingEmail || "");
+                }
+                try {
+                  await mutation.mutateAsync(formData);
+                } catch {
+                  // Toast handled by mutation.onError
+                }
               } finally {
                 setSubmitting(false);
               }
@@ -1102,6 +1593,8 @@ export default function RegisterUser() {
               setFieldValue,
               setFieldTouched,
               validateForm,
+              resetForm,
+              submitForm,
               isSubmitting,
               errors,
               touched,
@@ -1121,7 +1614,20 @@ export default function RegisterUser() {
               });
               const progressLabel = getProgressLabel(progress);
               const profileReady = values.profilePicture instanceof File;
-              const verificationReady = Boolean(values.verificationCode);
+              const emailForVerification =
+                values.email || values.existingEmail || "";
+              const isEmailVerified =
+                Boolean(verifiedEmail) &&
+                verifiedEmail.toLowerCase() ===
+                  emailForVerification.toLowerCase();
+              const needsEmailVerification =
+                showUserFields ||
+                (values.registrationType === "sole" &&
+                  values.alreadyHasAccount === "yes" &&
+                  !requiresLogin);
+              const verificationReady = needsEmailVerification
+                ? isEmailVerified
+                : true;
               const addressReady = isAddressStepComplete(values);
               const businessReady =
                 !isBusiness || requiresLogin
@@ -1152,6 +1658,7 @@ export default function RegisterUser() {
                     "registrationType",
                     "alreadyHasAccount",
                     "email",
+                    "phone",
                     "password",
                     "confirmPassword",
                   ];
@@ -1224,16 +1731,47 @@ export default function RegisterUser() {
                 return [];
               };
 
-              const handleNext = async () => {
+                const handleRestartRegistration = () => {
+                  clearRegistrationCache();
+                  setCodeSentTo("");
+                  setVerifiedEmail("");
+                  setVerificationToken("");
+                  setUploadProgress(0);
+                  resetForm({ values: { ...DEFAULT_REGISTRATION_VALUES } });
+                  goToStep(0);
+                  setAuthToast({
+                    open: true,
+                    severity: "info",
+                    message:
+                      "Registration restarted. Cleared saved draft and login cache.",
+                  });
+                };
+
+                const handleNext = async () => {
                 const fields = getStepFields(currentStep);
                 const formErrors = await validateForm();
 
-                fields.forEach((field) => setFieldTouched(field, true, false));
+                // On Identity, allow progressing to "send code" before a code exists
+                const fieldsToCheck =
+                  currentStep === 1 && needsEmailVerification
+                    ? fields.filter((field) => field !== "verificationCode")
+                    : fields;
 
-                const hasStepErrors = fields.some((field) =>
+                fieldsToCheck.forEach((field) =>
+                  setFieldTouched(field, true, false),
+                );
+
+                const hasStepErrors = fieldsToCheck.some((field) =>
                   Boolean(getIn(formErrors, field)),
                 );
-                if (hasStepErrors) return;
+                if (hasStepErrors) {
+                  setAuthToast({
+                    open: true,
+                    severity: "error",
+                    message: firstFormErrorMessage(formErrors, fieldsToCheck),
+                  });
+                  return;
+                }
 
                 if (
                   currentStep === 0 &&
@@ -1249,16 +1787,235 @@ export default function RegisterUser() {
                   return;
                 }
 
+                // New-account email: block seller/admin and any existing account
+                if (currentStep === 0 && values.alreadyHasAccount === "no") {
+                  try {
+                    const conflictMessage =
+                      await assertNoSellerRegistrationConflict({
+                        email: values.email,
+                        checkExistingEmail: true,
+                      });
+                    if (conflictMessage) {
+                      setAuthToast({
+                        open: true,
+                        severity: "error",
+                        message: conflictMessage,
+                      });
+                      return;
+                    }
+                  } catch (err) {
+                    setAuthToast({
+                      open: true,
+                      severity: "error",
+                      message: registrationConflictMessage(
+                        err,
+                        "Could not verify email. Please try again.",
+                      ),
+                    });
+                    return;
+                  }
+                }
+
+                // Existing-account email: block seller/admin before later steps
+                if (
+                  currentStep === 0 &&
+                  values.alreadyHasAccount === "yes" &&
+                  localStorage.getItem("access_token")
+                ) {
+                  try {
+                    const conflictMessage =
+                      await assertNoSellerRegistrationConflict({
+                        email: values.existingEmail,
+                      });
+                    if (conflictMessage) {
+                      try {
+                        localStorage.removeItem("access_token");
+                      } catch {
+                        /* ignore */
+                      }
+                      setAuthToast({
+                        open: true,
+                        severity: "error",
+                        message: conflictMessage,
+                      });
+                      return;
+                    }
+                  } catch (err) {
+                    setAuthToast({
+                      open: true,
+                      severity: "error",
+                      message: registrationConflictMessage(
+                        err,
+                        "Could not verify email. Please try again.",
+                      ),
+                    });
+                    return;
+                  }
+                }
+
+                // Identity step: block seller/admin ID or passport before continue
+                if (currentStep === 1) {
+                  const idPayload =
+                    values.hasIdNumber === "yes"
+                      ? { idNumber: values.idNumber }
+                      : { passportNumber: values.passportNumber };
+                  const hasIdentityValue = Boolean(
+                    String(
+                      values.hasIdNumber === "yes"
+                        ? values.idNumber
+                        : values.passportNumber || "",
+                    ).trim(),
+                  );
+                  if (hasIdentityValue) {
+                    try {
+                      const conflictMessage =
+                        await assertNoSellerRegistrationConflict(idPayload);
+                      if (conflictMessage) {
+                        setAuthToast({
+                          open: true,
+                          severity: "error",
+                          message: conflictMessage,
+                        });
+                        return;
+                      }
+                    } catch (err) {
+                      setAuthToast({
+                        open: true,
+                        severity: "error",
+                        message: registrationConflictMessage(
+                          err,
+                          "Could not verify ID number. Please try again.",
+                        ),
+                      });
+                      return;
+                    }
+                  }
+                }
+
+                // Email verification is sent from Identity step with first/last name
+                if (currentStep === 1 && needsEmailVerification) {
+                  const email = values.email || values.existingEmail;
+                  const code = String(values.verificationCode || "").trim();
+                  const firstName = String(values.firstName || "").trim();
+                  const lastName = String(values.lastName || "").trim();
+
+                  if (!email) {
+                    setAuthToast({
+                      open: true,
+                      severity: "error",
+                      message: "Email is required for verification",
+                    });
+                    return;
+                  }
+
+                  if (
+                    codeSentTo.toLowerCase() !== String(email).toLowerCase()
+                  ) {
+                    if (showUserFields && (!firstName || !lastName)) {
+                      setAuthToast({
+                        open: true,
+                        severity: "error",
+                        message:
+                          "Enter first and last name, then send the verification code",
+                      });
+                      return;
+                    }
+
+                    try {
+                      await sendCodeMutation.mutateAsync({
+                        email,
+                        firstName: values.firstName,
+                        lastName: values.lastName,
+                      });
+                      setAuthToast({
+                        open: true,
+                        severity: "success",
+                        message:
+                          "Verification code sent. Enter it to continue.",
+                      });
+                    } catch {
+                      /* toast handled by mutation */
+                    }
+                    return;
+                  }
+
+                  setFieldTouched("verificationCode", true, false);
+
+                  if (!code) {
+                    setAuthToast({
+                      open: true,
+                      severity: "error",
+                      message: "Enter the verification code sent to your email",
+                    });
+                    return;
+                  }
+
+                  if (
+                    verifiedEmail.toLowerCase() !==
+                    String(email).toLowerCase()
+                  ) {
+                    if (!verificationToken) {
+                      setAuthToast({
+                        open: true,
+                        severity: "error",
+                        message:
+                          "Request a verification code before continuing",
+                      });
+                      return;
+                    }
+                    try {
+                      await verifyCodeMutation.mutateAsync({
+                        email,
+                        code,
+                        verificationToken,
+                      });
+                    } catch {
+                      return;
+                    }
+                  }
+                }
+
                 if (currentStep === 1 && !isBusiness) {
-                  setActiveStep(3);
+                  goToStep(3);
                   return;
                 }
 
-                setActiveStep((prev) => Math.min(4, prev + 1));
+                goToStep((prev) => Math.min(4, prev + 1));
+              };
+
+              const handleRegisterClick = async () => {
+                const formErrors = await validateForm();
+                const errorFields = Object.keys(formErrors || {}).filter(
+                  (field) => Boolean(getIn(formErrors, field)),
+                );
+
+                if (errorFields.length) {
+                  errorFields.forEach((field) =>
+                    setFieldTouched(field, true, false),
+                  );
+                  setAuthToast({
+                    open: true,
+                    severity: "error",
+                    message: firstFormErrorMessage(formErrors, errorFields),
+                  });
+                  goToStep(
+                    stepForRegistrationField(errorFields[0], { isBusiness }),
+                  );
+                  return;
+                }
+
+                await submitForm();
               };
 
               return (
                 <Form>
+                  <RegistrationDraftSaver
+                    values={values}
+                    step={currentStep}
+                    codeSentTo={codeSentTo}
+                    verifiedEmail={verifiedEmail}
+                    verificationToken={verificationToken}
+                  />
                   <Stack spacing={2.25}>
                     <Box sx={{ p: 0.5 }}>
                       <Stepper
@@ -1339,8 +2096,8 @@ export default function RegisterUser() {
                             color={verificationReady ? "success" : "default"}
                             label={
                               verificationReady
-                                ? "Code entered"
-                                : "Enter verification code"
+                                ? "Email verified"
+                                : "Verify email code"
                             }
                             variant={verificationReady ? "filled" : "outlined"}
                           />
@@ -1397,6 +2154,11 @@ export default function RegisterUser() {
                         submitCount={submitCount}
                         sendCodeMutation={sendCodeMutation}
                         setAuthToast={setAuthToast}
+                        codeSentTo={codeSentTo}
+                        isEmailVerified={isEmailVerified}
+                        onVerificationCodeChange={() => {
+                          if (verifiedEmail) setVerifiedEmail("");
+                        }}
                       />
                     )}
 
@@ -1422,11 +2184,12 @@ export default function RegisterUser() {
                     {currentStep === 4 && (
                       <StepCard title="Step 5 · Review & Submit">
                         <Typography variant="body2" color="text.secondary">
-                          Review your details and submit your seller onboarding.
+                          Review your details and submit your lister onboarding.
                         </Typography>
                         {!requiresLogin && (
                           <Button
-                            type="submit"
+                            type="button"
+                            onClick={handleRegisterClick}
                             disabled={isSubmitting || mutation.isPending}
                             fullWidth
                             size="large"
@@ -1455,7 +2218,7 @@ export default function RegisterUser() {
                                 </span>
                               </Stack>
                             ) : (
-                              "Register to sell on Easyplug"
+                              "Register to list on EasyPlug"
                             )}
                           </Button>
                         )}
@@ -1466,16 +2229,30 @@ export default function RegisterUser() {
                       direction="row"
                       spacing={1}
                       justifyContent="space-between"
+                      alignItems="center"
                     >
-                      <Button
-                        variant="outlined"
-                        disabled={currentStep === 0}
-                        onClick={() =>
-                          setActiveStep((prev) => Math.max(0, prev - 1))
-                        }
-                      >
-                        Back
-                      </Button>
+                      <Stack direction="row" spacing={1}>
+                        <Button
+                          variant="outlined"
+                          disabled={currentStep === 0}
+                          onClick={() =>
+                            goToStep((prev) => {
+                              if (prev === 3 && !isBusiness) return 1;
+                              return Math.max(0, prev - 1);
+                            })
+                          }
+                        >
+                          Back
+                        </Button>
+                        <Button
+                          variant="text"
+                          color="inherit"
+                          disabled={mutation.isPending}
+                          onClick={handleRestartRegistration}
+                        >
+                          Restart registration
+                        </Button>
+                      </Stack>
                       {currentStep < 4 && (
                         <Button
                           variant="contained"
@@ -1483,9 +2260,19 @@ export default function RegisterUser() {
                             backgroundImage: gradientPrimary,
                             color: "#fff",
                           }}
+                          disabled={
+                            sendCodeMutation.isPending ||
+                            verifyCodeMutation.isPending
+                          }
                           onClick={handleNext}
                         >
-                          {currentStep === 3 ? "Review" : "Next"}
+                          {verifyCodeMutation.isPending
+                            ? "Verifying..."
+                            : sendCodeMutation.isPending
+                              ? "Sending code..."
+                              : currentStep === 3
+                                ? "Review"
+                                : "Next"}
                         </Button>
                       )}
                     </Stack>

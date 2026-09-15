@@ -1,7 +1,6 @@
 import React from "react";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
-import Avatar from "@mui/material/Avatar";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -15,10 +14,11 @@ import * as Yup from "yup";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { gradientPrimary } from "../../theme/theme";
-import logo from "../../assets/images/Sample Logo 1 (3).png";
+import BrandLogo from "../../components/brand/BrandLogo";
 import TextFieldWrapper from "../../components/forms/TextFieldWrapper";
 import ToastAlert from "../../components/alerts/ToastAlert";
 import { resetPassword as resetPasswordRequest } from "../../services/authService";
+import { createPasswordSchema } from "../../utils/passwordValidation";
 
 export default function ResetPassword() {
   const navigate = useNavigate();
@@ -60,14 +60,15 @@ export default function ResetPassword() {
     <Box
       sx={{
         minHeight: "100vh",
-        width: "100vw",
+        width: "100%",
+        maxWidth: "100%",
         background: (theme) =>
           `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.2)} 0%, ${alpha(theme.palette.secondary.main, 0.1)} 36%, ${theme.palette.background.default} 100%)`,
         pt: 0,
         pb: { xs: 2.5, sm: 3.5 },
         px: 0,
         position: "relative",
-        overflow: "hidden",
+        overflowX: "hidden",
       }}
     >
       <Box
@@ -97,13 +98,11 @@ export default function ResetPassword() {
           },
         }}
       >
-        <Avatar
-          src={logo}
-          alt="Logo"
+        <BrandLogo
+          alt="EasyPlug Logo"
           sx={{
             width: { xs: 185, sm: 235 },
             height: { xs: 185, sm: 235 },
-            bgcolor: "transparent",
           }}
         />
       </Box>
@@ -174,7 +173,7 @@ export default function ResetPassword() {
             <Formik
               initialValues={{ password: "", confirmPassword: "" }}
               validationSchema={Yup.object({
-                password: Yup.string().min(6, "Min 6 characters").required("Required"),
+                password: createPasswordSchema({ compareEmail: email }),
                 confirmPassword: Yup.string()
                   .oneOf([Yup.ref("password")], "Passwords must match")
                   .required("Required")

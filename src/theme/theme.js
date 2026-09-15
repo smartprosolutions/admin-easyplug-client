@@ -28,7 +28,7 @@ export const lightTheme = createTheme({
   },
 
   typography: {
-    fontFamily: "Lucida Sans Unicode",
+    fontFamily: '"Inter", sans-serif',
     h1: { fontWeight: 800 },
     h2: { fontWeight: 700 },
     h3: { fontWeight: 700 },
@@ -172,7 +172,7 @@ export const darkTheme = createTheme({
     error: { main: "#ef5350" },
   },
   typography: {
-    fontFamily: "Lucida Sans Unicode",
+    fontFamily: '"Inter", sans-serif',
     h1: { fontWeight: 800 },
     h2: { fontWeight: 700 },
     h3: { fontWeight: 700 },

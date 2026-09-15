@@ -22,6 +22,7 @@ import {
   Tab,
   Tabs,
   CircularProgress,
+  Divider,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
@@ -30,6 +31,8 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { Formik, Form } from "formik";
+import * as Yup from "yup";
 import SearchIcon from "@mui/icons-material/Search";
 import DownloadIcon from "@mui/icons-material/Download";
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -41,12 +44,70 @@ import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import StorefrontIcon from "@mui/icons-material/Storefront";
 import PeopleIcon from "@mui/icons-material/People";
 import VerifiedIcon from "@mui/icons-material/Verified";
+import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import MetricsDataGrid from "../components/metrics/MetricsDataGrid";
+import TextFieldWrapper from "../components/forms/TextFieldWrapper";
+import SelectFieldWrapper from "../components/forms/SelectFieldWrapper";
+import AdminPasswordDialog from "../components/modals/AdminPasswordDialog";
 import { gradientPrimary } from "../theme/theme";
 import {
   getUserManagementData,
   updateUserStatus,
+  createUserByAdmin,
+  updateUserByAdmin,
+  suspendUserByAdmin,
+  cascadeDeleteUser,
 } from "../services/userManagementService";
+import {
+  createNameFieldSchema,
+  sanitizeNameInput,
+} from "../utils/nameValidation";
+import {
+  createPhoneFieldSchema,
+  sanitizePhoneInput,
+} from "../utils/phoneValidation";
+import {
+  downloadCsv,
+  formatExportDate,
+  rowsToCsv,
+} from "../utils/csvExport";
+
+const TITLE_OPTIONS = [
+  { value: "Mr", label: "Mr" },
+  { value: "Mrs", label: "Mrs" },
+  { value: "Ms", label: "Ms" },
+  { value: "Dr", label: "Dr" },
+  { value: "Prof", label: "Prof" },
+];
+
+const TAB_USER_TYPES = ["admin", "seller", "user"];
+
+const ADD_USER_LABELS = {
+  admin: "Admin",
+  seller: "Lister",
+  user: "User",
+};
+
+const createUserValidationSchema = Yup.object({
+  title: Yup.string()
+    .required("Title is required")
+    .test(
+      "valid-title",
+      "Select a valid title",
+      (value) =>
+        !value || TITLE_OPTIONS.some((option) => option.value === value),
+    ),
+  firstName: createNameFieldSchema("First name"),
+  lastName: createNameFieldSchema("Last name"),
+  email: Yup.string()
+    .transform((value) =>
+      typeof value === "string" ? value.trim().toLowerCase() : value,
+    )
+    .required("Email is required")
+    .email("Enter a valid email")
+    .max(255, "Email must be at most 255 characters"),
+  phone: createPhoneFieldSchema({ required: false, label: "Cellphone" }),
+});
 
 export default function UserManagement() {
   const theme = useTheme();
@@ -59,7 +120,18 @@ export default function UserManagement() {
 
   // Dialog states
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editUser, setEditUser] = useState(null);
+  const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteUser, setDeleteUser] = useState(null);
+  const [deleteAdminPasswordError, setDeleteAdminPasswordError] = useState("");
+  const [editAdminPasswordOpen, setEditAdminPasswordOpen] = useState(false);
+  const [editAdminPasswordError, setEditAdminPasswordError] = useState("");
+  const [pendingEditPayload, setPendingEditPayload] = useState(null);
+  const [viewUser, setViewUser] = useState(null);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -70,6 +142,10 @@ export default function UserManagement() {
     queryKey: ["user-management"],
     queryFn: getUserManagementData,
   });
+
+  const showSnackbar = useCallback((message, severity = "success") => {
+    setSnackbar({ open: true, message, severity });
+  }, []);
 
   const toggleStatusMutation = useMutation({
     mutationFn: ({ userId, status }) => updateUserStatus(userId, status),
@@ -90,13 +166,109 @@ export default function UserManagement() {
     },
   });
 
+  const createUserMutation = useMutation({
+    mutationFn: createUserByAdmin,
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ["user-management"] });
+      setAddDialogOpen(false);
+      showSnackbar(
+        response?.message ||
+          "Account created and login details emailed",
+        response?.credentialsEmailed === false ? "warning" : "success",
+      );
+    },
+    onError: (mutationError) => {
+      showSnackbar(
+        mutationError?.response?.data?.message ||
+          mutationError?.message ||
+          "Failed to create user",
+        "error",
+      );
+    },
+  });
+
+  const updateUserMutation = useMutation({
+    mutationFn: ({ userId, payload }) => updateUserByAdmin(userId, payload),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ["user-management"] });
+      setEditDialogOpen(false);
+      setEditUser(null);
+      showSnackbar(response?.message || "User updated successfully", "success");
+    },
+    onError: (mutationError) => {
+      showSnackbar(
+        mutationError?.response?.data?.message ||
+          mutationError?.message ||
+          "Failed to update user",
+        "error",
+      );
+    },
+  });
+
+  const suspendMutation = useMutation({
+    mutationFn: (userId) => suspendUserByAdmin(userId),
+    onSuccess: (_, userId) => {
+      queryClient.invalidateQueries({ queryKey: ["user-management"] });
+      queryClient.invalidateQueries({ queryKey: ["adminListings"] });
+      const name =
+        `${selectedUser?.firstName || ""} ${selectedUser?.lastName || ""}`.trim() ||
+        selectedUser?.businessName ||
+        "User";
+      showSnackbar(
+        `${name} has been suspended. Their listings are now hidden.`,
+        "warning",
+      );
+      setDeactivateDialogOpen(false);
+      setSelectedUser(null);
+    },
+    onError: (mutationError) => {
+      showSnackbar(
+        mutationError?.response?.data?.message ||
+          mutationError?.message ||
+          "Failed to suspend user",
+        "error",
+      );
+    },
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: ({ userId, adminPassword }) =>
+      cascadeDeleteUser(userId, adminPassword),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["user-management"] });
+      queryClient.invalidateQueries({ queryKey: ["adminListings"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-insights"] });
+      const name =
+        `${deleteUser?.firstName || ""} ${deleteUser?.lastName || ""}`.trim() ||
+        deleteUser?.businessName ||
+        "User";
+      const hadErrors = data?.cascadeErrors?.length > 0;
+      showSnackbar(
+        hadErrors
+          ? `${name} deleted. Some associated items could not be removed — check listings manually.`
+          : `${name} and all their data have been permanently deleted.`,
+        hadErrors ? "warning" : "success",
+      );
+      setDeleteDialogOpen(false);
+      setDeleteUser(null);
+      setDeleteAdminPasswordError("");
+    },
+    onError: (mutationError) => {
+      const message =
+        mutationError?.response?.data?.message ||
+        mutationError?.message ||
+        "Failed to delete user";
+      setDeleteAdminPasswordError(message);
+      showSnackbar(message, "error");
+    },
+  });
+
   const adminRows = useMemo(() => data?.data?.admins || [], [data]);
   const sellerRows = useMemo(() => data?.data?.sellers || [], [data]);
   const buyerRows = useMemo(() => data?.data?.users || [], [data]);
 
-  const showSnackbar = useCallback((message, severity = "success") => {
-    setSnackbar({ open: true, message, severity });
-  }, []);
+  const activeUserType = TAB_USER_TYPES[activeTab] || "user";
+  const addUserLabel = ADD_USER_LABELS[activeUserType] || "User";
 
   // Filter data based on search queries
   const filteredAdmins = useMemo(() => {
@@ -150,40 +322,240 @@ export default function UserManagement() {
   }, []);
 
   const handleConfirmToggle = useCallback(() => {
-    if (selectedUser) {
-      const nextStatus =
-        selectedUser.status === "active" ? "inactive" : "active";
-      const fullName =
-        `${selectedUser.firstName || ""} ${selectedUser.lastName || ""}`.trim() ||
-        selectedUser.businessName ||
-        "User";
+    if (!selectedUser) return;
+    const isActive = selectedUser.status === "active";
+    const isSeller = selectedUser.entityType === "Seller";
+    const fullName =
+      `${selectedUser.firstName || ""} ${selectedUser.lastName || ""}`.trim() ||
+      selectedUser.businessName ||
+      "User";
 
+    if (isActive && isSeller) {
+      // Sellers get "suspended" so the backend can hide their listings
+      suspendMutation.mutate(selectedUser.id || selectedUser.userId);
+    } else {
+      const nextStatus = isActive ? "inactive" : "active";
       toggleStatusMutation.mutate({
-        userId: selectedUser.id,
+        userId: selectedUser.id || selectedUser.userId,
         status: nextStatus,
         name: fullName,
       });
+      setDeactivateDialogOpen(false);
+      setSelectedUser(null);
     }
-    setDeactivateDialogOpen(false);
-    setSelectedUser(null);
-  }, [selectedUser, toggleStatusMutation]);
+  }, [selectedUser, toggleStatusMutation, suspendMutation]);
 
-  const handleView = useCallback(
-    (user) => {
-      showSnackbar(
-        `Viewing ${user.firstName} ${user.lastName}'s profile`,
-        "info",
+  const handleOpenDeleteDialog = useCallback((user) => {
+    setDeleteUser(user);
+    setDeleteAdminPasswordError("");
+    setDeleteDialogOpen(true);
+  }, []);
+
+  const handleView = useCallback((user, entityType) => {
+    setViewUser({ ...user, entityType });
+    setViewDialogOpen(true);
+  }, []);
+
+  const handleEdit = useCallback((user) => {
+    setEditUser(user);
+    setEditDialogOpen(true);
+  }, []);
+
+  const handleOpenAddDialog = useCallback(() => {
+    setAddDialogOpen(true);
+  }, []);
+
+  const handleCreateUser = useCallback(
+    async (values, helpers) => {
+      try {
+        await createUserMutation.mutateAsync({
+          title: values.title,
+          firstName: values.firstName.trim(),
+          lastName: values.lastName.trim(),
+          email: values.email.trim().toLowerCase(),
+          phone: values.phone?.trim() || undefined,
+          userType: activeUserType,
+        });
+        helpers.resetForm();
+      } catch {
+        // Error toast handled by mutation
+      } finally {
+        helpers.setSubmitting(false);
+      }
+    },
+    [activeUserType, createUserMutation],
+  );
+
+  const handleUpdateUser = useCallback(
+    async (values, helpers) => {
+      if (!editUser) return;
+      const userId = editUser.userId || editUser.id;
+      const currentRole = (editUser.userType || editUser.entityType || "").toLowerCase();
+      const newRole = (values.userType || "").toLowerCase();
+      const roleChanged = newRole !== currentRole;
+
+      const payload = {
+        title: values.title,
+        firstName: values.firstName.trim(),
+        lastName: values.lastName.trim(),
+        email: values.email.trim().toLowerCase(),
+        phone: values.phone?.trim() || undefined,
+        userType: values.userType,
+      };
+
+      // Require admin password when changing the user's role
+      if (roleChanged) {
+        setPendingEditPayload({ userId, payload, helpers });
+        setEditAdminPasswordError("");
+        setEditAdminPasswordOpen(true);
+        helpers.setSubmitting(false);
+        return;
+      }
+
+      try {
+        await updateUserMutation.mutateAsync({ userId, payload });
+        helpers.resetForm();
+      } catch {
+        // Error toast handled by mutation
+      } finally {
+        helpers.setSubmitting(false);
+      }
+    },
+    [editUser, updateUserMutation],
+  );
+
+  const handleExport = useCallback(() => {
+    const stamp = formatExportDate();
+    const formatIsoDate = (value) => {
+      if (!value) return "";
+      try {
+        return new Date(value).toISOString().slice(0, 10);
+      } catch {
+        return "";
+      }
+    };
+
+    if (activeTab === 0) {
+      if (filteredAdmins.length === 0) {
+        showSnackbar("No admins to export", "warning");
+        return;
+      }
+      const csv = rowsToCsv(
+        [
+          { key: "title", label: "Title" },
+          { key: "firstName", label: "First Name" },
+          { key: "lastName", label: "Last Name" },
+          { key: "email", label: "Email" },
+          {
+            key: "phone",
+            label: "Phone",
+            getValue: (row) =>
+              row.phone && row.phone !== "-" ? row.phone : "",
+          },
+          { key: "role", label: "Role" },
+          { key: "status", label: "Status" },
+          {
+            key: "dateCreated",
+            label: "Date Created",
+            getValue: (row) => formatIsoDate(row.dateCreated),
+          },
+          {
+            key: "dateUpdated",
+            label: "Last Updated",
+            getValue: (row) => formatIsoDate(row.dateUpdated),
+          },
+        ],
+        filteredAdmins,
       );
-    },
-    [showSnackbar],
-  );
+      downloadCsv(`easyplug-admins-${stamp}.csv`, csv);
+      showSnackbar(`Exported ${filteredAdmins.length} admin(s)`, "success");
+      return;
+    }
 
-  const handleEdit = useCallback(
-    (user) => {
-      showSnackbar(`Editing ${user.firstName} ${user.lastName}`, "info");
-    },
-    [showSnackbar],
-  );
+    if (activeTab === 1) {
+      if (filteredSellers.length === 0) {
+        showSnackbar("No listers to export", "warning");
+        return;
+      }
+      const csv = rowsToCsv(
+        [
+          { key: "title", label: "Title" },
+          { key: "firstName", label: "First Name" },
+          { key: "lastName", label: "Last Name" },
+          { key: "email", label: "Email" },
+          {
+            key: "phone",
+            label: "Phone",
+            getValue: (row) =>
+              row.phone && row.phone !== "-" ? row.phone : "",
+          },
+          { key: "businessName", label: "Business Name" },
+          { key: "businessEmail", label: "Business Email" },
+          {
+            key: "verified",
+            label: "Verified",
+            getValue: (row) => (row.verified ? "Yes" : "No"),
+          },
+          { key: "listings", label: "Listings" },
+          { key: "status", label: "Status" },
+          {
+            key: "dateCreated",
+            label: "Joined",
+            getValue: (row) => formatIsoDate(row.dateCreated),
+          },
+          {
+            key: "dateUpdated",
+            label: "Last Updated",
+            getValue: (row) => formatIsoDate(row.dateUpdated),
+          },
+        ],
+        filteredSellers,
+      );
+      downloadCsv(`easyplug-sellers-${stamp}.csv`, csv);
+      showSnackbar(`Exported ${filteredSellers.length} lister(s)`, "success");
+      return;
+    }
+
+    if (filteredUsers.length === 0) {
+      showSnackbar("No users to export", "warning");
+      return;
+    }
+    const csv = rowsToCsv(
+      [
+        { key: "title", label: "Title" },
+        { key: "firstName", label: "First Name" },
+        { key: "lastName", label: "Last Name" },
+        { key: "email", label: "Email" },
+        {
+          key: "phone",
+          label: "Phone",
+          getValue: (row) =>
+            row.phone && row.phone !== "-" ? row.phone : "",
+        },
+        { key: "orders", label: "Orders" },
+        { key: "status", label: "Status" },
+        {
+          key: "dateCreated",
+          label: "Joined",
+          getValue: (row) => formatIsoDate(row.dateCreated),
+        },
+        {
+          key: "dateUpdated",
+          label: "Last Updated",
+          getValue: (row) => formatIsoDate(row.dateUpdated),
+        },
+      ],
+      filteredUsers,
+    );
+    downloadCsv(`easyplug-users-${stamp}.csv`, csv);
+    showSnackbar(`Exported ${filteredUsers.length} user(s)`, "success");
+  }, [
+    activeTab,
+    filteredAdmins,
+    filteredSellers,
+    filteredUsers,
+    showSnackbar,
+  ]);
 
   const formatDate = useCallback((dateString) => {
     if (!dateString) return "-";
@@ -266,14 +638,23 @@ export default function UserManagement() {
       {
         field: "actions",
         headerName: "Actions",
-        width: 140,
+        width: 160,
         sortable: false,
         renderCell: (params) => (
           <Stack direction="row" spacing={0.5}>
-            <Tooltip title="Edit">
+            <Tooltip title="View">
               <IconButton
                 size="small"
                 color="primary"
+                onClick={() => handleView(params.row, "Admin")}
+              >
+                <VisibilityIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Edit">
+              <IconButton
+                size="small"
+                color="info"
                 onClick={() => handleEdit(params.row)}
               >
                 <EditIcon fontSize="small" />
@@ -294,11 +675,20 @@ export default function UserManagement() {
                 )}
               </IconButton>
             </Tooltip>
+            <Tooltip title="Delete">
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => handleOpenDeleteDialog(params.row)}
+              >
+                <DeleteForeverIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </Stack>
         ),
       },
     ],
-    [formatDate, handleEdit, handleToggleStatus],
+    [formatDate, handleEdit, handleToggleStatus, handleView, handleOpenDeleteDialog],
   );
 
   // Seller columns
@@ -400,7 +790,7 @@ export default function UserManagement() {
               <IconButton
                 size="small"
                 color="primary"
-                onClick={() => handleView(params.row)}
+                onClick={() => handleView(params.row, "Seller")}
               >
                 <VisibilityIcon fontSize="small" />
               </IconButton>
@@ -429,11 +819,20 @@ export default function UserManagement() {
                 )}
               </IconButton>
             </Tooltip>
+            <Tooltip title="Delete">
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => handleOpenDeleteDialog(params.row)}
+              >
+                <DeleteForeverIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </Stack>
         ),
       },
     ],
-    [formatDate, handleEdit, handleToggleStatus, handleView],
+    [formatDate, handleEdit, handleToggleStatus, handleView, handleOpenDeleteDialog],
   );
 
   // User columns
@@ -506,7 +905,7 @@ export default function UserManagement() {
               <IconButton
                 size="small"
                 color="primary"
-                onClick={() => handleView(params.row)}
+                onClick={() => handleView(params.row, "User")}
               >
                 <VisibilityIcon fontSize="small" />
               </IconButton>
@@ -526,11 +925,20 @@ export default function UserManagement() {
                 )}
               </IconButton>
             </Tooltip>
+            <Tooltip title="Delete">
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => handleOpenDeleteDialog(params.row)}
+              >
+                <DeleteForeverIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </Stack>
         ),
       },
     ],
-    [formatDate, handleToggleStatus, handleView],
+    [formatDate, handleToggleStatus, handleView, handleOpenDeleteDialog],
   );
 
   const activeAdminsCount = adminRows.filter(
@@ -559,13 +967,13 @@ export default function UserManagement() {
       accent: "primary.main",
     },
     {
-      label: "Seller Accounts",
+      label: "Lister Accounts",
       value: `${sellerRows.length}`,
-      sub: `${activeSellersCount} active sellers`,
+      sub: `${activeSellersCount} active listers`,
       accent: "success.main",
     },
     {
-      label: "Verified Sellers",
+      label: "Verified Listers",
       value: `${verifiedSellersCount}`,
       sub: "Trusted and verified businesses",
       accent: "warning.main",
@@ -603,7 +1011,7 @@ export default function UserManagement() {
             User Management
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Manage admins, sellers, and users
+            Manage admins, listers, and users
           </Typography>
         </Box>
       </Stack>
@@ -688,7 +1096,7 @@ export default function UserManagement() {
           <Tab
             icon={<StorefrontIcon sx={{ fontSize: 20 }} />}
             iconPosition="start"
-            label={`Sellers (${filteredSellers.length})`}
+            label={`Listers (${filteredSellers.length})`}
           />
           <Tab
             icon={<PeopleIcon sx={{ fontSize: 20 }} />}
@@ -726,20 +1134,35 @@ export default function UserManagement() {
                   sx: { borderRadius: 2, bgcolor: alpha("#667eea", 0.04) },
                 }}
               />
-              <Button
-                variant="contained"
-                startIcon={<PersonAddIcon />}
-                sx={{
-                  backgroundImage: gradientPrimary,
-                  color: "#fff",
-                  minWidth: { xs: "100%", sm: 160 },
-                  whiteSpace: "nowrap",
-                  borderRadius: 2,
-                  px: 3,
-                }}
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                spacing={1}
+                sx={{ width: { xs: "100%", sm: "auto" } }}
               >
-                Add Admin
-              </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<DownloadIcon />}
+                  onClick={handleExport}
+                  sx={{ borderRadius: 2, width: { xs: "100%", sm: "auto" } }}
+                >
+                  Export
+                </Button>
+                <Button
+                  variant="contained"
+                  startIcon={<PersonAddIcon />}
+                  onClick={handleOpenAddDialog}
+                  sx={{
+                    backgroundImage: gradientPrimary,
+                    color: "#fff",
+                    minWidth: { xs: "100%", sm: 160 },
+                    whiteSpace: "nowrap",
+                    borderRadius: 2,
+                    px: 3,
+                  }}
+                >
+                  Add Admin
+                </Button>
+              </Stack>
             </Stack>
             {isMobile ? (
               <Stack spacing={1.25}>
@@ -812,6 +1235,13 @@ export default function UserManagement() {
                         <IconButton
                           size="small"
                           color="primary"
+                          onClick={() => handleView(admin, "Admin")}
+                        >
+                          <VisibilityIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color="info"
                           onClick={() => handleEdit(admin)}
                         >
                           <EditIcon fontSize="small" />
@@ -828,6 +1258,13 @@ export default function UserManagement() {
                           ) : (
                             <CheckCircleIcon fontSize="small" />
                           )}
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleOpenDeleteDialog(admin)}
+                        >
+                          <DeleteForeverIcon fontSize="small" />
                         </IconButton>
                       </Stack>
                     </Stack>
@@ -875,7 +1312,7 @@ export default function UserManagement() {
               <TextField
                 value={sellerQuery}
                 onChange={(e) => setSellerQuery(e.target.value)}
-                placeholder="Search seller name, business or email..."
+                placeholder="Search lister name, business or email..."
                 size="small"
                 fullWidth
                 InputProps={{
@@ -895,6 +1332,7 @@ export default function UserManagement() {
                 <Button
                   variant="outlined"
                   startIcon={<DownloadIcon />}
+                  onClick={handleExport}
                   sx={{ borderRadius: 2, width: { xs: "100%", sm: "auto" } }}
                 >
                   Export
@@ -902,6 +1340,7 @@ export default function UserManagement() {
                 <Button
                   variant="contained"
                   startIcon={<PersonAddIcon />}
+                  onClick={handleOpenAddDialog}
                   sx={{
                     backgroundImage: gradientPrimary,
                     color: "#fff",
@@ -911,7 +1350,7 @@ export default function UserManagement() {
                     px: 3,
                   }}
                 >
-                  Add Seller
+                  Add Lister
                 </Button>
               </Stack>
             </Stack>
@@ -1010,7 +1449,7 @@ export default function UserManagement() {
                         <IconButton
                           size="small"
                           color="primary"
-                          onClick={() => handleView(seller)}
+                          onClick={() => handleView(seller, "Seller")}
                         >
                           <VisibilityIcon fontSize="small" />
                         </IconButton>
@@ -1034,6 +1473,13 @@ export default function UserManagement() {
                             <CheckCircleIcon fontSize="small" />
                           )}
                         </IconButton>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleOpenDeleteDialog(seller)}
+                        >
+                          <DeleteForeverIcon fontSize="small" />
+                        </IconButton>
                       </Stack>
                     </Stack>
                   </Paper>
@@ -1041,7 +1487,7 @@ export default function UserManagement() {
                 {filteredSellers.length === 0 && (
                   <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
                     <Typography color="text.secondary" fontSize={13}>
-                      No sellers found.
+                      No listers found.
                     </Typography>
                   </Paper>
                 )}
@@ -1092,13 +1538,35 @@ export default function UserManagement() {
                   sx: { borderRadius: 2, bgcolor: alpha("#667eea", 0.04) },
                 }}
               />
-              <Button
-                variant="outlined"
-                startIcon={<DownloadIcon />}
-                sx={{ borderRadius: 2, width: { xs: "100%", sm: "auto" } }}
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                spacing={1}
+                sx={{ width: { xs: "100%", sm: "auto" } }}
               >
-                Export
-              </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<DownloadIcon />}
+                  onClick={handleExport}
+                  sx={{ borderRadius: 2, width: { xs: "100%", sm: "auto" } }}
+                >
+                  Export
+                </Button>
+                <Button
+                  variant="contained"
+                  startIcon={<PersonAddIcon />}
+                  onClick={handleOpenAddDialog}
+                  sx={{
+                    backgroundImage: gradientPrimary,
+                    color: "#fff",
+                    minWidth: { xs: "100%", sm: 160 },
+                    whiteSpace: "nowrap",
+                    borderRadius: 2,
+                    px: 3,
+                  }}
+                >
+                  Add User
+                </Button>
+              </Stack>
             </Stack>
             {isMobile ? (
               <Stack spacing={1.25}>
@@ -1175,7 +1643,7 @@ export default function UserManagement() {
                         <IconButton
                           size="small"
                           color="primary"
-                          onClick={() => handleView(user)}
+                          onClick={() => handleView(user, "User")}
                         >
                           <VisibilityIcon fontSize="small" />
                         </IconButton>
@@ -1189,6 +1657,13 @@ export default function UserManagement() {
                           ) : (
                             <CheckCircleIcon fontSize="small" />
                           )}
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleOpenDeleteDialog(user)}
+                        >
+                          <DeleteForeverIcon fontSize="small" />
                         </IconButton>
                       </Stack>
                     </Stack>
@@ -1244,12 +1719,24 @@ export default function UserManagement() {
         <DialogContent>
           <DialogContentText>
             Are you sure you want to{" "}
-            {selectedUser?.status === "active" ? "deactivate" : "activate"}{" "}
+            {selectedUser?.status === "active"
+              ? selectedUser?.entityType === "Seller"
+                ? "suspend"
+                : "deactivate"
+              : "activate"}{" "}
             <strong>
-              {selectedUser?.firstName} {selectedUser?.lastName}
+              {selectedUser?.firstName} {selectedUser?.lastName ||
+                selectedUser?.businessName}
             </strong>
             ?
             {selectedUser?.status === "active" &&
+              selectedUser?.entityType === "Seller" && (
+                <Box component="span" sx={{ display: "block", mt: 1, color: "warning.main", fontWeight: 600 }}>
+                  All their listings will be hidden from the marketplace while suspended.
+                </Box>
+              )}
+            {selectedUser?.status === "active" &&
+              selectedUser?.entityType !== "Seller" &&
               " They will no longer be able to access the platform."}
           </DialogContentText>
         </DialogContent>
@@ -1270,7 +1757,7 @@ export default function UserManagement() {
           <Button
             variant="contained"
             onClick={handleConfirmToggle}
-            disabled={toggleStatusMutation.isPending}
+            disabled={toggleStatusMutation.isPending || suspendMutation.isPending}
             sx={{
               borderRadius: 2,
               width: { xs: "100%", sm: "auto" },
@@ -1282,11 +1769,441 @@ export default function UserManagement() {
               },
             }}
           >
-            {toggleStatusMutation.isPending
+            {toggleStatusMutation.isPending || suspendMutation.isPending
               ? "Updating..."
               : selectedUser?.status === "active"
-                ? "Deactivate"
+                ? selectedUser?.entityType === "Seller"
+                  ? "Suspend"
+                  : "Deactivate"
                 : "Activate"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit User Dialog */}
+      <Dialog
+        open={editDialogOpen}
+        onClose={() => !updateUserMutation.isPending && setEditDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}
+      >
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <EditIcon sx={{ color: "#667eea" }} />
+            <Typography fontWeight={600}>Edit User</Typography>
+          </Stack>
+        </DialogTitle>
+        <Formik
+          initialValues={{
+            title: editUser?.title || "",
+            firstName: editUser?.firstName || "",
+            lastName: editUser?.lastName || "",
+            email: editUser?.email || "",
+            phone: editUser?.phone && editUser.phone !== "-" ? editUser.phone : "",
+            userType: editUser?.userType || editUser?.entityType?.toLowerCase() || "seller",
+          }}
+          validationSchema={createUserValidationSchema}
+          validateOnBlur
+          validateOnChange
+          onSubmit={handleUpdateUser}
+          enableReinitialize
+        >
+          {({ isSubmitting, isValid, submitCount }) => (
+            <Form noValidate>
+              <DialogContent>
+                <Stack spacing={2}>
+                  <SelectFieldWrapper
+                    name="title"
+                    label="Title"
+                    options={TITLE_OPTIONS}
+                  />
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                    <TextFieldWrapper
+                      name="firstName"
+                      label="First name"
+                      sanitize={sanitizeNameInput}
+                      blockDigits
+                      inputMode="text"
+                      autoComplete="given-name"
+                    />
+                    <TextFieldWrapper
+                      name="lastName"
+                      label="Last name"
+                      sanitize={sanitizeNameInput}
+                      blockDigits
+                      inputMode="text"
+                      autoComplete="family-name"
+                    />
+                  </Stack>
+                  <TextFieldWrapper
+                    name="email"
+                    label="Email"
+                    type="email"
+                    autoComplete="email"
+                  />
+                  <TextFieldWrapper
+                    name="phone"
+                    label="Cellphone (optional)"
+                    sanitize={sanitizePhoneInput}
+                    allowOnlyPattern={/[\d+]/}
+                    inputMode="tel"
+                    autoComplete="tel"
+                    placeholder="0821234567"
+                  />
+                  <SelectFieldWrapper
+                    name="userType"
+                    label="Role"
+                    options={[
+                      { value: "seller", label: "Lister" },
+                      { value: "admin", label: "Admin" },
+                      { value: "user", label: "User" },
+                    ]}
+                  />
+                </Stack>
+                {submitCount > 0 && !isValid ? (
+                  <Typography
+                    variant="caption"
+                    color="error"
+                    sx={{ display: "block", mt: 1.5 }}
+                  >
+                    Please fix the highlighted fields before continuing.
+                  </Typography>
+                ) : null}
+              </DialogContent>
+              <DialogActions
+                sx={{
+                  p: 2,
+                  pt: 1,
+                  flexDirection: { xs: "column", sm: "row" },
+                  gap: 1,
+                }}
+              >
+                <Button
+                  type="button"
+                  onClick={() => setEditDialogOpen(false)}
+                  disabled={isSubmitting || updateUserMutation.isPending}
+                  sx={{ borderRadius: 2, width: { xs: "100%", sm: "auto" } }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  disabled={isSubmitting || updateUserMutation.isPending}
+                  sx={{
+                    borderRadius: 2,
+                    width: { xs: "100%", sm: "auto" },
+                    backgroundImage: gradientPrimary,
+                    color: "#fff",
+                  }}
+                >
+                  {isSubmitting || updateUserMutation.isPending
+                    ? "Saving..."
+                    : "Save Changes"}
+                </Button>
+              </DialogActions>
+            </Form>
+          )}
+        </Formik>
+      </Dialog>
+
+      {/* Delete User Dialog */}
+      {/* Password confirmation for role change */}
+      <AdminPasswordDialog
+        open={editAdminPasswordOpen}
+        title="Change User Role"
+        description={`Enter your admin password to change this user's role to "${pendingEditPayload?.payload?.userType}". This affects their access across the platform.`}
+        confirmText="Confirm Role Change"
+        loading={updateUserMutation.isPending}
+        error={editAdminPasswordError}
+        onClose={() => {
+          setEditAdminPasswordOpen(false);
+          setEditAdminPasswordError("");
+          setPendingEditPayload(null);
+        }}
+        onConfirm={async (adminPassword) => {
+          if (!pendingEditPayload) return;
+          const { userId, payload, helpers } = pendingEditPayload;
+          try {
+            await updateUserMutation.mutateAsync({ userId, payload: { ...payload, adminPassword } });
+            setEditAdminPasswordOpen(false);
+            setEditAdminPasswordError("");
+            setPendingEditPayload(null);
+            helpers?.resetForm();
+          } catch (err) {
+            const msg = err?.response?.data?.message || err?.message || "Incorrect password";
+            setEditAdminPasswordError(msg);
+          }
+        }}
+      />
+
+      <AdminPasswordDialog
+        open={deleteDialogOpen}
+        title="Delete User"
+        description={`Enter your admin password to permanently delete ${
+          [deleteUser?.firstName, deleteUser?.lastName].filter(Boolean).join(" ") ||
+          deleteUser?.businessName ||
+          "this user"
+        }. All their listings, advertisements, and linked data will be archived and removed from the marketplace. This cannot be undone.`}
+        confirmText="Delete Permanently"
+        loading={deleteUserMutation.isPending}
+        error={deleteAdminPasswordError}
+        onClose={() => {
+          setDeleteDialogOpen(false);
+          setDeleteUser(null);
+          setDeleteAdminPasswordError("");
+        }}
+        onConfirm={(adminPassword) => {
+          const userId =
+            deleteUser?.id ||
+            deleteUser?.userId ||
+            deleteUser?._id ||
+            deleteUser?.user_id;
+          if (!userId) {
+            showSnackbar("Cannot identify user — please try again", "error");
+            return;
+          }
+          deleteUserMutation.mutate({ userId, adminPassword });
+        }}
+      />
+
+      {/* Add User Dialog */}
+      <Dialog
+        open={addDialogOpen}
+        onClose={() => !createUserMutation.isPending && setAddDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}
+      >
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <PersonAddIcon sx={{ color: "#667eea" }} />
+            <Typography fontWeight={600}>Add {addUserLabel}</Typography>
+          </Stack>
+        </DialogTitle>
+        <Formik
+          initialValues={{
+            title: "",
+            firstName: "",
+            lastName: "",
+            email: "",
+            phone: "",
+          }}
+          validationSchema={createUserValidationSchema}
+          validateOnBlur
+          validateOnChange
+          onSubmit={handleCreateUser}
+          enableReinitialize
+        >
+          {({ isSubmitting, isValid, submitCount }) => (
+            <Form noValidate>
+              <DialogContent>
+                <DialogContentText sx={{ mb: 2 }}>
+                  A temporary password will be generated and emailed to the
+                  new {addUserLabel.toLowerCase()} with their login details.
+                </DialogContentText>
+                <Stack spacing={2}>
+                  <SelectFieldWrapper
+                    name="title"
+                    label="Title"
+                    options={TITLE_OPTIONS}
+                  />
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                    <TextFieldWrapper
+                      name="firstName"
+                      label="First name"
+                      sanitize={sanitizeNameInput}
+                      blockDigits
+                      inputMode="text"
+                      autoComplete="given-name"
+                    />
+                    <TextFieldWrapper
+                      name="lastName"
+                      label="Last name"
+                      sanitize={sanitizeNameInput}
+                      blockDigits
+                      inputMode="text"
+                      autoComplete="family-name"
+                    />
+                  </Stack>
+                  <TextFieldWrapper
+                    name="email"
+                    label="Email"
+                    type="email"
+                    autoComplete="email"
+                  />
+                  <TextFieldWrapper
+                    name="phone"
+                    label="Cellphone (optional)"
+                    sanitize={sanitizePhoneInput}
+                    allowOnlyPattern={/[\d+]/}
+                    inputMode="tel"
+                    autoComplete="tel"
+                    placeholder="0821234567"
+                  />
+                </Stack>
+                {submitCount > 0 && !isValid ? (
+                  <Typography
+                    variant="caption"
+                    color="error"
+                    sx={{ display: "block", mt: 1.5 }}
+                  >
+                    Please fix the highlighted fields before continuing.
+                  </Typography>
+                ) : null}
+              </DialogContent>
+              <DialogActions
+                sx={{
+                  p: 2,
+                  pt: 1,
+                  flexDirection: { xs: "column", sm: "row" },
+                  gap: 1,
+                }}
+              >
+                <Button
+                  type="button"
+                  onClick={() => setAddDialogOpen(false)}
+                  disabled={isSubmitting || createUserMutation.isPending}
+                  sx={{ borderRadius: 2, width: { xs: "100%", sm: "auto" } }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  disabled={isSubmitting || createUserMutation.isPending}
+                  sx={{
+                    borderRadius: 2,
+                    width: { xs: "100%", sm: "auto" },
+                    backgroundImage: gradientPrimary,
+                    color: "#fff",
+                  }}
+                >
+                  {isSubmitting || createUserMutation.isPending
+                    ? "Creating..."
+                    : `Create ${addUserLabel}`}
+                </Button>
+              </DialogActions>
+            </Form>
+          )}
+        </Formik>
+      </Dialog>
+
+      {/* View User Dialog */}
+      <Dialog
+        open={viewDialogOpen}
+        onClose={() => setViewDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}
+      >
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <Avatar
+              sx={{
+                width: 40,
+                height: 40,
+                bgcolor:
+                  viewUser?.entityType === "Seller"
+                    ? "#9c27b0"
+                    : viewUser?.entityType === "User"
+                      ? "#00bcd4"
+                      : "#667eea",
+                fontSize: 14,
+              }}
+            >
+              {viewUser?.firstName?.charAt(0)}
+              {viewUser?.lastName?.charAt(0)}
+            </Avatar>
+            <Box>
+              <Typography fontWeight={600}>
+                {[viewUser?.title, viewUser?.firstName, viewUser?.lastName]
+                  .filter(Boolean)
+                  .join(" ") || "User details"}
+              </Typography>
+              <Typography fontSize={13} color="text.secondary">
+                {viewUser?.entityType || "User"} details
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.5} sx={{ pt: 1 }}>
+            <DetailRow label="Email" value={viewUser?.email} />
+            <DetailRow
+              label="Phone"
+              value={
+                viewUser?.phone && viewUser.phone !== "-"
+                  ? viewUser.phone
+                  : "—"
+              }
+            />
+            <DetailRow
+              label="Status"
+              value={
+                <Chip
+                  size="small"
+                  color={
+                    viewUser?.status === "active" ? "success" : "default"
+                  }
+                  label={viewUser?.status || "—"}
+                  sx={{ fontWeight: 600 }}
+                />
+              }
+            />
+            {viewUser?.role && (
+              <DetailRow label="Role" value={viewUser.role} />
+            )}
+            {viewUser?.entityType === "Seller" && (
+              <>
+                <Divider sx={{ my: 0.5 }} />
+                <DetailRow
+                  label="Business"
+                  value={viewUser?.businessName || "—"}
+                />
+                <DetailRow
+                  label="Business email"
+                  value={viewUser?.businessEmail || "—"}
+                />
+                <DetailRow
+                  label="Verified"
+                  value={viewUser?.verified ? "Yes" : "No"}
+                />
+                <DetailRow
+                  label="Listings"
+                  value={String(viewUser?.listings ?? 0)}
+                />
+              </>
+            )}
+            {viewUser?.entityType === "User" && (
+              <DetailRow
+                label="Orders"
+                value={String(viewUser?.orders ?? 0)}
+              />
+            )}
+            <Divider sx={{ my: 0.5 }} />
+            <DetailRow
+              label="Joined"
+              value={formatDate(viewUser?.dateCreated)}
+            />
+            <DetailRow
+              label="Last updated"
+              value={formatDate(viewUser?.dateUpdated)}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 1 }}>
+          <Button
+            onClick={() => setViewDialogOpen(false)}
+            variant="contained"
+            sx={{
+              borderRadius: 2,
+              backgroundImage: gradientPrimary,
+              color: "#fff",
+            }}
+          >
+            Close
           </Button>
         </DialogActions>
       </Dialog>
@@ -1307,5 +2224,28 @@ export default function UserManagement() {
         </Alert>
       </Snackbar>
     </Box>
+  );
+}
+
+function DetailRow({ label, value }) {
+  return (
+    <Stack
+      direction={{ xs: "column", sm: "row" }}
+      spacing={{ xs: 0.25, sm: 2 }}
+      alignItems={{ xs: "flex-start", sm: "center" }}
+    >
+      <Typography
+        fontSize={13}
+        color="text.secondary"
+        sx={{ minWidth: 120, fontWeight: 600 }}
+      >
+        {label}
+      </Typography>
+      {typeof value === "string" || typeof value === "number" ? (
+        <Typography fontSize={14}>{value}</Typography>
+      ) : (
+        value
+      )}
+    </Stack>
   );
 }

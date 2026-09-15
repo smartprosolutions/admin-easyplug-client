@@ -107,14 +107,11 @@ export async function sendConversationAttachment(
 
     try {
       const data = await requestWithFallback([
-        () => axiosClient.post("/chat-messages", formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        }),
+        () => axiosClient.post("/chat-messages", formData),
         () =>
           axiosClient.post(
             `/messages/conversations/${conversationId}/messages`,
             formData,
-            { headers: { "Content-Type": "multipart/form-data" } },
           ),
       ]);
       const url = extractAttachmentUrl(data);

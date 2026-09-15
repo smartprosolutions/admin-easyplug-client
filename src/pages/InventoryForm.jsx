@@ -6,6 +6,7 @@ import {
   Divider,
   Grid,
   IconButton,
+  InputAdornment,
   Paper,
   Stack,
   Typography,
@@ -17,7 +18,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import TextFieldWrapper from "../components/forms/TextFieldWrapper";
 import SelectFieldWrapper from "../components/forms/SelectFieldWrapper";
-import { SERVICES, PRODUCTS, toOptions } from "../constants/categories";
+import { SERVICES, PRODUCTS, toOptions, OTHER_CATEGORY, resolveCategoryFormValues, resolveCategoryForSubmit } from "../constants/categories";
 import ToastAlert from "../components/alerts/ToastAlert";
 import DeleteIcon from "@mui/icons-material/Delete";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
@@ -28,8 +29,14 @@ import {
   createListing as createItem,
   updateListing as updateItem,
   getListing as getItem,
+  invalidateListingQueries,
 } from "../services/listingService";
 import { resolveListingImagePath } from "../utils/listingImages";
+import {
+  compressListingImages,
+  listingUploadErrorMessage,
+  appendImagesToFormData,
+} from "../utils/compressImage";
 
 const sectionTitleSx = {
   fontWeight: 700,
@@ -108,14 +115,12 @@ export default function InventoryForm() {
     const fd = new FormData();
     Object.entries(vals || {}).forEach(([key, value]) => {
       if (key === "images" && Array.isArray(value)) {
-        value.forEach((file) => {
-          if (file instanceof File) {
-            fd.append("images", file);
-          }
-        });
+        appendImagesToFormData(fd, value);
       } else if (value !== undefined && value !== null) {
-        if (typeof value === "object" && !(value instanceof File)) {
+        if (typeof value === "object" && !(value instanceof File) && !(value instanceof Blob)) {
           fd.append(key, JSON.stringify(value));
+        } else if (value instanceof Blob) {
+          fd.append(key, value, value.name || key);
         } else {
           fd.append(key, String(value));
         }
@@ -207,7 +212,7 @@ export default function InventoryForm() {
     mutationFn: (vals) => createItem(vals, (pct) => setUploadProgress(pct)),
     onSuccess: async () => {
       try {
-        await queryClient.invalidateQueries({ queryKey: ["inventory"] });
+        await invalidateListingQueries(queryClient);
       } catch {
         // ignore
       }
@@ -222,7 +227,7 @@ export default function InventoryForm() {
       setToast({
         open: true,
         severity: "error",
-        message: err?.response?.data?.message || err.message || "Create failed",
+        message: listingUploadErrorMessage(err, "Create failed"),
       }),
   });
 
@@ -230,7 +235,7 @@ export default function InventoryForm() {
     mutationFn: (vals) => updateItem(id, vals, (pct) => setUploadProgress(pct)),
     onSuccess: async () => {
       try {
-        await queryClient.invalidateQueries({ queryKey: ["inventory"] });
+        await invalidateListingQueries(queryClient);
       } catch {
         // ignore
       }
@@ -241,7 +246,7 @@ export default function InventoryForm() {
       setToast({
         open: true,
         severity: "error",
-        message: err?.response?.data?.message || err.message || "Update failed",
+        message: listingUploadErrorMessage(err, "Update failed"),
       }),
   });
 
@@ -251,12 +256,18 @@ export default function InventoryForm() {
     ? itemData.keyFeatures.join(", ")
     : itemData?.keyFeatures || "";
 
+  const initialCategory = resolveCategoryFormValues(
+    itemData?.category || "",
+    itemData?.type || "PRODUCTS",
+  );
+
   const initialValues = {
     title: itemData?.title || "",
     description: itemData?.description || "",
     keyFeatures: initialKeyFeatures,
     price: itemData?.price || "",
-    category: itemData?.category || "",
+    category: initialCategory.category,
+    customCategory: initialCategory.customCategory,
     type: itemData?.type || "PRODUCTS",
     images: itemData?.images || [],
     subscriptionId: itemData?.subscriptionId || "",
@@ -452,6 +463,17 @@ export default function InventoryForm() {
             enableReinitialize
             initialValues={initialValues}
             validationSchema={Yup.object({
+              category: Yup.string().required("Required"),
+              customCategory: Yup.string().when("category", {
+                is: OTHER_CATEGORY,
+                then: (schema) =>
+                  schema
+                    .trim()
+                    .required("Please specify the product category")
+                    .min(2, "Category must be at least 2 characters")
+                    .max(80, "Category must be at most 80 characters"),
+                otherwise: (schema) => schema.notRequired(),
+              }),
               title: Yup.string()
                 .required("Required")
                 .test(
@@ -500,15 +522,27 @@ export default function InventoryForm() {
                       .split(",")
                       .map((item) => item.trim())
                       .filter(Boolean);
+                const { customCategory, ...rest } = values;
                 const toSend = {
-                  ...values,
+                  ...rest,
                   keyFeatures: normalizedKeyFeatures,
+                  category: resolveCategoryForSubmit(
+                    values.category,
+                    customCategory,
+                  ),
                 };
 
+                toSend.images = await compressListingImages(toSend.images);
                 const payload = buildFormData(toSend);
                 setUploadProgress(0);
                 if (isEdit) await updateMut.mutateAsync(payload);
                 else await createMut.mutateAsync(payload);
+              } catch (err) {
+                setToast({
+                  open: true,
+                  severity: "error",
+                  message: listingUploadErrorMessage(err, "Create failed"),
+                });
               } finally {
                 setSubmitting(false);
               }
@@ -634,6 +668,14 @@ export default function InventoryForm() {
                               : toOptions(PRODUCTS)
                           }
                         />
+                        {values.category === OTHER_CATEGORY && (
+                          <TextFieldWrapper
+                            name="customCategory"
+                            label="Specify category"
+                            placeholder="e.g. Handmade crafts"
+                            helperText="Enter the product or service category"
+                          />
+                        )}
                         <SelectFieldWrapper
                           name="subscriptionId"
                           label="Subscription"
@@ -648,7 +690,7 @@ export default function InventoryForm() {
                           ]}
                           disabled={isConditionDisabled}
                         />
-                        <TextFieldWrapper name="title" label="Title" />
+                        <TextFieldWrapper name="title" label="Listing Name" />
                         <TextFieldWrapper
                           name="description"
                           label="Description"
@@ -662,7 +704,20 @@ export default function InventoryForm() {
                           multiline
                           rows={3}
                         />
-                        <TextFieldWrapper name="price" label="Price" />
+                        <TextFieldWrapper
+                          name="price"
+                          label={values.type === "SERVICES" ? "Starting from" : "Price"}
+                          placeholder="e.g. 150.00"
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">R</InputAdornment>
+                            ),
+                            inputProps: {
+                              inputMode: "decimal",
+                              pattern: "[0-9]*\\.?[0-9]{0,2}",
+                            },
+                          }}
+                        />
                         <SelectFieldWrapper
                           name="status"
                           label="Status"
@@ -679,7 +734,8 @@ export default function InventoryForm() {
                             Media
                           </Typography>
                           <Typography variant="caption" sx={sectionCaptionSx}>
-                            Upload up to 6 images for the listing.
+                            Upload up to 6 images. Phone photos are compressed
+                            before upload.
                           </Typography>
                         </Box>
                         <div>

@@ -1,7 +1,9 @@
 import axiosClient from "../api/axiosClient";
 
 export async function createAdvert(payload) {
-  const resp = await axiosClient.post("/listings/advert", payload);
+  const resp = await axiosClient.post("/listings/advert", payload, {
+    timeout: 180000,
+  });
   return resp.data;
 }
 
@@ -10,8 +12,20 @@ export async function updateAdvert(advertId, payload) {
   return resp.data;
 }
 
+export async function setAdvertFeatured(
+  advertId,
+  featuredListingIds,
+  { adminPassword } = {},
+) {
+  const resp = await axiosClient.put(`/listings/advert/${advertId}/featured`, {
+    featuredListingIds,
+    ...(adminPassword ? { adminPassword } : {}),
+  });
+  return resp.data;
+}
+
 export async function addListingToAdvert(advertId, payload, onProgress) {
-  const config = {};
+  const config = { timeout: 180000 };
   if (typeof onProgress === "function") {
     config.onUploadProgress = (evt) => {
       try {
@@ -42,7 +56,14 @@ export async function getCatalogue(params) {
   return resp.data;
 }
 
-export async function getAds(params) {
+export async function getAds(params = {}) {
+  const resp = await axiosClient.get("/listings/ads", {
+    params: { all: 1, ...params },
+  });
+  return resp.data;
+}
+
+export async function getLiveAds(params) {
   const resp = await axiosClient.get("/listings/ads", { params });
   return resp.data;
 }

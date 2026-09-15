@@ -15,11 +15,18 @@ export function connectSocket() {
     .replace(/^Bearer\s+/i, "")
     .trim();
 
-  if (socket?.connected) return socket;
+  if (socket) {
+    socket.auth = { token };
+    if (!socket.connected) socket.connect();
+    return socket;
+  }
 
+  // Testing nginx rejects the websocket upgrade (HTTP 400). Polling works.
   socket = io(SOCKET_URL, {
     auth: { token },
-    transports: ["websocket", "polling"],
+    transports: ["polling"],
+    upgrade: false,
+    withCredentials: true,
     reconnection: true,
     reconnectionDelay: 1000,
     reconnectionAttempts: 5,

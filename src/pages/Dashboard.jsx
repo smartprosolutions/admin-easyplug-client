@@ -10,6 +10,7 @@ import {
   Alert,
   Avatar,
   Box,
+  Button,
   Chip,
   Grid,
   Paper,
@@ -170,13 +171,17 @@ function SummaryCard({ label, count, sub, icon, accent, to, theme, loading }) {
 
 async function fetchDashboardInsights() {
   const [usersResp, listingsResp, txResp] = await Promise.allSettled([
-    axiosClient.get("/users"),
+    axiosClient.get("/users/management"),
     axiosClient.get("/listings/admin/all"),
     axiosClient.get("/transactions"),
   ]);
 
-  const users =
-    usersResp.status === "fulfilled" ? usersResp.value?.data?.users || [] : [];
+  const mgmt = usersResp.status === "fulfilled" ? usersResp.value?.data?.data || usersResp.value?.data || {} : {};
+  const admins = mgmt?.admins || [];
+  const sellers = mgmt?.sellers || [];
+  const buyers = mgmt?.users || [];
+  const users = [...admins, ...sellers, ...buyers];
+
   const listings =
     listingsResp.status === "fulfilled"
       ? listingsResp.value?.data?.listings || []
@@ -185,9 +190,7 @@ async function fetchDashboardInsights() {
     txResp.status === "fulfilled" ? txResp.value?.data?.transactions || [] : [];
 
   const usersTotal = users.length;
-  const sellersTotal = users.filter(
-    (u) => String(u?.role || "").toLowerCase() === "seller",
-  ).length;
+  const sellersTotal = sellers.length;
   const activeUsersTotal = users.filter(
     (u) => String(u?.status || "").toLowerCase() === "active",
   ).length;
@@ -278,7 +281,7 @@ async function fetchDashboardInsights() {
         name:
           seller?.firstName || seller?.lastName
             ? `${seller?.firstName || ""} ${seller?.lastName || ""}`.trim()
-            : seller?.email || "Unknown seller",
+            : seller?.email || "Unknown lister",
         listingCount,
       };
     });
@@ -594,9 +597,9 @@ export default function Dashboard() {
           accent: "info",
         },
         {
-          label: "Active Sellers",
+          label: "Listers",
           count: formatCompact(totals.sellersTotal),
-          sub: "Sellers currently on platform",
+          sub: "Listers registered on platform",
           icon: <GroupsRoundedIcon fontSize="small" />,
           to: "/userManagement",
           accent: "secondary",
@@ -612,7 +615,7 @@ export default function Dashboard() {
         {
           label: "Promoted Ads",
           count: formatCompact(totals.adListings),
-          sub: "Paid visibility inventory",
+          sub: "Paid visibility listings",
           icon: <VerifiedRoundedIcon fontSize="small" />,
           to: "/advertisements",
           accent: "warning",
@@ -742,7 +745,7 @@ export default function Dashboard() {
                 : "error",
         },
         {
-          title: "Inventory monetization mix",
+          title: "Listing monetization mix",
           detail: `${adShare}% of listings are promoted ads. Target 25-35% ad share for balanced discoverability and revenue.`,
           accent: adShare >= 25 && adShare <= 35 ? "success" : "warning",
         },
@@ -757,10 +760,10 @@ export default function Dashboard() {
           accent: demandTrendDirection === "up" ? "success" : "warning",
         },
         {
-          title: "Seller concentration risk",
+          title: "Lister concentration risk",
           detail:
             topSellerShare > 0
-              ? `Top seller controls ${topSellerShare}% of total listings. Monitor concentration and grow mid-tier seller supply.`
+              ? `Top lister controls ${topSellerShare}% of total listings. Monitor concentration and grow mid-tier lister supply.`
               : "No concentration signal available yet.",
           accent: topSellerShare > 20 ? "warning" : "info",
         },
@@ -774,21 +777,77 @@ export default function Dashboard() {
         py: { xs: 1.25, sm: 1.75, md: 1 },
       }}
     >
-      <Typography
-        variant="h5"
-        fontWeight={700}
-        color="primary.main"
-        sx={{ mb: 0.5, fontSize: { xs: 22, sm: 28 } }}
-      >
-        {isSeller ? "Seller Dashboard" : "Dashboard"}
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: { xs: 2, sm: 3 } }}>
-        {isSeller
-          ? "Performance snapshot for your listings, adverts, and order outcomes."
-          : "Business intelligence snapshot to support growth, retention, and revenue decisions."}
-      </Typography>
+      {isSeller && (
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            minHeight: "60vh",
+            textAlign: "center",
+            px: 3,
+          }}
+        >
+          <Paper
+            elevation={0}
+            sx={{
+              p: { xs: 4, sm: 6 },
+              borderRadius: 4,
+              border: "1px solid",
+              borderColor: "divider",
+              maxWidth: 480,
+              width: "100%",
+            }}
+          >
+            <Typography variant="h2" sx={{ mb: 1.5, lineHeight: 1 }}>
+              🚀
+            </Typography>
+            <Typography variant="h5" fontWeight={800} sx={{ mb: 1 }}>
+              Dashboard — Coming Soon
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.8 }}>
+              Your lister dashboard is being prepared and will be available shortly. Check back soon!
+            </Typography>
+          </Paper>
+        </Box>
+      )}
 
-      {!isProfileLoading && !canLoadInsights ? (
+      {!isSeller && <>
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1.5}
+          alignItems={{ xs: "stretch", sm: "flex-start" }}
+          justifyContent="space-between"
+          sx={{ mb: { xs: 2, sm: 3 } }}
+        >
+          <Box>
+            <Typography
+              variant="h5"
+              fontWeight={700}
+              color="primary.main"
+              sx={{ mb: 0.5, fontSize: { xs: 22, sm: 28 } }}
+            >
+              Dashboard
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Business intelligence snapshot to support growth, retention, and revenue decisions.
+            </Typography>
+          </Box>
+          {isAdmin ? (
+            <Button
+              component={RouterLink}
+              to="/reports"
+              variant="outlined"
+              size="small"
+              sx={{ borderRadius: 2, alignSelf: { xs: "stretch", sm: "center" } }}
+            >
+              View reports
+            </Button>
+          ) : null}
+        </Stack>
+
+        {!isProfileLoading && !canLoadInsights ? (
         <Alert severity="warning" sx={{ mb: 2 }}>
           Unable to resolve your role-specific dashboard data.
         </Alert>
@@ -915,7 +974,7 @@ export default function Dashboard() {
               color="text.secondary"
               sx={{ display: "block", mb: 1 }}
             >
-              Distribution of standard vs promoted inventory.
+              Distribution of standard vs promoted listings.
             </Typography>
             {totals.totalListings > 0 ? (
               <PieChart
@@ -1202,12 +1261,12 @@ export default function Dashboard() {
               })}
 
               <Typography variant="subtitle2" fontWeight={700} sx={{ pt: 1 }}>
-                {isSeller ? "My Listing Status" : "Top Sellers by Listing Volume"}
+                {isSeller ? "My Listing Status" : "Top Listers by Listing Volume"}
               </Typography>
 
               {isSeller ? null : topSellers.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">
-                  No seller performance data available.
+                  No lister performance data available.
                 </Typography>
               ) : (
                 <Stack spacing={1}>
@@ -1252,6 +1311,7 @@ export default function Dashboard() {
           </Paper>
         </Grid>
       </Grid>
+      </>}
     </Box>
   );
 }

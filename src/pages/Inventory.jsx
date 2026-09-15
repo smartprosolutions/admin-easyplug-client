@@ -19,18 +19,22 @@ import { useNavigate, Outlet } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   deleteListing,
+  extractListings,
   getAdminListings,
-  getListings,
+  getMyListings,
+  resolveListingId,
 } from "../services/listingService";
 import { gradientPrimary } from "../theme/theme";
 import ConfirmDialog from "../components/modals/ConfirmDialog";
+import AdminPasswordDialog from "../components/modals/AdminPasswordDialog";
 import ToastAlert from "../components/alerts/ToastAlert";
 import { useState } from "react";
 import { useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useUserProfileQuery } from "../services/queries";
 import {
-  isOwnedByUser,
+  canManageRecord,
+  needsAdminPasswordForRecord,
   isSellerRole,
   resolveUserId,
   resolveUserRole,
@@ -64,15 +68,20 @@ export default function Inventory() {
     severity: "info",
     message: "",
   });
-  const { data: profileData } = useUserProfileQuery({ retry: false });
+  const { data: profileData, isLoading: isProfileLoading } = useUserProfileQuery({
+    retry: false,
+  });
   const currentUserId = resolveUserId(profileData);
-  const isSeller = isSellerRole(resolveUserRole(profileData));
+  const userRole = resolveUserRole(profileData);
+  const isSeller = isSellerRole(userRole);
   const listingsQueryKey = isSeller
     ? ["sellerListings", currentUserId]
     : ["adminListings"];
+  const [adminPasswordError, setAdminPasswordError] = useState("");
 
   const deleteMut = useMutation({
-    mutationFn: (id) => deleteListing(id),
+    mutationFn: ({ id, adminPassword }) =>
+      deleteListing(id, { adminPassword }),
     onSuccess: async () => {
       try {
         await queryClient.invalidateQueries({ queryKey: listingsQueryKey });
@@ -81,37 +90,28 @@ export default function Inventory() {
       }
       setToast({ open: true, severity: "success", message: "Item deleted" });
       setDeleteTarget(null);
+      setAdminPasswordError("");
     },
     onError: (err) => {
-      setToast({
-        open: true,
-        severity: "error",
-        message: err?.response?.data?.message || err.message || "Delete failed",
-      });
+      const message =
+        err?.response?.data?.message || err.message || "Delete failed";
+      // Always show the error inside the password dialog so the user sees it
+      setAdminPasswordError(message);
+      setToast({ open: true, severity: "error", message });
     },
   });
 
   const { data: apiData, isPending } = useQuery({
     queryKey: listingsQueryKey,
-    queryFn: () => (isSeller ? getListings() : getAdminListings()),
+    queryFn: () => (isSeller ? getMyListings() : getAdminListings()),
+    enabled: !isProfileLoading && (!isSeller || Boolean(currentUserId)),
     retry: false,
+    refetchOnMount: "always",
   });
 
-  // The API may return { listings: [...] } or an array directly. Normalize.
-  const listings =
-    apiData && Array.isArray(apiData)
-      ? apiData
-      : apiData && Array.isArray(apiData?.listings)
-        ? apiData.listings
-        : apiData?.data || [];
-
-  // Use camelCase API fields when available. Ensure DataGrid `id` is set to listingId.
-  const scopedListings = isSeller
-    ? (listings || []).filter((item) => isOwnedByUser(item, currentUserId))
-    : listings || [];
-
-  const rows = scopedListings.map((r) => {
-    const id = r.listingId ?? r.listing_id ?? r.id;
+  const listings = extractListings(apiData);
+  const rows = listings.map((r) => {
+    const id = resolveListingId(r);
     return {
       id,
       ...r,
@@ -221,13 +221,13 @@ export default function Inventory() {
 
   const productCards = [
     {
-      label: "Total Products",
+      label: "Total Listings",
       value: totalProducts.toLocaleString("en-ZA"),
-      sub: "All inventory records",
+      sub: "All listing records",
       accent: "primary.main",
     },
     {
-      label: "Active Products",
+      label: "Active Listings",
       value: activeProducts.toLocaleString("en-ZA"),
       sub: "Currently visible to users",
       accent: "success.main",
@@ -235,13 +235,13 @@ export default function Inventory() {
     {
       label: "Promoted Ads",
       value: promotedAds.toLocaleString("en-ZA"),
-      sub: "Paid promotion products",
+      sub: "Paid promotion listings",
       accent: "warning.main",
     },
     {
       label: "Top Category",
       value: topCategory,
-      sub: `${topCategoryCount.toLocaleString("en-ZA")} products`,
+      sub: `${topCategoryCount.toLocaleString("en-ZA")} listings`,
       accent: "secondary.main",
     },
   ];
@@ -257,12 +257,12 @@ export default function Inventory() {
       >
         <Box>
           <Typography variant="h5" fontWeight={700}>
-            Inventory
+            My Listings
           </Typography>
           <Typography variant="body2" color="text.secondary">
             {isSeller
-              ? "Manage your inventory items and availability"
-              : "Manage inventory items and availability"}
+              ? "Manage your listings and availability"
+              : "Manage listings and availability"}
           </Typography>
         </Box>
         <Box sx={{ width: { xs: "100%", sm: "auto" }, mt: { xs: 0.5, sm: 0 } }}>
@@ -283,14 +283,14 @@ export default function Inventory() {
               "&:hover": { opacity: { xs: 0.95, sm: 0.92 }, boxShadow: "none" },
             }}
           >
-            Add Item
+            Add Listing
           </Button>
         </Box>
       </Stack>
 
       <Box sx={{ mb: 2.5 }}>
         <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.2 }}>
-          Product Overview
+          Listing Overview
         </Typography>
         <Grid container spacing={1.5}>
           {productCards.map((card) => (
@@ -328,15 +328,24 @@ export default function Inventory() {
       </Box>
 
       <Box>
-        {isPending ? (
+        {isPending || isProfileLoading ? (
           <Box display="flex" justifyContent="center" py={6}>
             <CircularProgress />
           </Box>
         ) : isMobile ? (
           <Stack spacing={1.25}>
             {rows.map((item) => {
-              const rowId = item.listingId ?? item.listing_id ?? item.id;
-              const canManageItem = isOwnedByUser(item, currentUserId);
+              const rowId = resolveListingId(item);
+              const canManageItem = canManageRecord(
+                item,
+                currentUserId,
+                userRole,
+              );
+              const needsPassword = needsAdminPasswordForRecord(
+                item,
+                currentUserId,
+                userRole,
+              );
               return (
                 <Paper
                   key={rowId}
@@ -397,6 +406,7 @@ export default function Inventory() {
                               setDeleteTarget({
                                 id: rowId,
                                 title: item.title,
+                                needsPassword,
                               })
                             }
                           >
@@ -414,6 +424,7 @@ export default function Inventory() {
           <CustomDataGrid
             autoHeight
             rows={rows}
+            getRowId={(row) => resolveListingId(row)}
             columns={[
               ...columns,
               {
@@ -422,11 +433,17 @@ export default function Inventory() {
                 width: 160,
                 sortable: false,
                 renderCell: (params) => {
-                  const rowId =
-                    params.row.listingId ??
-                    params.row.listing_id ??
-                    params.row.id;
-                  const canManageItem = isOwnedByUser(params.row, currentUserId);
+                  const rowId = resolveListingId(params.row);
+                  const canManageItem = canManageRecord(
+                    params.row,
+                    currentUserId,
+                    userRole,
+                  );
+                  const needsPassword = needsAdminPasswordForRecord(
+                    params.row,
+                    currentUserId,
+                    userRole,
+                  );
 
                   return (
                     <Stack direction="row" spacing={1} alignItems="center">
@@ -473,6 +490,7 @@ export default function Inventory() {
                                 setDeleteTarget({
                                   id: rowId,
                                   title: params.row.title,
+                                  needsPassword,
                                 });
                               }}
                             >
@@ -490,7 +508,7 @@ export default function Inventory() {
         )}
       </Box>
       <ConfirmDialog
-        open={Boolean(deleteTarget)}
+        open={Boolean(deleteTarget) && !deleteTarget?.needsPassword}
         title="Delete item"
         description={
           deleteTarget?.title
@@ -501,7 +519,32 @@ export default function Inventory() {
         confirmColor="error"
         loading={deleteMut.isPending}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget?.id && deleteMut.mutate(deleteTarget.id)}
+        onConfirm={() =>
+          deleteTarget?.id && deleteMut.mutate({ id: deleteTarget.id })
+        }
+      />
+      <AdminPasswordDialog
+        open={Boolean(deleteTarget?.needsPassword)}
+        title="Delete item"
+        description={
+          deleteTarget?.title
+            ? `Enter your admin password to delete "${deleteTarget.title}".`
+            : "Enter your admin password to delete this item."
+        }
+        confirmText="Delete"
+        loading={deleteMut.isPending}
+        error={adminPasswordError}
+        onClose={() => {
+          setDeleteTarget(null);
+          setAdminPasswordError("");
+        }}
+        onConfirm={(adminPassword) => {
+          if (deleteTarget?.id) {
+            deleteMut.mutate({ id: deleteTarget.id, adminPassword });
+          } else {
+            setAdminPasswordError("Cannot identify listing — please close and try again");
+          }
+        }}
       />
       <ToastAlert
         open={toast.open}

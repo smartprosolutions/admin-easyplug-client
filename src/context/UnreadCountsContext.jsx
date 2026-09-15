@@ -13,6 +13,7 @@ import { useUserProfileQuery } from "../services/queries";
 import { getUnreadCount } from "../services/notificationService";
 import { getUnreadMessageCount } from "../services/messageService";
 import { connectSocket, getSocket } from "../socket/socketClient";
+import { hasAccessToken } from "../utils/accessControl";
 
 const UnreadCountsContext = createContext(null);
 
@@ -102,6 +103,7 @@ export function UnreadCountsProvider({ children }) {
   }, [currentUserId]);
 
   const refetchUnreadMessages = useCallback(async () => {
+    if (!hasAccessToken()) return;
     try {
       const response = await getUnreadMessageCount();
       setMessagesUnreadCount(parseUnreadCount(response));
@@ -111,6 +113,7 @@ export function UnreadCountsProvider({ children }) {
   }, []);
 
   const refetchUnreadNotifications = useCallback(async () => {
+    if (!hasAccessToken()) return;
     try {
       const response = await getUnreadCount();
       setNotificationsUnreadCount(parseUnreadCount(response));
@@ -145,6 +148,8 @@ export function UnreadCountsProvider({ children }) {
   }, [refetchUnreadMessages, refetchUnreadNotifications]);
 
   useEffect(() => {
+    if (!hasAccessToken()) return;
+
     connectSocket();
     const socket = getSocket();
     if (!socket) return;

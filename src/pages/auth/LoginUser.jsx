@@ -1,6 +1,5 @@
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
-import Avatar from "@mui/material/Avatar";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -8,7 +7,7 @@ import Checkbox from "@mui/material/Checkbox";
 import { alpha } from "@mui/material/styles";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import { gradientPrimary } from "../../theme/theme";
-import logo from "../../assets/images/Sample Logo 1 (3).png";
+import BrandLogo from "../../components/brand/BrandLogo";
 import { Formik, Form } from "formik";
 import * as Yup from "yup";
 import TextFieldWrapper from "../../components/forms/TextFieldWrapper";
@@ -21,6 +20,11 @@ import InputAdornment from "@mui/material/InputAdornment";
 import IconButton from "@mui/material/IconButton";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
+import {
+  canAccessAdminApp,
+  getDefaultHomePath,
+  resolveUserRole,
+} from "../../utils/accessControl";
 
 export default function LoginUser() {
   const navigate = useNavigate();
@@ -28,24 +32,39 @@ export default function LoginUser() {
   const mutation = useMutation({
     mutationFn: (creds) => loginRequest(creds),
     onSuccess: (data) => {
+      const role = resolveUserRole(data);
+      if (!canAccessAdminApp(role)) {
+        try {
+          localStorage.removeItem("access_token");
+        } catch {
+          // ignore
+        }
+        setAuthToast({
+          open: true,
+          severity: "error",
+          message:
+            "This portal is for admins and listers only. Please use the marketplace app to sign in.",
+        });
+        return;
+      }
+
       if (data?.accessToken || data?.token) {
         const token = data.accessToken || data.token;
         localStorage.setItem("access_token", token);
       }
-      // show success then navigate shortly after so user sees toast
       setAuthToast({
         open: true,
         severity: "success",
-        message: "Signed in successfully"
+        message: "Signed in successfully",
       });
-      setTimeout(() => navigate("/dashboard"), 700);
+      setTimeout(() => navigate(getDefaultHomePath(role)), 700);
     },
     onError: (err) => {
       console.error("Login failed", err);
       const msg =
         err?.response?.data?.message || err?.message || "Login failed";
       setAuthToast({ open: true, severity: "error", message: msg });
-    }
+    },
   });
 
 
@@ -80,14 +99,15 @@ export default function LoginUser() {
     <Box
       sx={{
         minHeight: "100vh",
-        width: "100vw",
+        width: "100%",
+        maxWidth: "100%",
         background: (theme) =>
           `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.2)} 0%, ${alpha(theme.palette.secondary.main, 0.1)} 36%, ${theme.palette.background.default} 100%)`,
         pt: 0,
         pb: { xs: 2.5, sm: 3.5 },
         px: 0,
         position: "relative",
-        overflow: "hidden",
+        overflowX: "hidden",
       }}
     >
       <Box
@@ -117,13 +137,11 @@ export default function LoginUser() {
           },
         }}
       >
-        <Avatar
-          src={logo}
-          alt="Logo"
+        <BrandLogo
+          alt="EasyPlug Logo"
           sx={{
             width: { xs: 185, sm: 235 },
             height: { xs: 185, sm: 235 },
-            bgcolor: "transparent",
           }}
         />
       </Box>
@@ -148,23 +166,6 @@ export default function LoginUser() {
               }}
             >
               Powering Easyplug Commerce
-            </Typography>
-            <Typography
-              variant="h3"
-              sx={{ fontWeight: 800, lineHeight: 1.05, mt: 0.5, fontSize: { xs: 36, sm: 50 } }}
-            >
-              Welcome
-            </Typography>
-            <Typography
-              variant="h3"
-              sx={{
-                fontWeight: 800,
-                lineHeight: 1.05,
-                fontSize: { xs: 36, sm: 50 },
-                color: "secondary.main",
-              }}
-            >
-              Back
             </Typography>
             <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
               Sign in to continue building your African prosperity.

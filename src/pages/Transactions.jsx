@@ -187,7 +187,7 @@ export default function Transactions() {
       },
       {
         field: "seller",
-        headerName: "Seller",
+        headerName: "Lister",
         flex: 1,
         renderCell: (params) => (
           <Stack direction="row" alignItems="center" spacing={1.5}>
@@ -380,7 +380,7 @@ export default function Transactions() {
             <TextField
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by reference, buyer or seller..."
+              placeholder="Search by reference, buyer or lister..."
               size="small"
               fullWidth
               InputProps={{
@@ -456,7 +456,7 @@ export default function Transactions() {
                             color="text.secondary"
                             noWrap
                           >
-                            Seller: {txn.seller}
+                            Lister: {txn.seller}
                           </Typography>
                         </Box>
                       </Stack>

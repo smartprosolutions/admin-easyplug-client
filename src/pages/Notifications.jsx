@@ -366,7 +366,10 @@ export default function Notifications() {
                       label="Mark read"
                       color="success"
                       variant="outlined"
-                      onClick={() => markAsReadMutation.mutate(n.id)}
+                      onClick={() => {
+                        if (markAsReadMutation.isPending) return;
+                        markAsReadMutation.mutate(n.id);
+                      }}
                       disabled={markAsReadMutation.isPending}
                       clickable
                     />
@@ -377,7 +380,10 @@ export default function Notifications() {
                     label="Delete"
                     color="error"
                     variant="outlined"
-                    onClick={() => deleteNotificationMutation.mutate(n.id)}
+                    onClick={() => {
+                      if (deleteNotificationMutation.isPending) return;
+                      deleteNotificationMutation.mutate(n.id);
+                    }}
                     disabled={deleteNotificationMutation.isPending}
                     clickable
                   />
