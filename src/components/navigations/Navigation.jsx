@@ -42,6 +42,7 @@ import { useState } from "react";
 import { useUnreadCounts } from "../../context/UnreadCountsContext";
 import { useUserProfileQuery } from "../../services/queries";
 import {
+  isAmbassadorRole,
   isSellerRole,
   resolveUserRole,
 } from "../../utils/accessControl";
@@ -218,6 +219,15 @@ const sellerNav = [
   },
 ];
 
+const ambassadorNav = [
+  { title: "User Management", icon: GroupRoundedIcon, url: "/userManagement" },
+  {
+    title: "Notifications",
+    icon: NotificationsRoundedIcon,
+    url: "/notifications",
+  },
+];
+
 export default function Navigation({ currentTheme, setThemeMode }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -227,7 +237,9 @@ export default function Navigation({ currentTheme, setThemeMode }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const { messagesUnreadCount, notificationsUnreadCount } = useUnreadCounts();
   const { data: profileData } = useUserProfileQuery({ retry: false });
-  const isSeller = isSellerRole(resolveUserRole(profileData));
+  const role = resolveUserRole(profileData);
+  const isSeller = isSellerRole(role);
+  const isAmbassador = isAmbassadorRole(role);
   const [forceTour, setForceTour] = useState(false);
   const [tourActive, setTourActive] = useState(false);
 
@@ -259,9 +271,28 @@ export default function Navigation({ currentTheme, setThemeMode }) {
     navigate("/login", { replace: true });
   };
 
-  const menuToRender = isSeller ? sellerNav : adminNav;
+  const menuToRender = isAmbassador
+    ? ambassadorNav
+    : isSeller
+      ? sellerNav
+      : adminNav;
 
   const mobileNavItems = React.useMemo(() => {
+    if (isAmbassador) {
+      return [
+        {
+          title: "Users",
+          icon: GroupRoundedIcon,
+          url: "/userManagement",
+        },
+        {
+          title: "Alerts",
+          icon: NotificationsRoundedIcon,
+          url: "/notifications",
+        },
+      ];
+    }
+
     if (isSeller) {
       return [
         { title: "My Listings", icon: Inventory2RoundedIcon, url: "/inventory" },
@@ -278,7 +309,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
       { title: "Messages", icon: MarkunreadIcon, url: "/messages" },
       { title: "Alerts", icon: NotificationsRoundedIcon, url: "/notifications" },
     ];
-  }, [isSeller]);
+  }, [isAmbassador, isSeller]);
 
   const mobileNavValue = React.useMemo(() => {
     const currentPath = location.pathname;
@@ -362,7 +393,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                           lineHeight: 1.1,
                         }}
                       >
-                        {isSeller ? "EasyPlug" : "EasyPlug Admin"}
+                        {isSeller || isAmbassador ? "EasyPlug" : "EasyPlug Admin"}
                       </Typography>
                       <Typography
                         variant="caption"
@@ -692,7 +723,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                       lineHeight: 1.1,
                     }}
                   >
-                    {isSeller ? "EasyPlug" : "EasyPlug Admin"}
+                    {isSeller || isAmbassador ? "EasyPlug" : "EasyPlug Admin"}
                   </Typography>
                   <Typography
                     component="em"

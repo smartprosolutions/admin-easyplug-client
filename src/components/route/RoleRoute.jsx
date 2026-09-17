@@ -6,6 +6,7 @@ import { useUserProfileQuery } from "../../services/queries";
 import {
   canAccessAdminApp,
   isAdminRole,
+  isAmbassadorRole,
   isSellerRole,
   resolveUserRole,
 } from "../../utils/accessControl";
@@ -13,6 +14,7 @@ import {
 const roleChecks = {
   admin: isAdminRole,
   seller: isSellerRole,
+  ambassador: isAmbassadorRole,
 };
 
 export default function RoleRoute({
@@ -69,8 +71,12 @@ export default function RoleRoute({
 
   if (!canAccess) {
     // Sellers trying to open admin-only pages land on inventory.
-    // Admins denied from a seller-only route (none today) go to dashboard.
-    const redirectTo = isAdminRole(role) ? "/dashboard" : fallbackTo;
+    // Ambassadors land on user management. Admins go to dashboard.
+    const redirectTo = isAdminRole(role)
+      ? "/dashboard"
+      : isAmbassadorRole(role)
+        ? "/userManagement"
+        : fallbackTo;
     return <Navigate to={redirectTo} replace />;
   }
 

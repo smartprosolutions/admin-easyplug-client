@@ -45,6 +45,8 @@ import StorefrontIcon from "@mui/icons-material/Storefront";
 import PeopleIcon from "@mui/icons-material/People";
 import VerifiedIcon from "@mui/icons-material/Verified";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
+import CampaignIcon from "@mui/icons-material/Campaign";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import MetricsDataGrid from "../components/metrics/MetricsDataGrid";
 import TextFieldWrapper from "../components/forms/TextFieldWrapper";
 import SelectFieldWrapper from "../components/forms/SelectFieldWrapper";
@@ -58,6 +60,12 @@ import {
   suspendUserByAdmin,
   cascadeDeleteUser,
 } from "../services/userManagementService";
+import { useUserProfileQuery } from "../services/queries";
+import {
+  isAmbassadorRole,
+  isAdminRole,
+  resolveUserRole,
+} from "../utils/accessControl";
 import {
   createNameFieldSchema,
   sanitizeNameInput,
@@ -80,12 +88,11 @@ const TITLE_OPTIONS = [
   { value: "Prof", label: "Prof" },
 ];
 
-const TAB_USER_TYPES = ["admin", "seller", "user"];
-
 const ADD_USER_LABELS = {
   admin: "Admin",
   seller: "Lister",
   user: "User",
+  ambassador: "Ambassador",
 };
 
 const createUserValidationSchema = Yup.object({
@@ -113,10 +120,18 @@ export default function UserManagement() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const queryClient = useQueryClient();
+  const { data: profileData } = useUserProfileQuery({ retry: false });
+  const role = resolveUserRole(profileData);
+  const isAmbassadorViewer = isAmbassadorRole(role);
+  const canMutateUsers = isAdminRole(role);
+  const tabUserTypes = isAmbassadorViewer
+    ? ["seller", "user"]
+    : ["admin", "seller", "user", "ambassador"];
   const [activeTab, setActiveTab] = useState(0);
   const [adminQuery, setAdminQuery] = useState("");
   const [sellerQuery, setSellerQuery] = useState("");
   const [userQuery, setUserQuery] = useState("");
+  const [ambassadorQuery, setAmbassadorQuery] = useState("");
 
   // Dialog states
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
@@ -143,9 +158,24 @@ export default function UserManagement() {
     queryFn: getUserManagementData,
   });
 
+  const ambassadorMe = data?.data?.me || null;
+  const ambassadorLinks = ambassadorMe?.ambassadorLinks || null;
+
   const showSnackbar = useCallback((message, severity = "success") => {
     setSnackbar({ open: true, message, severity });
   }, []);
+
+  const copyText = useCallback(
+    async (value, label) => {
+      try {
+        await navigator.clipboard.writeText(String(value || ""));
+        showSnackbar(`${label} copied`, "success");
+      } catch {
+        showSnackbar(`Could not copy ${label}`, "warning");
+      }
+    },
+    [showSnackbar],
+  );
 
   const toggleStatusMutation = useMutation({
     mutationFn: ({ userId, status }) => updateUserStatus(userId, status),
@@ -266,8 +296,12 @@ export default function UserManagement() {
   const adminRows = useMemo(() => data?.data?.admins || [], [data]);
   const sellerRows = useMemo(() => data?.data?.sellers || [], [data]);
   const buyerRows = useMemo(() => data?.data?.users || [], [data]);
+  const ambassadorRows = useMemo(
+    () => data?.data?.ambassadors || [],
+    [data],
+  );
 
-  const activeUserType = TAB_USER_TYPES[activeTab] || "user";
+  const activeUserType = tabUserTypes[activeTab] || "user";
   const addUserLabel = ADD_USER_LABELS[activeUserType] || "User";
 
   // Filter data based on search queries
@@ -315,11 +349,30 @@ export default function UserManagement() {
     );
   }, [buyerRows, userQuery]);
 
+  const filteredAmbassadors = useMemo(() => {
+    return ambassadorRows.filter(
+      (ambassador) =>
+        String(ambassador.firstName || "")
+          .toLowerCase()
+          .includes(ambassadorQuery.toLowerCase()) ||
+        String(ambassador.lastName || "")
+          .toLowerCase()
+          .includes(ambassadorQuery.toLowerCase()) ||
+        String(ambassador.email || "")
+          .toLowerCase()
+          .includes(ambassadorQuery.toLowerCase()) ||
+        String(ambassador.referralCode || "")
+          .toLowerCase()
+          .includes(ambassadorQuery.toLowerCase()),
+    );
+  }, [ambassadorQuery, ambassadorRows]);
+
   // Action handlers
   const handleToggleStatus = useCallback((user, entityType) => {
+    if (!canMutateUsers) return;
     setSelectedUser({ ...user, entityType });
     setDeactivateDialogOpen(true);
-  }, []);
+  }, [canMutateUsers]);
 
   const handleConfirmToggle = useCallback(() => {
     if (!selectedUser) return;
@@ -435,7 +488,7 @@ export default function UserManagement() {
       }
     };
 
-    if (activeTab === 0) {
+    if (activeUserType === "admin") {
       if (filteredAdmins.length === 0) {
         showSnackbar("No admins to export", "warning");
         return;
@@ -472,7 +525,7 @@ export default function UserManagement() {
       return;
     }
 
-    if (activeTab === 1) {
+    if (activeUserType === "seller") {
       if (filteredSellers.length === 0) {
         showSnackbar("No listers to export", "warning");
         return;
@@ -497,6 +550,14 @@ export default function UserManagement() {
             getValue: (row) => (row.verified ? "Yes" : "No"),
           },
           { key: "listings", label: "Listings" },
+          {
+            key: "registeredBy",
+            label: "Registered By",
+            getValue: (row) =>
+              row.registeredBy?.name ||
+              row.registeredBy?.email ||
+              "",
+          },
           { key: "status", label: "Status" },
           {
             key: "dateCreated",
@@ -513,6 +574,36 @@ export default function UserManagement() {
       );
       downloadCsv(`easyplug-sellers-${stamp}.csv`, csv);
       showSnackbar(`Exported ${filteredSellers.length} lister(s)`, "success");
+      return;
+    }
+
+    if (activeUserType === "ambassador") {
+      if (filteredAmbassadors.length === 0) {
+        showSnackbar("No ambassadors to export", "warning");
+        return;
+      }
+      const csv = rowsToCsv(
+        [
+          { key: "title", label: "Title" },
+          { key: "firstName", label: "First Name" },
+          { key: "lastName", label: "Last Name" },
+          { key: "email", label: "Email" },
+          { key: "referralCode", label: "Referral Code" },
+          { key: "referralsCount", label: "Referrals" },
+          { key: "status", label: "Status" },
+          {
+            key: "dateCreated",
+            label: "Joined",
+            getValue: (row) => formatIsoDate(row.dateCreated),
+          },
+        ],
+        filteredAmbassadors,
+      );
+      downloadCsv(`easyplug-ambassadors-${stamp}.csv`, csv);
+      showSnackbar(
+        `Exported ${filteredAmbassadors.length} ambassador(s)`,
+        "success",
+      );
       return;
     }
 
@@ -533,6 +624,14 @@ export default function UserManagement() {
             row.phone && row.phone !== "-" ? row.phone : "",
         },
         { key: "orders", label: "Orders" },
+        {
+          key: "registeredBy",
+          label: "Registered By",
+          getValue: (row) =>
+            row.registeredBy?.name ||
+            row.registeredBy?.email ||
+            "",
+        },
         { key: "status", label: "Status" },
         {
           key: "dateCreated",
@@ -550,8 +649,9 @@ export default function UserManagement() {
     downloadCsv(`easyplug-users-${stamp}.csv`, csv);
     showSnackbar(`Exported ${filteredUsers.length} user(s)`, "success");
   }, [
-    activeTab,
+    activeUserType,
     filteredAdmins,
+    filteredAmbassadors,
     filteredSellers,
     filteredUsers,
     showSnackbar,
@@ -638,7 +738,7 @@ export default function UserManagement() {
       {
         field: "actions",
         headerName: "Actions",
-        width: 160,
+        width: canMutateUsers ? 160 : 80,
         sortable: false,
         renderCell: (params) => (
           <Stack direction="row" spacing={0.5}>
@@ -651,44 +751,57 @@ export default function UserManagement() {
                 <VisibilityIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            <Tooltip title="Edit">
-              <IconButton
-                size="small"
-                color="info"
-                onClick={() => handleEdit(params.row)}
-              >
-                <EditIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <Tooltip
-              title={params.row.status === "active" ? "Deactivate" : "Activate"}
-            >
-              <IconButton
-                size="small"
-                color={params.row.status === "active" ? "error" : "success"}
-                onClick={() => handleToggleStatus(params.row, "Admin")}
-              >
-                {params.row.status === "active" ? (
-                  <BlockIcon fontSize="small" />
-                ) : (
-                  <CheckCircleIcon fontSize="small" />
-                )}
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Delete">
-              <IconButton
-                size="small"
-                color="error"
-                onClick={() => handleOpenDeleteDialog(params.row)}
-              >
-                <DeleteForeverIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            {canMutateUsers ? (
+              <>
+                <Tooltip title="Edit">
+                  <IconButton
+                    size="small"
+                    color="info"
+                    onClick={() => handleEdit(params.row)}
+                  >
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip
+                  title={
+                    params.row.status === "active" ? "Deactivate" : "Activate"
+                  }
+                >
+                  <IconButton
+                    size="small"
+                    color={params.row.status === "active" ? "error" : "success"}
+                    onClick={() => handleToggleStatus(params.row, "Admin")}
+                  >
+                    {params.row.status === "active" ? (
+                      <BlockIcon fontSize="small" />
+                    ) : (
+                      <CheckCircleIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Delete">
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => handleOpenDeleteDialog(params.row)}
+                  >
+                    <DeleteForeverIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </>
+            ) : null}
           </Stack>
         ),
       },
     ],
-    [formatDate, handleEdit, handleToggleStatus, handleView, handleOpenDeleteDialog],
+    [
+      canMutateUsers,
+      formatDate,
+      handleEdit,
+      handleToggleStatus,
+      handleView,
+      handleOpenDeleteDialog,
+    ],
   );
 
   // Seller columns
@@ -752,6 +865,20 @@ export default function UserManagement() {
           />
         ),
       },
+      ...(!isAmbassadorViewer
+        ? [
+            {
+              field: "registeredBy",
+              headerName: "Registered By",
+              flex: 1,
+              minWidth: 160,
+              valueGetter: (_value, row) =>
+                row.registeredBy?.name ||
+                row.registeredBy?.email ||
+                "—",
+            },
+          ]
+        : []),
       {
         field: "status",
         headerName: "Status",
@@ -782,7 +909,7 @@ export default function UserManagement() {
       {
         field: "actions",
         headerName: "Actions",
-        width: 160,
+        width: canMutateUsers ? 160 : 80,
         sortable: false,
         renderCell: (params) => (
           <Stack direction="row" spacing={0.5}>
@@ -795,44 +922,58 @@ export default function UserManagement() {
                 <VisibilityIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            <Tooltip title="Edit">
-              <IconButton
-                size="small"
-                color="info"
-                onClick={() => handleEdit(params.row)}
-              >
-                <EditIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <Tooltip
-              title={params.row.status === "active" ? "Suspend" : "Activate"}
-            >
-              <IconButton
-                size="small"
-                color={params.row.status === "active" ? "error" : "success"}
-                onClick={() => handleToggleStatus(params.row, "Seller")}
-              >
-                {params.row.status === "active" ? (
-                  <BlockIcon fontSize="small" />
-                ) : (
-                  <CheckCircleIcon fontSize="small" />
-                )}
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Delete">
-              <IconButton
-                size="small"
-                color="error"
-                onClick={() => handleOpenDeleteDialog(params.row)}
-              >
-                <DeleteForeverIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            {canMutateUsers ? (
+              <>
+                <Tooltip title="Edit">
+                  <IconButton
+                    size="small"
+                    color="info"
+                    onClick={() => handleEdit(params.row)}
+                  >
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip
+                  title={
+                    params.row.status === "active" ? "Suspend" : "Activate"
+                  }
+                >
+                  <IconButton
+                    size="small"
+                    color={params.row.status === "active" ? "error" : "success"}
+                    onClick={() => handleToggleStatus(params.row, "Seller")}
+                  >
+                    {params.row.status === "active" ? (
+                      <BlockIcon fontSize="small" />
+                    ) : (
+                      <CheckCircleIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Delete">
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => handleOpenDeleteDialog(params.row)}
+                  >
+                    <DeleteForeverIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </>
+            ) : null}
           </Stack>
         ),
       },
     ],
-    [formatDate, handleEdit, handleToggleStatus, handleView, handleOpenDeleteDialog],
+    [
+      canMutateUsers,
+      formatDate,
+      handleEdit,
+      handleToggleStatus,
+      handleView,
+      handleOpenDeleteDialog,
+      isAmbassadorViewer,
+    ],
   );
 
   // User columns
@@ -875,6 +1016,20 @@ export default function UserManagement() {
           />
         ),
       },
+      ...(!isAmbassadorViewer
+        ? [
+            {
+              field: "registeredBy",
+              headerName: "Registered By",
+              flex: 1,
+              minWidth: 160,
+              valueGetter: (_value, row) =>
+                row.registeredBy?.name ||
+                row.registeredBy?.email ||
+                "—",
+            },
+          ]
+        : []),
       {
         field: "status",
         headerName: "Status",
@@ -897,7 +1052,7 @@ export default function UserManagement() {
       {
         field: "actions",
         headerName: "Actions",
-        width: 140,
+        width: canMutateUsers ? 140 : 80,
         sortable: false,
         renderCell: (params) => (
           <Stack direction="row" spacing={0.5}>
@@ -910,13 +1065,155 @@ export default function UserManagement() {
                 <VisibilityIcon fontSize="small" />
               </IconButton>
             </Tooltip>
+            {canMutateUsers ? (
+              <>
+                <Tooltip
+                  title={
+                    params.row.status === "active" ? "Deactivate" : "Activate"
+                  }
+                >
+                  <IconButton
+                    size="small"
+                    color={params.row.status === "active" ? "error" : "success"}
+                    onClick={() => handleToggleStatus(params.row, "User")}
+                  >
+                    {params.row.status === "active" ? (
+                      <BlockIcon fontSize="small" />
+                    ) : (
+                      <CheckCircleIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Delete">
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => handleOpenDeleteDialog(params.row)}
+                  >
+                    <DeleteForeverIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </>
+            ) : null}
+          </Stack>
+        ),
+      },
+    ],
+    [
+      canMutateUsers,
+      formatDate,
+      handleToggleStatus,
+      handleView,
+      handleOpenDeleteDialog,
+      isAmbassadorViewer,
+    ],
+  );
+
+  const ambassadorColumns = useMemo(
+    () => [
+      {
+        field: "name",
+        headerName: "Name",
+        flex: 1.25,
+        minWidth: 220,
+        renderCell: (params) => (
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <Avatar
+              sx={{ width: 32, height: 32, bgcolor: "#ff7043", fontSize: 14 }}
+            >
+              {params.row.firstName?.charAt(0)}
+              {params.row.lastName?.charAt(0)}
+            </Avatar>
+            <Typography fontSize={13} fontWeight={500}>
+              {params.row.firstName} {params.row.lastName}
+            </Typography>
+          </Stack>
+        ),
+      },
+      { field: "email", headerName: "Email", flex: 1.2 },
+      {
+        field: "referralCode",
+        headerName: "Referral Code",
+        width: 140,
+        renderCell: (params) => (
+          <Chip
+            size="small"
+            label={params.value || "—"}
+            sx={{
+              bgcolor: alpha("#ff7043", 0.12),
+              color: "#e64a19",
+              fontWeight: 700,
+            }}
+          />
+        ),
+      },
+      {
+        field: "referralsCount",
+        headerName: "Referrals",
+        width: 110,
+        renderCell: (params) => (
+          <Chip
+            size="small"
+            label={params.value ?? 0}
+            sx={{
+              bgcolor: alpha("#667eea", 0.1),
+              color: "#667eea",
+              fontWeight: 700,
+            }}
+          />
+        ),
+      },
+      {
+        field: "status",
+        headerName: "Status",
+        width: 120,
+        renderCell: (params) => (
+          <Chip
+            color={params.value === "active" ? "success" : "default"}
+            label={params.value}
+            size="small"
+            sx={{ fontWeight: 600 }}
+          />
+        ),
+      },
+      {
+        field: "dateCreated",
+        headerName: "Joined",
+        width: 120,
+        renderCell: (params) => formatDate(params.value),
+      },
+      {
+        field: "actions",
+        headerName: "Actions",
+        width: 160,
+        sortable: false,
+        renderCell: (params) => (
+          <Stack direction="row" spacing={0.5}>
+            <Tooltip title="View">
+              <IconButton
+                size="small"
+                color="primary"
+                onClick={() => handleView(params.row, "Ambassador")}
+              >
+                <VisibilityIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Edit">
+              <IconButton
+                size="small"
+                color="info"
+                onClick={() => handleEdit(params.row)}
+              >
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
             <Tooltip
               title={params.row.status === "active" ? "Deactivate" : "Activate"}
             >
               <IconButton
                 size="small"
                 color={params.row.status === "active" ? "error" : "success"}
-                onClick={() => handleToggleStatus(params.row, "User")}
+                onClick={() => handleToggleStatus(params.row, "Ambassador")}
               >
                 {params.row.status === "active" ? (
                   <BlockIcon fontSize="small" />
@@ -938,7 +1235,7 @@ export default function UserManagement() {
         ),
       },
     ],
-    [formatDate, handleToggleStatus, handleView, handleOpenDeleteDialog],
+    [formatDate, handleEdit, handleToggleStatus, handleView, handleOpenDeleteDialog],
   );
 
   const activeAdminsCount = adminRows.filter(
@@ -953,44 +1250,75 @@ export default function UserManagement() {
   const activeUsersCount = buyerRows.filter(
     (user) => String(user.status || "").toLowerCase() === "active",
   ).length;
+  const activeAmbassadorsCount = ambassadorRows.filter(
+    (ambassador) =>
+      String(ambassador.status || "").toLowerCase() === "active",
+  ).length;
 
   const totalBuyerOrders = buyerRows.reduce(
     (sum, user) => sum + Number(user.orders || 0),
     0,
   );
 
-  const userOverviewCards = [
-    {
-      label: "Admin Accounts",
-      value: `${adminRows.length}`,
-      sub: `${activeAdminsCount} active admins`,
-      accent: "primary.main",
-    },
-    {
-      label: "Lister Accounts",
-      value: `${sellerRows.length}`,
-      sub: `${activeSellersCount} active listers`,
-      accent: "success.main",
-    },
-    {
-      label: "Verified Listers",
-      value: `${verifiedSellersCount}`,
-      sub: "Trusted and verified businesses",
-      accent: "warning.main",
-    },
-    {
-      label: "Buyer Accounts",
-      value: `${buyerRows.length}`,
-      sub: `${activeUsersCount} active buyers`,
-      accent: "secondary.main",
-    },
-    {
-      label: "Buyer Orders",
-      value: totalBuyerOrders.toLocaleString("en-ZA"),
-      sub: "Combined order activity",
-      accent: "info.main",
-    },
-  ];
+  const userOverviewCards = isAmbassadorViewer
+    ? [
+        {
+          label: "Referred Listers",
+          value: `${sellerRows.length}`,
+          sub: `${activeSellersCount} active`,
+          accent: "success.main",
+        },
+        {
+          label: "Referred Users",
+          value: `${buyerRows.length}`,
+          sub: `${activeUsersCount} active`,
+          accent: "secondary.main",
+        },
+        {
+          label: "Buyer Orders",
+          value: totalBuyerOrders.toLocaleString("en-ZA"),
+          sub: "From referred users",
+          accent: "info.main",
+        },
+      ]
+    : [
+        {
+          label: "Admin Accounts",
+          value: `${adminRows.length}`,
+          sub: `${activeAdminsCount} active admins`,
+          accent: "primary.main",
+        },
+        {
+          label: "Lister Accounts",
+          value: `${sellerRows.length}`,
+          sub: `${activeSellersCount} active listers`,
+          accent: "success.main",
+        },
+        {
+          label: "Verified Listers",
+          value: `${verifiedSellersCount}`,
+          sub: "Trusted and verified businesses",
+          accent: "warning.main",
+        },
+        {
+          label: "Buyer Accounts",
+          value: `${buyerRows.length}`,
+          sub: `${activeUsersCount} active buyers`,
+          accent: "secondary.main",
+        },
+        {
+          label: "Ambassadors",
+          value: `${ambassadorRows.length}`,
+          sub: `${activeAmbassadorsCount} active`,
+          accent: "error.main",
+        },
+        {
+          label: "Buyer Orders",
+          value: totalBuyerOrders.toLocaleString("en-ZA"),
+          sub: "Combined order activity",
+          accent: "info.main",
+        },
+      ];
 
   const loadErrorMessage =
     error?.response?.data?.message ||
@@ -1011,10 +1339,73 @@ export default function UserManagement() {
             User Management
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Manage admins, listers, and users
+            {isAmbassadorViewer
+              ? "View users and listers you referred"
+              : "Manage admins, ambassadors, listers, and users"}
           </Typography>
         </Box>
       </Stack>
+
+      {isAmbassadorViewer && ambassadorLinks ? (
+        <Paper
+          variant="outlined"
+          sx={{
+            mb: 2.5,
+            p: 2,
+            borderRadius: 2,
+            bgcolor: alpha("#667eea", 0.04),
+          }}
+        >
+          <Typography fontWeight={700} sx={{ mb: 1 }}>
+            Your referral links
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Code:{" "}
+            <Box component="span" sx={{ fontWeight: 700, color: "text.primary" }}>
+              {ambassadorMe?.referralCode || "—"}
+            </Box>
+          </Typography>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1}
+            flexWrap="wrap"
+          >
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<ContentCopyIcon />}
+              onClick={() =>
+                copyText(ambassadorMe?.referralCode, "Referral code")
+              }
+              sx={{ borderRadius: 2 }}
+            >
+              Copy code
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<ContentCopyIcon />}
+              onClick={() =>
+                copyText(ambassadorLinks.shopper, "Shopper referral link")
+              }
+              sx={{ borderRadius: 2 }}
+            >
+              Copy shopper link
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<ContentCopyIcon />}
+              onClick={() =>
+                copyText(ambassadorLinks.lister, "Lister referral link")
+              }
+              sx={{ borderRadius: 2 }}
+            >
+              Copy lister link
+            </Button>
+          </Stack>
+        </Paper>
+      ) : null}
 
       {isPending && (
         <Box sx={{ display: "flex", justifyContent: "center", mb: 2.5 }}>
@@ -1088,11 +1479,13 @@ export default function UserManagement() {
             "& .MuiTabs-indicator": { bgcolor: "#667eea" },
           }}
         >
-          <Tab
-            icon={<AdminPanelSettingsIcon sx={{ fontSize: 20 }} />}
-            iconPosition="start"
-            label={`Admins (${filteredAdmins.length})`}
-          />
+          {tabUserTypes.includes("admin") ? (
+            <Tab
+              icon={<AdminPanelSettingsIcon sx={{ fontSize: 20 }} />}
+              iconPosition="start"
+              label={`Admins (${filteredAdmins.length})`}
+            />
+          ) : null}
           <Tab
             icon={<StorefrontIcon sx={{ fontSize: 20 }} />}
             iconPosition="start"
@@ -1103,10 +1496,17 @@ export default function UserManagement() {
             iconPosition="start"
             label={`Users (${filteredUsers.length})`}
           />
+          {tabUserTypes.includes("ambassador") ? (
+            <Tab
+              icon={<CampaignIcon sx={{ fontSize: 20 }} />}
+              iconPosition="start"
+              label={`Ambassadors (${filteredAmbassadors.length})`}
+            />
+          ) : null}
         </Tabs>
 
         {/* Admins Tab */}
-        {activeTab === 0 && (
+        {activeUserType === "admin" && (
           <Box
             sx={{
               p: { xs: 1.5, sm: 3 },
@@ -1147,21 +1547,23 @@ export default function UserManagement() {
                 >
                   Export
                 </Button>
-                <Button
-                  variant="contained"
-                  startIcon={<PersonAddIcon />}
-                  onClick={handleOpenAddDialog}
-                  sx={{
-                    backgroundImage: gradientPrimary,
-                    color: "#fff",
-                    minWidth: { xs: "100%", sm: 160 },
-                    whiteSpace: "nowrap",
-                    borderRadius: 2,
-                    px: 3,
-                  }}
-                >
-                  Add Admin
-                </Button>
+                {canMutateUsers ? (
+                  <Button
+                    variant="contained"
+                    startIcon={<PersonAddIcon />}
+                    onClick={handleOpenAddDialog}
+                    sx={{
+                      backgroundImage: gradientPrimary,
+                      color: "#fff",
+                      minWidth: { xs: "100%", sm: 160 },
+                      whiteSpace: "nowrap",
+                      borderRadius: 2,
+                      px: 3,
+                    }}
+                  >
+                    Add Admin
+                  </Button>
+                ) : null}
               </Stack>
             </Stack>
             {isMobile ? (
@@ -1296,7 +1698,7 @@ export default function UserManagement() {
         )}
 
         {/* Sellers Tab */}
-        {activeTab === 1 && (
+        {activeUserType === "seller" && (
           <Box
             sx={{
               p: { xs: 1.5, sm: 3 },
@@ -1337,21 +1739,23 @@ export default function UserManagement() {
                 >
                   Export
                 </Button>
-                <Button
-                  variant="contained"
-                  startIcon={<PersonAddIcon />}
-                  onClick={handleOpenAddDialog}
-                  sx={{
-                    backgroundImage: gradientPrimary,
-                    color: "#fff",
-                    minWidth: { xs: "100%", sm: 160 },
-                    whiteSpace: "nowrap",
-                    borderRadius: 2,
-                    px: 3,
-                  }}
-                >
-                  Add Lister
-                </Button>
+                {canMutateUsers ? (
+                  <Button
+                    variant="contained"
+                    startIcon={<PersonAddIcon />}
+                    onClick={handleOpenAddDialog}
+                    sx={{
+                      backgroundImage: gradientPrimary,
+                      color: "#fff",
+                      minWidth: { xs: "100%", sm: 160 },
+                      whiteSpace: "nowrap",
+                      borderRadius: 2,
+                      px: 3,
+                    }}
+                  >
+                    Add Lister
+                  </Button>
+                ) : null}
               </Stack>
             </Stack>
             {isMobile ? (
@@ -1453,33 +1857,39 @@ export default function UserManagement() {
                         >
                           <VisibilityIcon fontSize="small" />
                         </IconButton>
-                        <IconButton
-                          size="small"
-                          color="info"
-                          onClick={() => handleEdit(seller)}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color={
-                            seller.status === "active" ? "error" : "success"
-                          }
-                          onClick={() => handleToggleStatus(seller, "Seller")}
-                        >
-                          {seller.status === "active" ? (
-                            <BlockIcon fontSize="small" />
-                          ) : (
-                            <CheckCircleIcon fontSize="small" />
-                          )}
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => handleOpenDeleteDialog(seller)}
-                        >
-                          <DeleteForeverIcon fontSize="small" />
-                        </IconButton>
+                        {canMutateUsers ? (
+                          <>
+                            <IconButton
+                              size="small"
+                              color="info"
+                              onClick={() => handleEdit(seller)}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              color={
+                                seller.status === "active" ? "error" : "success"
+                              }
+                              onClick={() =>
+                                handleToggleStatus(seller, "Seller")
+                              }
+                            >
+                              {seller.status === "active" ? (
+                                <BlockIcon fontSize="small" />
+                              ) : (
+                                <CheckCircleIcon fontSize="small" />
+                              )}
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => handleOpenDeleteDialog(seller)}
+                            >
+                              <DeleteForeverIcon fontSize="small" />
+                            </IconButton>
+                          </>
+                        ) : null}
                       </Stack>
                     </Stack>
                   </Paper>
@@ -1510,7 +1920,7 @@ export default function UserManagement() {
         )}
 
         {/* Users Tab */}
-        {activeTab === 2 && (
+        {activeUserType === "user" && (
           <Box
             sx={{
               p: { xs: 1.5, sm: 3 },
@@ -1551,21 +1961,23 @@ export default function UserManagement() {
                 >
                   Export
                 </Button>
-                <Button
-                  variant="contained"
-                  startIcon={<PersonAddIcon />}
-                  onClick={handleOpenAddDialog}
-                  sx={{
-                    backgroundImage: gradientPrimary,
-                    color: "#fff",
-                    minWidth: { xs: "100%", sm: 160 },
-                    whiteSpace: "nowrap",
-                    borderRadius: 2,
-                    px: 3,
-                  }}
-                >
-                  Add User
-                </Button>
+                {canMutateUsers ? (
+                  <Button
+                    variant="contained"
+                    startIcon={<PersonAddIcon />}
+                    onClick={handleOpenAddDialog}
+                    sx={{
+                      backgroundImage: gradientPrimary,
+                      color: "#fff",
+                      minWidth: { xs: "100%", sm: 160 },
+                      whiteSpace: "nowrap",
+                      borderRadius: 2,
+                      px: 3,
+                    }}
+                  >
+                    Add User
+                  </Button>
+                ) : null}
               </Stack>
             </Stack>
             {isMobile ? (
@@ -1647,24 +2059,30 @@ export default function UserManagement() {
                         >
                           <VisibilityIcon fontSize="small" />
                         </IconButton>
-                        <IconButton
-                          size="small"
-                          color={user.status === "active" ? "error" : "success"}
-                          onClick={() => handleToggleStatus(user, "User")}
-                        >
-                          {user.status === "active" ? (
-                            <BlockIcon fontSize="small" />
-                          ) : (
-                            <CheckCircleIcon fontSize="small" />
-                          )}
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => handleOpenDeleteDialog(user)}
-                        >
-                          <DeleteForeverIcon fontSize="small" />
-                        </IconButton>
+                        {canMutateUsers ? (
+                          <>
+                            <IconButton
+                              size="small"
+                              color={
+                                user.status === "active" ? "error" : "success"
+                              }
+                              onClick={() => handleToggleStatus(user, "User")}
+                            >
+                              {user.status === "active" ? (
+                                <BlockIcon fontSize="small" />
+                              ) : (
+                                <CheckCircleIcon fontSize="small" />
+                              )}
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => handleOpenDeleteDialog(user)}
+                            >
+                              <DeleteForeverIcon fontSize="small" />
+                            </IconButton>
+                          </>
+                        ) : null}
                       </Stack>
                     </Stack>
                   </Paper>
@@ -1693,9 +2111,219 @@ export default function UserManagement() {
             )}
           </Box>
         )}
-      </Box>
 
-      {/* Deactivate/Activate Dialog */}
+        {/* Ambassadors Tab */}
+        {activeUserType === "ambassador" && (
+          <Box
+            sx={{
+              p: { xs: 1.5, sm: 3 },
+              bgcolor: (theme) => alpha(theme.palette.primary.main, 0.015),
+            }}
+          >
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={2}
+              sx={{ mb: 3 }}
+              alignItems={{ xs: "stretch", sm: "center" }}
+            >
+              <TextField
+                value={ambassadorQuery}
+                onChange={(e) => setAmbassadorQuery(e.target.value)}
+                placeholder="Search ambassador name, email, or code..."
+                size="small"
+                fullWidth
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon sx={{ color: "text.secondary" }} />
+                    </InputAdornment>
+                  ),
+                  sx: { borderRadius: 2, bgcolor: alpha("#ff7043", 0.04) },
+                }}
+              />
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                spacing={1}
+                sx={{ width: { xs: "100%", sm: "auto" } }}
+              >
+                <Button
+                  variant="outlined"
+                  startIcon={<DownloadIcon />}
+                  onClick={handleExport}
+                  sx={{ borderRadius: 2, width: { xs: "100%", sm: "auto" } }}
+                >
+                  Export
+                </Button>
+                {canMutateUsers ? (
+                  <Button
+                    variant="contained"
+                    startIcon={<PersonAddIcon />}
+                    onClick={handleOpenAddDialog}
+                    sx={{
+                      backgroundImage: gradientPrimary,
+                      color: "#fff",
+                      minWidth: { xs: "100%", sm: 180 },
+                      whiteSpace: "nowrap",
+                      borderRadius: 2,
+                      px: 3,
+                    }}
+                  >
+                    Add Ambassador
+                  </Button>
+                ) : null}
+              </Stack>
+            </Stack>
+            {isMobile ? (
+              <Stack spacing={1.25}>
+                {filteredAmbassadors.map((ambassador) => (
+                  <Paper
+                    key={ambassador.id || ambassador.userId}
+                    variant="outlined"
+                    sx={{ p: 1.5, borderRadius: 2 }}
+                  >
+                    <Stack spacing={1.25}>
+                      <Stack direction="row" spacing={1.25} alignItems="center">
+                        <Avatar
+                          sx={{
+                            width: 34,
+                            height: 34,
+                            bgcolor: "#ff7043",
+                            fontSize: 13,
+                          }}
+                        >
+                          {ambassador.firstName?.charAt(0)}
+                          {ambassador.lastName?.charAt(0)}
+                        </Avatar>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography fontWeight={600} fontSize={14} noWrap>
+                            {ambassador.firstName} {ambassador.lastName}
+                          </Typography>
+                          <Typography
+                            fontSize={12}
+                            color="text.secondary"
+                            noWrap
+                          >
+                            {ambassador.email}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                      <Stack
+                        direction="row"
+                        spacing={0.75}
+                        sx={{ flexWrap: "wrap", rowGap: 0.75 }}
+                      >
+                        <Chip
+                          size="small"
+                          label={ambassador.referralCode || "—"}
+                          sx={{
+                            bgcolor: alpha("#ff7043", 0.12),
+                            color: "#e64a19",
+                            fontWeight: 700,
+                          }}
+                        />
+                        <Chip
+                          size="small"
+                          label={`${ambassador.referralsCount ?? 0} referrals`}
+                          sx={{
+                            bgcolor: alpha("#667eea", 0.1),
+                            color: "#667eea",
+                            fontWeight: 700,
+                          }}
+                        />
+                        <Chip
+                          size="small"
+                          color={
+                            ambassador.status === "active"
+                              ? "success"
+                              : "default"
+                          }
+                          label={ambassador.status}
+                          sx={{ fontWeight: 600 }}
+                        />
+                      </Stack>
+                      <Typography fontSize={12} color="text.secondary">
+                        Joined: {formatDate(ambassador.dateCreated)}
+                      </Typography>
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        justifyContent="flex-end"
+                      >
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          onClick={() =>
+                            handleView(ambassador, "Ambassador")
+                          }
+                        >
+                          <VisibilityIcon fontSize="small" />
+                        </IconButton>
+                        {canMutateUsers ? (
+                          <>
+                            <IconButton
+                              size="small"
+                              color="info"
+                              onClick={() => handleEdit(ambassador)}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              color={
+                                ambassador.status === "active"
+                                  ? "error"
+                                  : "success"
+                              }
+                              onClick={() =>
+                                handleToggleStatus(ambassador, "Ambassador")
+                              }
+                            >
+                              {ambassador.status === "active" ? (
+                                <BlockIcon fontSize="small" />
+                              ) : (
+                                <CheckCircleIcon fontSize="small" />
+                              )}
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() =>
+                                handleOpenDeleteDialog(ambassador)
+                              }
+                            >
+                              <DeleteForeverIcon fontSize="small" />
+                            </IconButton>
+                          </>
+                        ) : null}
+                      </Stack>
+                    </Stack>
+                  </Paper>
+                ))}
+                {filteredAmbassadors.length === 0 && (
+                  <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                    <Typography color="text.secondary" fontSize={13}>
+                      No ambassadors found.
+                    </Typography>
+                  </Paper>
+                )}
+              </Stack>
+            ) : (
+              <MetricsDataGrid
+                rows={filteredAmbassadors}
+                columns={ambassadorColumns}
+                autoHeight
+                pageSize={10}
+                sx={{
+                  "& .MuiDataGrid-cell": {
+                    display: "flex",
+                    alignItems: "center",
+                  },
+                }}
+              />
+            )}
+          </Box>
+        )}
+      </Box>
       <Dialog
         open={deactivateDialogOpen}
         onClose={() => setDeactivateDialogOpen(false)}
@@ -1858,6 +2486,7 @@ export default function UserManagement() {
                       { value: "seller", label: "Lister" },
                       { value: "admin", label: "Admin" },
                       { value: "user", label: "User" },
+                      { value: "ambassador", label: "Ambassador" },
                     ]}
                   />
                 </Stack>
@@ -1913,7 +2542,7 @@ export default function UserManagement() {
       <AdminPasswordDialog
         open={editAdminPasswordOpen}
         title="Change User Role"
-        description={`Enter your admin password to change this user's role to "${pendingEditPayload?.payload?.userType}". This affects their access across the platform.`}
+        description={`Enter your admin password to change this user's role to "${ADD_USER_LABELS[pendingEditPayload?.payload?.userType] || pendingEditPayload?.payload?.userType}". This affects their access across the platform.`}
         confirmText="Confirm Role Change"
         loading={updateUserMutation.isPending}
         error={editAdminPasswordError}
@@ -2109,7 +2738,9 @@ export default function UserManagement() {
                     ? "#9c27b0"
                     : viewUser?.entityType === "User"
                       ? "#00bcd4"
-                      : "#667eea",
+                      : viewUser?.entityType === "Ambassador"
+                        ? "#ff7043"
+                        : "#667eea",
                 fontSize: 14,
               }}
             >
@@ -2182,6 +2813,31 @@ export default function UserManagement() {
                 value={String(viewUser?.orders ?? 0)}
               />
             )}
+            {viewUser?.entityType === "Ambassador" && (
+              <>
+                <Divider sx={{ my: 0.5 }} />
+                <DetailRow
+                  label="Referral code"
+                  value={viewUser?.referralCode || "—"}
+                />
+                <DetailRow
+                  label="Referrals"
+                  value={String(viewUser?.referralsCount ?? 0)}
+                />
+              </>
+            )}
+            {!isAmbassadorViewer &&
+            (viewUser?.entityType === "Seller" ||
+              viewUser?.entityType === "User") ? (
+              <DetailRow
+                label="Registered by"
+                value={
+                  viewUser?.registeredBy?.name ||
+                  viewUser?.registeredBy?.email ||
+                  "—"
+                }
+              />
+            ) : null}
             <Divider sx={{ my: 0.5 }} />
             <DetailRow
               label="Joined"
