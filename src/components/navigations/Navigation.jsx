@@ -44,6 +44,7 @@ import { useUserProfileQuery } from "../../services/queries";
 import {
   isAmbassadorRole,
   isSellerRole,
+  hasReferralPowers,
   resolveUserRole,
 } from "../../utils/accessControl";
 import AppTour from "../tour/AppTour";
@@ -219,14 +220,11 @@ const sellerNav = [
   },
 ];
 
-const ambassadorNav = [
-  { title: "User Management", icon: GroupRoundedIcon, url: "/userManagement" },
-  {
-    title: "Notifications",
-    icon: NotificationsRoundedIcon,
-    url: "/notifications",
-  },
-];
+const sellerReferralNavItem = {
+  title: "User Management",
+  icon: GroupRoundedIcon,
+  url: "/userManagement",
+};
 
 export default function Navigation({ currentTheme, setThemeMode }) {
   const theme = useTheme();
@@ -238,8 +236,8 @@ export default function Navigation({ currentTheme, setThemeMode }) {
   const { messagesUnreadCount, notificationsUnreadCount } = useUnreadCounts();
   const { data: profileData } = useUserProfileQuery({ retry: false });
   const role = resolveUserRole(profileData);
-  const isSeller = isSellerRole(role);
-  const isAmbassador = isAmbassadorRole(role);
+  const isSeller = isSellerRole(role) || isAmbassadorRole(role);
+  const canRefer = hasReferralPowers(profileData);
   const [forceTour, setForceTour] = useState(false);
   const [tourActive, setTourActive] = useState(false);
 
@@ -271,35 +269,28 @@ export default function Navigation({ currentTheme, setThemeMode }) {
     navigate("/login", { replace: true });
   };
 
-  const menuToRender = isAmbassador
-    ? ambassadorNav
-    : isSeller
-      ? sellerNav
-      : adminNav;
+  const menuToRender = isSeller
+    ? canRefer
+      ? [...sellerNav.slice(0, 1), sellerReferralNavItem, ...sellerNav.slice(1)]
+      : sellerNav
+    : adminNav;
 
   const mobileNavItems = React.useMemo(() => {
-    if (isAmbassador) {
-      return [
-        {
-          title: "Users",
-          icon: GroupRoundedIcon,
-          url: "/userManagement",
-        },
-        {
-          title: "Alerts",
-          icon: NotificationsRoundedIcon,
-          url: "/notifications",
-        },
-      ];
-    }
-
     if (isSeller) {
-      return [
+      const items = [
         { title: "My Listings", icon: Inventory2RoundedIcon, url: "/inventory" },
         { title: "Messages", icon: MarkunreadIcon, url: "/messages" },
         { title: "Alerts", icon: NotificationsRoundedIcon, url: "/notifications" },
         { title: "Adverts", icon: CampaignRoundedIcon, url: "/advertisements" },
       ];
+      if (canRefer) {
+        items.splice(1, 0, {
+          title: "Users",
+          icon: GroupRoundedIcon,
+          url: "/userManagement",
+        });
+      }
+      return items;
     }
 
     return [
@@ -309,7 +300,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
       { title: "Messages", icon: MarkunreadIcon, url: "/messages" },
       { title: "Alerts", icon: NotificationsRoundedIcon, url: "/notifications" },
     ];
-  }, [isAmbassador, isSeller]);
+  }, [canRefer, isSeller]);
 
   const mobileNavValue = React.useMemo(() => {
     const currentPath = location.pathname;
@@ -393,7 +384,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                           lineHeight: 1.1,
                         }}
                       >
-                        {isSeller || isAmbassador ? "EasyPlug" : "EasyPlug Admin"}
+                        {isSeller ? "EasyPlug" : "EasyPlug Admin"}
                       </Typography>
                       <Typography
                         variant="caption"
@@ -723,7 +714,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
                       lineHeight: 1.1,
                     }}
                   >
-                    {isSeller || isAmbassador ? "EasyPlug" : "EasyPlug Admin"}
+                    {isSeller ? "EasyPlug" : "EasyPlug Admin"}
                   </Typography>
                   <Typography
                     component="em"

@@ -70,13 +70,7 @@ export default function RoleRoute({
   });
 
   if (!canAccess) {
-    // Sellers trying to open admin-only pages land on inventory.
-    // Ambassadors land on user management. Admins go to dashboard.
-    const redirectTo = isAdminRole(role)
-      ? "/dashboard"
-      : isAmbassadorRole(role)
-        ? "/userManagement"
-        : fallbackTo;
+    const redirectTo = isAdminRole(role) ? "/dashboard" : fallbackTo;
     return <Navigate to={redirectTo} replace />;
   }
 

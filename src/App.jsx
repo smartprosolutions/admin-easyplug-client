@@ -209,7 +209,7 @@ const App = () => {
               <Route
                 path="profile"
                 element={
-                  <RoleRoute allow={["admin", "seller", "ambassador"]} fallbackTo="/login">
+                  <RoleRoute allow={["admin", "seller"]} fallbackTo="/login">
                     <Profile
                       currentTheme={themeMode}
                       setThemeMode={setThemeMode}
@@ -220,7 +220,7 @@ const App = () => {
               <Route
                 path="userManagement"
                 element={
-                  <RoleRoute allow={["admin", "ambassador"]} fallbackTo="/inventory">
+                  <RoleRoute allow={["admin", "seller"]} fallbackTo="/inventory">
                     <UserManagement />
                   </RoleRoute>
                 }
@@ -244,7 +244,7 @@ const App = () => {
               <Route
                 path="notifications"
                 element={
-                  <RoleRoute allow={["admin", "seller", "ambassador"]} fallbackTo="/login">
+                  <RoleRoute allow={["admin", "seller"]} fallbackTo="/login">
                     <Notifications />
                   </RoleRoute>
                 }

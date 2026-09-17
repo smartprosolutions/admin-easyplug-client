@@ -23,9 +23,12 @@ import {
   Tabs,
   CircularProgress,
   Divider,
+  FormControlLabel,
+  Switch,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
+import { Navigate } from "react-router-dom";
 import {
   useMutation,
   useQuery,
@@ -64,6 +67,8 @@ import { useUserProfileQuery } from "../services/queries";
 import {
   isAmbassadorRole,
   isAdminRole,
+  isSellerRole,
+  hasReferralPowers,
   resolveUserRole,
 } from "../utils/accessControl";
 import {
@@ -92,7 +97,7 @@ const ADD_USER_LABELS = {
   admin: "Admin",
   seller: "Lister",
   user: "User",
-  ambassador: "Ambassador",
+  ambassador: "Referral partner",
 };
 
 const createUserValidationSchema = Yup.object({
@@ -122,9 +127,10 @@ export default function UserManagement() {
   const queryClient = useQueryClient();
   const { data: profileData } = useUserProfileQuery({ retry: false });
   const role = resolveUserRole(profileData);
-  const isAmbassadorViewer = isAmbassadorRole(role);
   const canMutateUsers = isAdminRole(role);
-  const tabUserTypes = isAmbassadorViewer
+  const isReferralViewer =
+    hasReferralPowers(profileData) && !canMutateUsers;
+  const tabUserTypes = isReferralViewer
     ? ["seller", "user"]
     : ["admin", "seller", "user", "ambassador"];
   const [activeTab, setActiveTab] = useState(0);
@@ -147,6 +153,7 @@ export default function UserManagement() {
   const [editAdminPasswordError, setEditAdminPasswordError] = useState("");
   const [pendingEditPayload, setPendingEditPayload] = useState(null);
   const [viewUser, setViewUser] = useState(null);
+  const [referralsAmbassador, setReferralsAmbassador] = useState(null);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -159,7 +166,8 @@ export default function UserManagement() {
   });
 
   const ambassadorMe = data?.data?.me || null;
-  const ambassadorLinks = ambassadorMe?.ambassadorLinks || null;
+  const ambassadorLinks =
+    ambassadorMe?.referralLinks || ambassadorMe?.ambassadorLinks || null;
 
   const showSnackbar = useCallback((message, severity = "success") => {
     setSnackbar({ open: true, message, severity });
@@ -301,6 +309,47 @@ export default function UserManagement() {
     [data],
   );
 
+  const getReferredPeople = useCallback(
+    (ambassador) => {
+      const ambassadorId = String(
+        ambassador?.userId || ambassador?.id || "",
+      );
+      if (!ambassadorId) return [];
+      const listers = sellerRows
+        .filter(
+          (row) =>
+            String(row.registeredByUserId || row.registeredBy?.userId || "") ===
+            ambassadorId,
+        )
+        .map((row) => ({
+          ...row,
+          referralKind: "Lister",
+        }));
+      const shoppers = buyerRows
+        .filter(
+          (row) =>
+            String(row.registeredByUserId || row.registeredBy?.userId || "") ===
+            ambassadorId,
+        )
+        .map((row) => ({
+          ...row,
+          referralKind: "User",
+        }));
+      return [...listers, ...shoppers].sort((a, b) => {
+        const aDate = new Date(a.dateCreated || 0).getTime();
+        const bDate = new Date(b.dateCreated || 0).getTime();
+        return bDate - aDate;
+      });
+    },
+    [buyerRows, sellerRows],
+  );
+
+  const referralsList = useMemo(
+    () =>
+      referralsAmbassador ? getReferredPeople(referralsAmbassador) : [],
+    [getReferredPeople, referralsAmbassador],
+  );
+
   const activeUserType = tabUserTypes[activeTab] || "user";
   const addUserLabel = ADD_USER_LABELS[activeUserType] || "User";
 
@@ -409,6 +458,10 @@ export default function UserManagement() {
     setViewDialogOpen(true);
   }, []);
 
+  const handleViewReferrals = useCallback((ambassador) => {
+    setReferralsAmbassador(ambassador);
+  }, []);
+
   const handleEdit = useCallback((user) => {
     setEditUser(user);
     setEditDialogOpen(true);
@@ -428,6 +481,9 @@ export default function UserManagement() {
           email: values.email.trim().toLowerCase(),
           phone: values.phone?.trim() || undefined,
           userType: activeUserType,
+          ...(activeUserType === "seller"
+            ? { referralsEnabled: Boolean(values.referralsEnabled) }
+            : {}),
         });
         helpers.resetForm();
       } catch {
@@ -446,6 +502,9 @@ export default function UserManagement() {
       const currentRole = (editUser.userType || editUser.entityType || "").toLowerCase();
       const newRole = (values.userType || "").toLowerCase();
       const roleChanged = newRole !== currentRole;
+      const hadReferrals = Boolean(editUser.referralCode);
+      const referralsEnabled = Boolean(values.referralsEnabled);
+      const referralsChanged = hadReferrals !== referralsEnabled;
 
       const payload = {
         title: values.title,
@@ -455,6 +514,14 @@ export default function UserManagement() {
         phone: values.phone?.trim() || undefined,
         userType: values.userType,
       };
+
+      if (
+        String(values.userType || "").toLowerCase() === "seller" ||
+        String(editUser.userType || "").toLowerCase() === "seller" ||
+        String(editUser.userType || "").toLowerCase() === "ambassador"
+      ) {
+        payload.referralsEnabled = referralsEnabled;
+      }
 
       // Require admin password when changing the user's role
       if (roleChanged) {
@@ -468,13 +535,21 @@ export default function UserManagement() {
       try {
         await updateUserMutation.mutateAsync({ userId, payload });
         helpers.resetForm();
+        if (referralsChanged) {
+          showSnackbar(
+            referralsEnabled
+              ? "Referral powers enabled"
+              : "Referral powers disabled",
+            "success",
+          );
+        }
       } catch {
         // Error toast handled by mutation
       } finally {
         helpers.setSubmitting(false);
       }
     },
-    [editUser, updateUserMutation],
+    [editUser, showSnackbar, updateUserMutation],
   );
 
   const handleExport = useCallback(() => {
@@ -579,7 +654,7 @@ export default function UserManagement() {
 
     if (activeUserType === "ambassador") {
       if (filteredAmbassadors.length === 0) {
-        showSnackbar("No ambassadors to export", "warning");
+        showSnackbar("No referral partners to export", "warning");
         return;
       }
       const csv = rowsToCsv(
@@ -599,9 +674,9 @@ export default function UserManagement() {
         ],
         filteredAmbassadors,
       );
-      downloadCsv(`easyplug-ambassadors-${stamp}.csv`, csv);
+      downloadCsv(`easyplug-referral-partners-${stamp}.csv`, csv);
       showSnackbar(
-        `Exported ${filteredAmbassadors.length} ambassador(s)`,
+        `Exported ${filteredAmbassadors.length} referral partner(s)`,
         "success",
       );
       return;
@@ -865,7 +940,7 @@ export default function UserManagement() {
           />
         ),
       },
-      ...(!isAmbassadorViewer
+      ...(!isReferralViewer
         ? [
             {
               field: "registeredBy",
@@ -972,7 +1047,7 @@ export default function UserManagement() {
       handleToggleStatus,
       handleView,
       handleOpenDeleteDialog,
-      isAmbassadorViewer,
+      isReferralViewer,
     ],
   );
 
@@ -1016,7 +1091,7 @@ export default function UserManagement() {
           />
         ),
       },
-      ...(!isAmbassadorViewer
+      ...(!isReferralViewer
         ? [
             {
               field: "registeredBy",
@@ -1105,7 +1180,7 @@ export default function UserManagement() {
       handleToggleStatus,
       handleView,
       handleOpenDeleteDialog,
-      isAmbassadorViewer,
+      isReferralViewer,
     ],
   );
 
@@ -1150,18 +1225,28 @@ export default function UserManagement() {
       {
         field: "referralsCount",
         headerName: "Referrals",
-        width: 110,
-        renderCell: (params) => (
-          <Chip
-            size="small"
-            label={params.value ?? 0}
-            sx={{
-              bgcolor: alpha("#667eea", 0.1),
-              color: "#667eea",
-              fontWeight: 700,
-            }}
-          />
-        ),
+        width: 130,
+        renderCell: (params) => {
+          const count = Number(params.value ?? 0);
+          return (
+            <Chip
+              size="small"
+              clickable={count > 0}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (count > 0) handleViewReferrals(params.row);
+              }}
+              label={count}
+              title={count > 0 ? "View referred people" : undefined}
+              sx={{
+                bgcolor: alpha("#667eea", 0.1),
+                color: "#667eea",
+                fontWeight: 700,
+                cursor: count > 0 ? "pointer" : "default",
+              }}
+            />
+          );
+        },
       },
       {
         field: "status",
@@ -1193,7 +1278,7 @@ export default function UserManagement() {
               <IconButton
                 size="small"
                 color="primary"
-                onClick={() => handleView(params.row, "Ambassador")}
+                onClick={() => handleView(params.row, "Referral partner")}
               >
                 <VisibilityIcon fontSize="small" />
               </IconButton>
@@ -1213,7 +1298,7 @@ export default function UserManagement() {
               <IconButton
                 size="small"
                 color={params.row.status === "active" ? "error" : "success"}
-                onClick={() => handleToggleStatus(params.row, "Ambassador")}
+                onClick={() => handleToggleStatus(params.row, "Referral partner")}
               >
                 {params.row.status === "active" ? (
                   <BlockIcon fontSize="small" />
@@ -1235,7 +1320,7 @@ export default function UserManagement() {
         ),
       },
     ],
-    [formatDate, handleEdit, handleToggleStatus, handleView, handleOpenDeleteDialog],
+    [formatDate, handleEdit, handleToggleStatus, handleView, handleOpenDeleteDialog, handleViewReferrals],
   );
 
   const activeAdminsCount = adminRows.filter(
@@ -1260,7 +1345,7 @@ export default function UserManagement() {
     0,
   );
 
-  const userOverviewCards = isAmbassadorViewer
+  const userOverviewCards = isReferralViewer
     ? [
         {
           label: "Referred Listers",
@@ -1307,7 +1392,7 @@ export default function UserManagement() {
           accent: "secondary.main",
         },
         {
-          label: "Ambassadors",
+          label: "Referral Partners",
           value: `${ambassadorRows.length}`,
           sub: `${activeAmbassadorsCount} active`,
           accent: "error.main",
@@ -1325,6 +1410,16 @@ export default function UserManagement() {
     error?.message ||
     "Failed to load user management data";
 
+  // Sellers without referral powers cannot use this page
+  if (
+    (isSellerRole(role) || isAmbassadorRole(role)) &&
+    !canMutateUsers &&
+    !hasReferralPowers(profileData) &&
+    !isPending
+  ) {
+    return <Navigate to="/inventory" replace />;
+  }
+
   return (
     <Box sx={{ py: { xs: 1.25, sm: 2, md: 3 }, px: { xs: 1.25, sm: 2, md: 3 } }}>
       {/* Header */}
@@ -1339,14 +1434,14 @@ export default function UserManagement() {
             User Management
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            {isAmbassadorViewer
+            {isReferralViewer
               ? "View users and listers you referred"
-              : "Manage admins, ambassadors, listers, and users"}
+              : "Manage admins, referral partners, listers, and users"}
           </Typography>
         </Box>
       </Stack>
 
-      {isAmbassadorViewer && ambassadorLinks ? (
+      {isReferralViewer && ambassadorLinks ? (
         <Paper
           variant="outlined"
           sx={{
@@ -1362,7 +1457,7 @@ export default function UserManagement() {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
             Code:{" "}
             <Box component="span" sx={{ fontWeight: 700, color: "text.primary" }}>
-              {ambassadorMe?.referralCode || "—"}
+              {ambassadorMe?.referralCode || ambassadorLinks.referralCode || "—"}
             </Box>
           </Typography>
           <Stack
@@ -1375,7 +1470,10 @@ export default function UserManagement() {
               variant="outlined"
               startIcon={<ContentCopyIcon />}
               onClick={() =>
-                copyText(ambassadorMe?.referralCode, "Referral code")
+                copyText(
+                  ambassadorMe?.referralCode || ambassadorLinks.referralCode,
+                  "Referral code",
+                )
               }
               sx={{ borderRadius: 2 }}
             >
@@ -1386,7 +1484,10 @@ export default function UserManagement() {
               variant="outlined"
               startIcon={<ContentCopyIcon />}
               onClick={() =>
-                copyText(ambassadorLinks.shopper, "Shopper referral link")
+                copyText(
+                  ambassadorLinks.shopper || ambassadorLinks.shopperLink,
+                  "Shopper referral link",
+                )
               }
               sx={{ borderRadius: 2 }}
             >
@@ -1397,7 +1498,10 @@ export default function UserManagement() {
               variant="outlined"
               startIcon={<ContentCopyIcon />}
               onClick={() =>
-                copyText(ambassadorLinks.lister, "Lister referral link")
+                copyText(
+                  ambassadorLinks.lister || ambassadorLinks.listerLink,
+                  "Lister referral link",
+                )
               }
               sx={{ borderRadius: 2 }}
             >
@@ -1500,7 +1604,7 @@ export default function UserManagement() {
             <Tab
               icon={<CampaignIcon sx={{ fontSize: 20 }} />}
               iconPosition="start"
-              label={`Ambassadors (${filteredAmbassadors.length})`}
+              label={`Referral partners (${filteredAmbassadors.length})`}
             />
           ) : null}
         </Tabs>
@@ -2129,7 +2233,7 @@ export default function UserManagement() {
               <TextField
                 value={ambassadorQuery}
                 onChange={(e) => setAmbassadorQuery(e.target.value)}
-                placeholder="Search ambassador name, email, or code..."
+                placeholder="Search partner name, email, or code..."
                 size="small"
                 fullWidth
                 InputProps={{
@@ -2154,23 +2258,6 @@ export default function UserManagement() {
                 >
                   Export
                 </Button>
-                {canMutateUsers ? (
-                  <Button
-                    variant="contained"
-                    startIcon={<PersonAddIcon />}
-                    onClick={handleOpenAddDialog}
-                    sx={{
-                      backgroundImage: gradientPrimary,
-                      color: "#fff",
-                      minWidth: { xs: "100%", sm: 180 },
-                      whiteSpace: "nowrap",
-                      borderRadius: 2,
-                      px: 3,
-                    }}
-                  >
-                    Add Ambassador
-                  </Button>
-                ) : null}
               </Stack>
             </Stack>
             {isMobile ? (
@@ -2223,11 +2310,21 @@ export default function UserManagement() {
                         />
                         <Chip
                           size="small"
+                          clickable={(ambassador.referralsCount ?? 0) > 0}
+                          onClick={() => {
+                            if ((ambassador.referralsCount ?? 0) > 0) {
+                              handleViewReferrals(ambassador);
+                            }
+                          }}
                           label={`${ambassador.referralsCount ?? 0} referrals`}
                           sx={{
                             bgcolor: alpha("#667eea", 0.1),
                             color: "#667eea",
                             fontWeight: 700,
+                            cursor:
+                              (ambassador.referralsCount ?? 0) > 0
+                                ? "pointer"
+                                : "default",
                           }}
                         />
                         <Chip
@@ -2253,7 +2350,7 @@ export default function UserManagement() {
                           size="small"
                           color="primary"
                           onClick={() =>
-                            handleView(ambassador, "Ambassador")
+                            handleView(ambassador, "Referral partner")
                           }
                         >
                           <VisibilityIcon fontSize="small" />
@@ -2275,7 +2372,7 @@ export default function UserManagement() {
                                   : "success"
                               }
                               onClick={() =>
-                                handleToggleStatus(ambassador, "Ambassador")
+                                handleToggleStatus(ambassador, "Referral partner")
                               }
                             >
                               {ambassador.status === "active" ? (
@@ -2302,7 +2399,7 @@ export default function UserManagement() {
                 {filteredAmbassadors.length === 0 && (
                   <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
                     <Typography color="text.secondary" fontSize={13}>
-                      No ambassadors found.
+                      No referral partners found.
                     </Typography>
                   </Paper>
                 )}
@@ -2429,7 +2526,13 @@ export default function UserManagement() {
             lastName: editUser?.lastName || "",
             email: editUser?.email || "",
             phone: editUser?.phone && editUser.phone !== "-" ? editUser.phone : "",
-            userType: editUser?.userType || editUser?.entityType?.toLowerCase() || "seller",
+            userType:
+              String(editUser?.userType || "").toLowerCase() === "ambassador"
+                ? "seller"
+                : editUser?.userType ||
+                  editUser?.entityType?.toLowerCase() ||
+                  "seller",
+            referralsEnabled: Boolean(editUser?.referralCode),
           }}
           validationSchema={createUserValidationSchema}
           validateOnBlur
@@ -2437,7 +2540,7 @@ export default function UserManagement() {
           onSubmit={handleUpdateUser}
           enableReinitialize
         >
-          {({ isSubmitting, isValid, submitCount }) => (
+          {({ isSubmitting, isValid, submitCount, values, setFieldValue }) => (
             <Form noValidate>
               <DialogContent>
                 <Stack spacing={2}>
@@ -2486,9 +2589,43 @@ export default function UserManagement() {
                       { value: "seller", label: "Lister" },
                       { value: "admin", label: "Admin" },
                       { value: "user", label: "User" },
-                      { value: "ambassador", label: "Ambassador" },
                     ]}
                   />
+                  {String(values.userType || "").toLowerCase() === "seller" ? (
+                    <Box>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={Boolean(values.referralsEnabled)}
+                            onChange={(event) =>
+                              setFieldValue(
+                                "referralsEnabled",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                        }
+                        label="Referrals enabled"
+                      />
+                      {values.referralsEnabled && editUser?.referralCode ? (
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ mt: 0.5 }}
+                        >
+                          Code: {editUser.referralCode}
+                        </Typography>
+                      ) : null}
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        display="block"
+                      >
+                        Lets this lister share referral links and view people
+                        they referred.
+                      </Typography>
+                    </Box>
+                  ) : null}
                 </Stack>
                 {submitCount > 0 && !isValid ? (
                   <Typography
@@ -2618,6 +2755,7 @@ export default function UserManagement() {
             lastName: "",
             email: "",
             phone: "",
+            referralsEnabled: false,
           }}
           validationSchema={createUserValidationSchema}
           validateOnBlur
@@ -2625,7 +2763,7 @@ export default function UserManagement() {
           onSubmit={handleCreateUser}
           enableReinitialize
         >
-          {({ isSubmitting, isValid, submitCount }) => (
+          {({ isSubmitting, isValid, submitCount, values, setFieldValue }) => (
             <Form noValidate>
               <DialogContent>
                 <DialogContentText sx={{ mb: 2 }}>
@@ -2671,6 +2809,22 @@ export default function UserManagement() {
                     autoComplete="tel"
                     placeholder="0821234567"
                   />
+                  {activeUserType === "seller" ? (
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={Boolean(values.referralsEnabled)}
+                          onChange={(event) =>
+                            setFieldValue(
+                              "referralsEnabled",
+                              event.target.checked,
+                            )
+                          }
+                        />
+                      }
+                      label="Enable referral powers"
+                    />
+                  ) : null}
                 </Stack>
                 {submitCount > 0 && !isValid ? (
                   <Typography
@@ -2738,7 +2892,7 @@ export default function UserManagement() {
                     ? "#9c27b0"
                     : viewUser?.entityType === "User"
                       ? "#00bcd4"
-                      : viewUser?.entityType === "Ambassador"
+                      : viewUser?.entityType === "Referral partner"
                         ? "#ff7043"
                         : "#667eea",
                 fontSize: 14,
@@ -2813,7 +2967,7 @@ export default function UserManagement() {
                 value={String(viewUser?.orders ?? 0)}
               />
             )}
-            {viewUser?.entityType === "Ambassador" && (
+            {viewUser?.entityType === "Referral partner" && (
               <>
                 <Divider sx={{ my: 0.5 }} />
                 <DetailRow
@@ -2822,11 +2976,36 @@ export default function UserManagement() {
                 />
                 <DetailRow
                   label="Referrals"
-                  value={String(viewUser?.referralsCount ?? 0)}
+                  value={
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography fontSize={14}>
+                        {String(viewUser?.referralsCount ?? 0)}
+                      </Typography>
+                      {(viewUser?.referralsCount ?? 0) > 0 ? (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => {
+                            setViewDialogOpen(false);
+                            handleViewReferrals(viewUser);
+                          }}
+                          sx={{ borderRadius: 2, textTransform: "none" }}
+                        >
+                          View people
+                        </Button>
+                      ) : null}
+                    </Stack>
+                  }
                 />
               </>
             )}
-            {!isAmbassadorViewer &&
+            {viewUser?.entityType === "Seller" && viewUser?.referralCode ? (
+              <DetailRow
+                label="Referral code"
+                value={viewUser.referralCode}
+              />
+            ) : null}
+            {!isReferralViewer &&
             (viewUser?.entityType === "Seller" ||
               viewUser?.entityType === "User") ? (
               <DetailRow
@@ -2852,6 +3031,139 @@ export default function UserManagement() {
         <DialogActions sx={{ p: 2, pt: 1 }}>
           <Button
             onClick={() => setViewDialogOpen(false)}
+            variant="contained"
+            sx={{
+              borderRadius: 2,
+              backgroundImage: gradientPrimary,
+              color: "#fff",
+            }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Referred people dialog */}
+      <Dialog
+        open={Boolean(referralsAmbassador)}
+        onClose={() => setReferralsAmbassador(null)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}
+      >
+        <DialogTitle>
+          <Stack spacing={0.5}>
+            <Typography fontWeight={700}>
+              Referred by{" "}
+              {[
+                referralsAmbassador?.firstName,
+                referralsAmbassador?.lastName,
+              ]
+                .filter(Boolean)
+                .join(" ") || "ambassador"}
+            </Typography>
+            <Typography fontSize={13} color="text.secondary">
+              {referralsAmbassador?.referralCode
+                ? `Code ${referralsAmbassador.referralCode} · `
+                : ""}
+              {referralsList.length}{" "}
+              {referralsList.length === 1 ? "person" : "people"}
+            </Typography>
+          </Stack>
+        </DialogTitle>
+        <DialogContent dividers>
+          {referralsList.length === 0 ? (
+            <Typography color="text.secondary" fontSize={14}>
+              No referred users yet.
+            </Typography>
+          ) : (
+            <Stack spacing={1.25}>
+              {referralsList.map((person) => (
+                <Paper
+                  key={`${person.referralKind}-${person.id || person.userId}`}
+                  variant="outlined"
+                  sx={{ p: 1.5, borderRadius: 2 }}
+                >
+                  <Stack
+                    direction="row"
+                    spacing={1.25}
+                    alignItems="center"
+                    justifyContent="space-between"
+                  >
+                    <Stack
+                      direction="row"
+                      spacing={1.25}
+                      alignItems="center"
+                      sx={{ minWidth: 0, flex: 1 }}
+                    >
+                      <Avatar
+                        sx={{
+                          width: 34,
+                          height: 34,
+                          bgcolor:
+                            person.referralKind === "Lister"
+                              ? "#9c27b0"
+                              : "#00bcd4",
+                          fontSize: 13,
+                        }}
+                      >
+                        {person.firstName?.charAt(0)}
+                        {person.lastName?.charAt(0)}
+                      </Avatar>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography fontWeight={600} fontSize={14} noWrap>
+                          {person.businessName ||
+                            `${person.firstName || ""} ${person.lastName || ""}`.trim() ||
+                            "User"}
+                        </Typography>
+                        <Typography
+                          fontSize={12}
+                          color="text.secondary"
+                          noWrap
+                        >
+                          {person.email}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                    <Stack direction="row" spacing={0.75} alignItems="center">
+                      <Chip
+                        size="small"
+                        label={person.referralKind}
+                        sx={{ fontWeight: 600 }}
+                      />
+                      <Chip
+                        size="small"
+                        color={
+                          person.status === "active" ? "success" : "default"
+                        }
+                        label={person.status || "—"}
+                        sx={{ fontWeight: 600 }}
+                      />
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={() => {
+                          setReferralsAmbassador(null);
+                          handleView(
+                            person,
+                            person.referralKind === "Lister"
+                              ? "Seller"
+                              : "User",
+                          );
+                        }}
+                      >
+                        <VisibilityIcon fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  </Stack>
+                </Paper>
+              ))}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            onClick={() => setReferralsAmbassador(null)}
             variant="contained"
             sx={{
               borderRadius: 2,
