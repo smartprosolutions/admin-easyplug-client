@@ -51,6 +51,7 @@ import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import CampaignIcon from "@mui/icons-material/Campaign";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import MetricsDataGrid from "../components/metrics/MetricsDataGrid";
+import ReferralQrCodes from "../components/ReferralQrCodes";
 import TextFieldWrapper from "../components/forms/TextFieldWrapper";
 import SelectFieldWrapper from "../components/forms/SelectFieldWrapper";
 import AdminPasswordDialog from "../components/modals/AdminPasswordDialog";
@@ -71,6 +72,7 @@ import {
   hasReferralPowers,
   resolveUserRole,
 } from "../utils/accessControl";
+import { buildReferralShareLinks } from "../utils/referral";
 import {
   createNameFieldSchema,
   sanitizeNameInput,
@@ -683,7 +685,10 @@ export default function UserManagement() {
     }
 
     if (filteredUsers.length === 0) {
-      showSnackbar("No users to export", "warning");
+      showSnackbar(
+        isReferralViewer ? "No shoppers to export" : "No users to export",
+        "warning",
+      );
       return;
     }
     const csv = rowsToCsv(
@@ -721,14 +726,25 @@ export default function UserManagement() {
       ],
       filteredUsers,
     );
-    downloadCsv(`easyplug-users-${stamp}.csv`, csv);
-    showSnackbar(`Exported ${filteredUsers.length} user(s)`, "success");
+    downloadCsv(
+      isReferralViewer
+        ? `easyplug-shoppers-${stamp}.csv`
+        : `easyplug-users-${stamp}.csv`,
+      csv,
+    );
+    showSnackbar(
+      isReferralViewer
+        ? `Exported ${filteredUsers.length} shopper(s)`
+        : `Exported ${filteredUsers.length} user(s)`,
+      "success",
+    );
   }, [
     activeUserType,
     filteredAdmins,
     filteredAmbassadors,
     filteredSellers,
     filteredUsers,
+    isReferralViewer,
     showSnackbar,
   ]);
 
@@ -1354,7 +1370,7 @@ export default function UserManagement() {
           accent: "success.main",
         },
         {
-          label: "Referred Users",
+          label: "Referred Shoppers",
           value: `${buyerRows.length}`,
           sub: `${activeUsersCount} active`,
           accent: "secondary.main",
@@ -1431,11 +1447,11 @@ export default function UserManagement() {
       >
         <Box>
           <Typography variant="h5" fontWeight={700} sx={{ fontSize: { xs: 22, sm: 28 } }}>
-            User Management
+            {isReferralViewer ? "Referrals" : "User Management"}
           </Typography>
           <Typography variant="body2" color="text.secondary">
             {isReferralViewer
-              ? "View users and listers you referred"
+              ? "View shoppers and listers you referred"
               : "Manage admins, referral partners, listers, and users"}
           </Typography>
         </Box>
@@ -1508,6 +1524,12 @@ export default function UserManagement() {
               Copy lister link
             </Button>
           </Stack>
+          <ReferralQrCodes
+            shopperUrl={
+              ambassadorLinks.shopper || ambassadorLinks.shopperLink
+            }
+            listerUrl={ambassadorLinks.lister || ambassadorLinks.listerLink}
+          />
         </Paper>
       ) : null}
 
@@ -1525,7 +1547,7 @@ export default function UserManagement() {
 
       <Box sx={{ mb: 2.5 }}>
         <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.2 }}>
-          User Overview
+          {isReferralViewer ? "Referrals overview" : "User Overview"}
         </Typography>
         <Grid container spacing={1.5}>
           {userOverviewCards.map((card) => (
@@ -1598,7 +1620,7 @@ export default function UserManagement() {
           <Tab
             icon={<PeopleIcon sx={{ fontSize: 20 }} />}
             iconPosition="start"
-            label={`Users (${filteredUsers.length})`}
+            label={`${isReferralViewer ? "Shoppers" : "Users"} (${filteredUsers.length})`}
           />
           {tabUserTypes.includes("ambassador") ? (
             <Tab
@@ -2194,7 +2216,9 @@ export default function UserManagement() {
                 {filteredUsers.length === 0 && (
                   <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
                     <Typography color="text.secondary" fontSize={13}>
-                      No users found.
+                      {isReferralViewer
+                        ? "No shoppers found."
+                        : "No users found."}
                     </Typography>
                   </Paper>
                 )}
@@ -2997,13 +3021,108 @@ export default function UserManagement() {
                     </Stack>
                   }
                 />
+                {(() => {
+                  const links =
+                    viewUser?.ambassadorLinks ||
+                    viewUser?.referralLinks ||
+                    buildReferralShareLinks(viewUser?.referralCode);
+                  if (!links) return null;
+                  return (
+                    <Box sx={{ width: "100%" }}>
+                      <Stack
+                        direction={{ xs: "column", sm: "row" }}
+                        spacing={1}
+                        sx={{ mb: 1 }}
+                        flexWrap="wrap"
+                      >
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<ContentCopyIcon />}
+                          onClick={() =>
+                            copyText(
+                              links.shopper || links.shopperLink,
+                              "Shopper referral link",
+                            )
+                          }
+                          sx={{ borderRadius: 2 }}
+                        >
+                          Copy shopper link
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<ContentCopyIcon />}
+                          onClick={() =>
+                            copyText(
+                              links.lister || links.listerLink,
+                              "Lister referral link",
+                            )
+                          }
+                          sx={{ borderRadius: 2 }}
+                        >
+                          Copy lister link
+                        </Button>
+                      </Stack>
+                      <ReferralQrCodes
+                        shopperUrl={links.shopper || links.shopperLink}
+                        listerUrl={links.lister || links.listerLink}
+                        size={112}
+                      />
+                    </Box>
+                  );
+                })()}
               </>
             )}
             {viewUser?.entityType === "Seller" && viewUser?.referralCode ? (
-              <DetailRow
-                label="Referral code"
-                value={viewUser.referralCode}
-              />
+              <>
+                <DetailRow
+                  label="Referral code"
+                  value={viewUser.referralCode}
+                />
+                {(() => {
+                  const links = buildReferralShareLinks(viewUser.referralCode);
+                  if (!links) return null;
+                  return (
+                    <Box sx={{ width: "100%" }}>
+                      <Stack
+                        direction={{ xs: "column", sm: "row" }}
+                        spacing={1}
+                        sx={{ mb: 1 }}
+                        flexWrap="wrap"
+                      >
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<ContentCopyIcon />}
+                          onClick={() =>
+                            copyText(links.shopper, "Shopper referral link")
+                          }
+                          sx={{ borderRadius: 2 }}
+                        >
+                          Copy shopper link
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<ContentCopyIcon />}
+                          onClick={() =>
+                            copyText(links.lister, "Lister referral link")
+                          }
+                          sx={{ borderRadius: 2 }}
+                        >
+                          Copy lister link
+                        </Button>
+                      </Stack>
+                      <ReferralQrCodes
+                        shopperUrl={links.shopper}
+                        listerUrl={links.lister}
+                        size={112}
+                      />
+                    </Box>
+                  );
+                })()}
+              </>
             ) : null}
             {!isReferralViewer &&
             (viewUser?.entityType === "Seller" ||

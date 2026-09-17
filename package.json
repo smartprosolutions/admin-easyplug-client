@@ -26,6 +26,7 @@
     "@tiptap/starter-kit": "^3.19.0",
     "axios": "^1.12.2",
     "formik": "^2.4.6",
+    "qrcode.react": "^4.2.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.9.3",

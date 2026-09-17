@@ -36,3 +36,22 @@ export const captureReferralCodeFromUrl = (search = window.location.search) => {
     return getStoredReferralCode();
   }
 };
+
+/** Build shareable shopper/lister URLs for a referral code. */
+export const buildReferralShareLinks = (referralCode) => {
+  const code = normalizeReferralCode(referralCode);
+  if (!code) return null;
+  const clientBase = String(import.meta.env.VITE_CLIENT_URL || "")
+    .trim()
+    .replace(/\/$/, "");
+  const adminBase = String(
+    import.meta.env.VITE_ADMIN_URL || window.location.origin || "",
+  )
+    .trim()
+    .replace(/\/$/, "");
+  return {
+    referralCode: code,
+    shopper: `${clientBase || "https://easyplugmarketplace.com"}/?ref=${encodeURIComponent(code)}`,
+    lister: `${adminBase || window.location.origin}/register?ref=${encodeURIComponent(code)}`,
+  };
+};

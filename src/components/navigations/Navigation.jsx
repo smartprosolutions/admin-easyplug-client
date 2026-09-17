@@ -221,7 +221,7 @@ const sellerNav = [
 ];
 
 const sellerReferralNavItem = {
-  title: "User Management",
+  title: "Referrals",
   icon: GroupRoundedIcon,
   url: "/userManagement",
 };
@@ -285,7 +285,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
       ];
       if (canRefer) {
         items.splice(1, 0, {
-          title: "Users",
+          title: "Referrals",
           icon: GroupRoundedIcon,
           url: "/userManagement",
         });
