@@ -514,8 +514,15 @@ export default function UserManagement() {
         lastName: values.lastName.trim(),
         email: values.email.trim().toLowerCase(),
         phone: values.phone?.trim() || undefined,
-        userType: values.userType,
       };
+
+      // Only send userType when it actually changes. The API protects role
+      // changes with an admin-password check, so including an unchanged role
+      // would incorrectly make an ordinary profile/referral update look like
+      // a role change.
+      if (roleChanged) {
+        payload.userType = values.userType;
+      }
 
       if (
         String(values.userType || "").toLowerCase() === "seller" ||
