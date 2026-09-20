@@ -61,6 +61,17 @@ export default function LoginUser() {
     },
     onError: (err) => {
       console.error("Login failed", err);
+      const code = String(err?.response?.data?.code || "").toUpperCase();
+      if (
+        [
+          "ACCOUNT_DELETED",
+          "ACCOUNT_DEACTIVATED",
+          "ACCOUNT_SUSPENDED",
+          "ACCOUNT_DISABLED",
+        ].includes(code)
+      ) {
+        localStorage.removeItem("access_token");
+      }
       const msg =
         err?.response?.data?.message || err?.message || "Login failed";
       setAuthToast({ open: true, severity: "error", message: msg });

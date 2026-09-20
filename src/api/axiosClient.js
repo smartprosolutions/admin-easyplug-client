@@ -54,10 +54,28 @@ axiosClient.interceptors.response.use(
     }
 
     const status = error?.response?.status;
+    const code = String(error?.response?.data?.code || "").toUpperCase();
     const requestUrl = String(error?.config?.url || "");
     const isAuthEndpoint = PUBLIC_AUTH_ENDPOINTS.some((endpoint) =>
       requestUrl.includes(endpoint),
     );
+
+    if (
+      [401, 403].includes(status) &&
+      [
+        "SESSION_REVOKED",
+        "ACCOUNT_DELETED",
+        "ACCOUNT_DEACTIVATED",
+        "ACCOUNT_SUSPENDED",
+        "ACCOUNT_DISABLED",
+      ].includes(code)
+    ) {
+      try {
+        localStorage.removeItem("access_token");
+      } catch {
+        // ignore
+      }
+    }
 
     if (status === 401 && !isAuthEndpoint) {
       try {
