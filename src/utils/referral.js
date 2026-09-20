@@ -45,13 +45,14 @@ export const buildReferralShareLinks = (referralCode) => {
     .trim()
     .replace(/\/$/, "");
   const adminBase = String(
-    import.meta.env.VITE_ADMIN_URL || window.location.origin || "",
+    import.meta.env.VITE_ADMIN_URL ||
+      "https://admin.easyplugmarketplace.com",
   )
     .trim()
     .replace(/\/$/, "");
   return {
     referralCode: code,
     shopper: `${clientBase || "https://easyplugmarketplace.com"}/?ref=${encodeURIComponent(code)}`,
-    lister: `${adminBase || window.location.origin}/register?ref=${encodeURIComponent(code)}`,
+    lister: `${adminBase}/register?ref=${encodeURIComponent(code)}`,
   };
 };

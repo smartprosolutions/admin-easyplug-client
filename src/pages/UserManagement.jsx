@@ -504,17 +504,22 @@ export default function UserManagement() {
       const currentRole = (editUser.userType || editUser.entityType || "").toLowerCase();
       const newRole = (values.userType || "").toLowerCase();
       const roleChanged = newRole !== currentRole;
+      const editingLister = ["seller", "lister", "ambassador"].includes(
+        currentRole,
+      );
       const hadReferrals = Boolean(editUser.referralCode);
       const referralsEnabled = Boolean(values.referralsEnabled);
       const referralsChanged = hadReferrals !== referralsEnabled;
 
-      const payload = {
-        title: values.title,
-        firstName: values.firstName.trim(),
-        lastName: values.lastName.trim(),
-        email: values.email.trim().toLowerCase(),
-        phone: values.phone?.trim() || undefined,
-      };
+      const payload = editingLister
+        ? {}
+        : {
+            title: values.title,
+            firstName: values.firstName.trim(),
+            lastName: values.lastName.trim(),
+            email: values.email.trim().toLowerCase(),
+            phone: values.phone?.trim() || undefined,
+          };
 
       // Only send userType when it actually changes. The API protects role
       // changes with an admin-password check, so including an unchanged role
@@ -524,12 +529,12 @@ export default function UserManagement() {
         payload.userType = values.userType;
       }
 
-      if (
-        String(values.userType || "").toLowerCase() === "seller" ||
-        String(editUser.userType || "").toLowerCase() === "seller" ||
-        String(editUser.userType || "").toLowerCase() === "ambassador"
-      ) {
+      if (newRole === "seller") {
         payload.referralsEnabled = referralsEnabled;
+      } else if (roleChanged && editingLister) {
+        // Referral powers belong to listers, so remove them when moving the
+        // account to another role.
+        payload.referralsEnabled = false;
       }
 
       // Require admin password when changing the user's role
@@ -1432,6 +1437,13 @@ export default function UserManagement() {
     error?.response?.data?.message ||
     error?.message ||
     "Failed to load user management data";
+
+  const editUserRole = String(
+    editUser?.userType || editUser?.entityType || "",
+  ).toLowerCase();
+  const isEditingLister = ["seller", "lister", "ambassador"].includes(
+    editUserRole,
+  );
 
   // Sellers without referral powers cannot use this page
   if (
@@ -2579,6 +2591,7 @@ export default function UserManagement() {
                     name="title"
                     label="Title"
                     options={TITLE_OPTIONS}
+                    disabled={isEditingLister}
                   />
                   <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                     <TextFieldWrapper
@@ -2588,6 +2601,7 @@ export default function UserManagement() {
                       blockDigits
                       inputMode="text"
                       autoComplete="given-name"
+                      disabled={isEditingLister}
                     />
                     <TextFieldWrapper
                       name="lastName"
@@ -2596,6 +2610,7 @@ export default function UserManagement() {
                       blockDigits
                       inputMode="text"
                       autoComplete="family-name"
+                      disabled={isEditingLister}
                     />
                   </Stack>
                   <TextFieldWrapper
@@ -2603,6 +2618,7 @@ export default function UserManagement() {
                     label="Email"
                     type="email"
                     autoComplete="email"
+                    disabled={isEditingLister}
                   />
                   <TextFieldWrapper
                     name="phone"
@@ -2612,6 +2628,7 @@ export default function UserManagement() {
                     inputMode="tel"
                     autoComplete="tel"
                     placeholder="0821234567"
+                    disabled={isEditingLister}
                   />
                   <SelectFieldWrapper
                     name="userType"
