@@ -23,9 +23,12 @@ import {
   Tabs,
   CircularProgress,
   Divider,
+  FormControlLabel,
+  Switch,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
+import { Navigate } from "react-router-dom";
 import {
   useMutation,
   useQuery,
@@ -45,7 +48,10 @@ import StorefrontIcon from "@mui/icons-material/Storefront";
 import PeopleIcon from "@mui/icons-material/People";
 import VerifiedIcon from "@mui/icons-material/Verified";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
+import CampaignIcon from "@mui/icons-material/Campaign";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import MetricsDataGrid from "../components/metrics/MetricsDataGrid";
+import ReferralQrCodes from "../components/ReferralQrCodes";
 import TextFieldWrapper from "../components/forms/TextFieldWrapper";
 import SelectFieldWrapper from "../components/forms/SelectFieldWrapper";
 import AdminPasswordDialog from "../components/modals/AdminPasswordDialog";
@@ -58,6 +64,15 @@ import {
   suspendUserByAdmin,
   cascadeDeleteUser,
 } from "../services/userManagementService";
+import { useUserProfileQuery } from "../services/queries";
+import {
+  isAmbassadorRole,
+  isAdminRole,
+  isSellerRole,
+  hasReferralPowers,
+  resolveUserRole,
+} from "../utils/accessControl";
+import { buildReferralShareLinks } from "../utils/referral";
 import {
   createNameFieldSchema,
   sanitizeNameInput,
@@ -80,12 +95,11 @@ const TITLE_OPTIONS = [
   { value: "Prof", label: "Prof" },
 ];
 
-const TAB_USER_TYPES = ["admin", "seller", "user"];
-
 const ADD_USER_LABELS = {
   admin: "Admin",
   seller: "Lister",
   user: "User",
+  ambassador: "Referral partner",
 };
 
 const createUserValidationSchema = Yup.object({
@@ -113,10 +127,19 @@ export default function UserManagement() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const queryClient = useQueryClient();
+  const { data: profileData } = useUserProfileQuery({ retry: false });
+  const role = resolveUserRole(profileData);
+  const canMutateUsers = isAdminRole(role);
+  const isReferralViewer =
+    hasReferralPowers(profileData) && !canMutateUsers;
+  const tabUserTypes = isReferralViewer
+    ? ["seller", "user"]
+    : ["admin", "seller", "user", "ambassador"];
   const [activeTab, setActiveTab] = useState(0);
   const [adminQuery, setAdminQuery] = useState("");
   const [sellerQuery, setSellerQuery] = useState("");
   const [userQuery, setUserQuery] = useState("");
+  const [ambassadorQuery, setAmbassadorQuery] = useState("");
 
   // Dialog states
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
@@ -132,6 +155,7 @@ export default function UserManagement() {
   const [editAdminPasswordError, setEditAdminPasswordError] = useState("");
   const [pendingEditPayload, setPendingEditPayload] = useState(null);
   const [viewUser, setViewUser] = useState(null);
+  const [referralsAmbassador, setReferralsAmbassador] = useState(null);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -143,9 +167,25 @@ export default function UserManagement() {
     queryFn: getUserManagementData,
   });
 
+  const ambassadorMe = data?.data?.me || null;
+  const ambassadorLinks =
+    ambassadorMe?.referralLinks || ambassadorMe?.ambassadorLinks || null;
+
   const showSnackbar = useCallback((message, severity = "success") => {
     setSnackbar({ open: true, message, severity });
   }, []);
+
+  const copyText = useCallback(
+    async (value, label) => {
+      try {
+        await navigator.clipboard.writeText(String(value || ""));
+        showSnackbar(`${label} copied`, "success");
+      } catch {
+        showSnackbar(`Could not copy ${label}`, "warning");
+      }
+    },
+    [showSnackbar],
+  );
 
   const toggleStatusMutation = useMutation({
     mutationFn: ({ userId, status }) => updateUserStatus(userId, status),
@@ -266,8 +306,53 @@ export default function UserManagement() {
   const adminRows = useMemo(() => data?.data?.admins || [], [data]);
   const sellerRows = useMemo(() => data?.data?.sellers || [], [data]);
   const buyerRows = useMemo(() => data?.data?.users || [], [data]);
+  const ambassadorRows = useMemo(
+    () => data?.data?.ambassadors || [],
+    [data],
+  );
 
-  const activeUserType = TAB_USER_TYPES[activeTab] || "user";
+  const getReferredPeople = useCallback(
+    (ambassador) => {
+      const ambassadorId = String(
+        ambassador?.userId || ambassador?.id || "",
+      );
+      if (!ambassadorId) return [];
+      const listers = sellerRows
+        .filter(
+          (row) =>
+            String(row.registeredByUserId || row.registeredBy?.userId || "") ===
+            ambassadorId,
+        )
+        .map((row) => ({
+          ...row,
+          referralKind: "Lister",
+        }));
+      const shoppers = buyerRows
+        .filter(
+          (row) =>
+            String(row.registeredByUserId || row.registeredBy?.userId || "") ===
+            ambassadorId,
+        )
+        .map((row) => ({
+          ...row,
+          referralKind: "User",
+        }));
+      return [...listers, ...shoppers].sort((a, b) => {
+        const aDate = new Date(a.dateCreated || 0).getTime();
+        const bDate = new Date(b.dateCreated || 0).getTime();
+        return bDate - aDate;
+      });
+    },
+    [buyerRows, sellerRows],
+  );
+
+  const referralsList = useMemo(
+    () =>
+      referralsAmbassador ? getReferredPeople(referralsAmbassador) : [],
+    [getReferredPeople, referralsAmbassador],
+  );
+
+  const activeUserType = tabUserTypes[activeTab] || "user";
   const addUserLabel = ADD_USER_LABELS[activeUserType] || "User";
 
   // Filter data based on search queries
@@ -315,11 +400,30 @@ export default function UserManagement() {
     );
   }, [buyerRows, userQuery]);
 
+  const filteredAmbassadors = useMemo(() => {
+    return ambassadorRows.filter(
+      (ambassador) =>
+        String(ambassador.firstName || "")
+          .toLowerCase()
+          .includes(ambassadorQuery.toLowerCase()) ||
+        String(ambassador.lastName || "")
+          .toLowerCase()
+          .includes(ambassadorQuery.toLowerCase()) ||
+        String(ambassador.email || "")
+          .toLowerCase()
+          .includes(ambassadorQuery.toLowerCase()) ||
+        String(ambassador.referralCode || "")
+          .toLowerCase()
+          .includes(ambassadorQuery.toLowerCase()),
+    );
+  }, [ambassadorQuery, ambassadorRows]);
+
   // Action handlers
   const handleToggleStatus = useCallback((user, entityType) => {
+    if (!canMutateUsers) return;
     setSelectedUser({ ...user, entityType });
     setDeactivateDialogOpen(true);
-  }, []);
+  }, [canMutateUsers]);
 
   const handleConfirmToggle = useCallback(() => {
     if (!selectedUser) return;
@@ -356,6 +460,10 @@ export default function UserManagement() {
     setViewDialogOpen(true);
   }, []);
 
+  const handleViewReferrals = useCallback((ambassador) => {
+    setReferralsAmbassador(ambassador);
+  }, []);
+
   const handleEdit = useCallback((user) => {
     setEditUser(user);
     setEditDialogOpen(true);
@@ -375,6 +483,9 @@ export default function UserManagement() {
           email: values.email.trim().toLowerCase(),
           phone: values.phone?.trim() || undefined,
           userType: activeUserType,
+          ...(activeUserType === "seller"
+            ? { referralsEnabled: Boolean(values.referralsEnabled) }
+            : {}),
         });
         helpers.resetForm();
       } catch {
@@ -393,6 +504,9 @@ export default function UserManagement() {
       const currentRole = (editUser.userType || editUser.entityType || "").toLowerCase();
       const newRole = (values.userType || "").toLowerCase();
       const roleChanged = newRole !== currentRole;
+      const hadReferrals = Boolean(editUser.referralCode);
+      const referralsEnabled = Boolean(values.referralsEnabled);
+      const referralsChanged = hadReferrals !== referralsEnabled;
 
       const payload = {
         title: values.title,
@@ -402,6 +516,14 @@ export default function UserManagement() {
         phone: values.phone?.trim() || undefined,
         userType: values.userType,
       };
+
+      if (
+        String(values.userType || "").toLowerCase() === "seller" ||
+        String(editUser.userType || "").toLowerCase() === "seller" ||
+        String(editUser.userType || "").toLowerCase() === "ambassador"
+      ) {
+        payload.referralsEnabled = referralsEnabled;
+      }
 
       // Require admin password when changing the user's role
       if (roleChanged) {
@@ -415,13 +537,21 @@ export default function UserManagement() {
       try {
         await updateUserMutation.mutateAsync({ userId, payload });
         helpers.resetForm();
+        if (referralsChanged) {
+          showSnackbar(
+            referralsEnabled
+              ? "Referral powers enabled"
+              : "Referral powers disabled",
+            "success",
+          );
+        }
       } catch {
         // Error toast handled by mutation
       } finally {
         helpers.setSubmitting(false);
       }
     },
-    [editUser, updateUserMutation],
+    [editUser, showSnackbar, updateUserMutation],
   );
 
   const handleExport = useCallback(() => {
@@ -435,7 +565,7 @@ export default function UserManagement() {
       }
     };
 
-    if (activeTab === 0) {
+    if (activeUserType === "admin") {
       if (filteredAdmins.length === 0) {
         showSnackbar("No admins to export", "warning");
         return;
@@ -472,7 +602,7 @@ export default function UserManagement() {
       return;
     }
 
-    if (activeTab === 1) {
+    if (activeUserType === "seller") {
       if (filteredSellers.length === 0) {
         showSnackbar("No listers to export", "warning");
         return;
@@ -497,6 +627,14 @@ export default function UserManagement() {
             getValue: (row) => (row.verified ? "Yes" : "No"),
           },
           { key: "listings", label: "Listings" },
+          {
+            key: "registeredBy",
+            label: "Registered By",
+            getValue: (row) =>
+              row.registeredBy?.name ||
+              row.registeredBy?.email ||
+              "",
+          },
           { key: "status", label: "Status" },
           {
             key: "dateCreated",
@@ -516,8 +654,41 @@ export default function UserManagement() {
       return;
     }
 
+    if (activeUserType === "ambassador") {
+      if (filteredAmbassadors.length === 0) {
+        showSnackbar("No referral partners to export", "warning");
+        return;
+      }
+      const csv = rowsToCsv(
+        [
+          { key: "title", label: "Title" },
+          { key: "firstName", label: "First Name" },
+          { key: "lastName", label: "Last Name" },
+          { key: "email", label: "Email" },
+          { key: "referralCode", label: "Referral Code" },
+          { key: "referralsCount", label: "Referrals" },
+          { key: "status", label: "Status" },
+          {
+            key: "dateCreated",
+            label: "Joined",
+            getValue: (row) => formatIsoDate(row.dateCreated),
+          },
+        ],
+        filteredAmbassadors,
+      );
+      downloadCsv(`easyplug-referral-partners-${stamp}.csv`, csv);
+      showSnackbar(
+        `Exported ${filteredAmbassadors.length} referral partner(s)`,
+        "success",
+      );
+      return;
+    }
+
     if (filteredUsers.length === 0) {
-      showSnackbar("No users to export", "warning");
+      showSnackbar(
+        isReferralViewer ? "No shoppers to export" : "No users to export",
+        "warning",
+      );
       return;
     }
     const csv = rowsToCsv(
@@ -533,6 +704,14 @@ export default function UserManagement() {
             row.phone && row.phone !== "-" ? row.phone : "",
         },
         { key: "orders", label: "Orders" },
+        {
+          key: "registeredBy",
+          label: "Registered By",
+          getValue: (row) =>
+            row.registeredBy?.name ||
+            row.registeredBy?.email ||
+            "",
+        },
         { key: "status", label: "Status" },
         {
           key: "dateCreated",
@@ -547,13 +726,25 @@ export default function UserManagement() {
       ],
       filteredUsers,
     );
-    downloadCsv(`easyplug-users-${stamp}.csv`, csv);
-    showSnackbar(`Exported ${filteredUsers.length} user(s)`, "success");
+    downloadCsv(
+      isReferralViewer
+        ? `easyplug-shoppers-${stamp}.csv`
+        : `easyplug-users-${stamp}.csv`,
+      csv,
+    );
+    showSnackbar(
+      isReferralViewer
+        ? `Exported ${filteredUsers.length} shopper(s)`
+        : `Exported ${filteredUsers.length} user(s)`,
+      "success",
+    );
   }, [
-    activeTab,
+    activeUserType,
     filteredAdmins,
+    filteredAmbassadors,
     filteredSellers,
     filteredUsers,
+    isReferralViewer,
     showSnackbar,
   ]);
 
@@ -638,7 +829,7 @@ export default function UserManagement() {
       {
         field: "actions",
         headerName: "Actions",
-        width: 160,
+        width: canMutateUsers ? 160 : 80,
         sortable: false,
         renderCell: (params) => (
           <Stack direction="row" spacing={0.5}>
@@ -651,44 +842,57 @@ export default function UserManagement() {
                 <VisibilityIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            <Tooltip title="Edit">
-              <IconButton
-                size="small"
-                color="info"
-                onClick={() => handleEdit(params.row)}
-              >
-                <EditIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <Tooltip
-              title={params.row.status === "active" ? "Deactivate" : "Activate"}
-            >
-              <IconButton
-                size="small"
-                color={params.row.status === "active" ? "error" : "success"}
-                onClick={() => handleToggleStatus(params.row, "Admin")}
-              >
-                {params.row.status === "active" ? (
-                  <BlockIcon fontSize="small" />
-                ) : (
-                  <CheckCircleIcon fontSize="small" />
-                )}
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Delete">
-              <IconButton
-                size="small"
-                color="error"
-                onClick={() => handleOpenDeleteDialog(params.row)}
-              >
-                <DeleteForeverIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            {canMutateUsers ? (
+              <>
+                <Tooltip title="Edit">
+                  <IconButton
+                    size="small"
+                    color="info"
+                    onClick={() => handleEdit(params.row)}
+                  >
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip
+                  title={
+                    params.row.status === "active" ? "Deactivate" : "Activate"
+                  }
+                >
+                  <IconButton
+                    size="small"
+                    color={params.row.status === "active" ? "error" : "success"}
+                    onClick={() => handleToggleStatus(params.row, "Admin")}
+                  >
+                    {params.row.status === "active" ? (
+                      <BlockIcon fontSize="small" />
+                    ) : (
+                      <CheckCircleIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Delete">
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => handleOpenDeleteDialog(params.row)}
+                  >
+                    <DeleteForeverIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </>
+            ) : null}
           </Stack>
         ),
       },
     ],
-    [formatDate, handleEdit, handleToggleStatus, handleView, handleOpenDeleteDialog],
+    [
+      canMutateUsers,
+      formatDate,
+      handleEdit,
+      handleToggleStatus,
+      handleView,
+      handleOpenDeleteDialog,
+    ],
   );
 
   // Seller columns
@@ -752,6 +956,20 @@ export default function UserManagement() {
           />
         ),
       },
+      ...(!isReferralViewer
+        ? [
+            {
+              field: "registeredBy",
+              headerName: "Registered By",
+              flex: 1,
+              minWidth: 160,
+              valueGetter: (_value, row) =>
+                row.registeredBy?.name ||
+                row.registeredBy?.email ||
+                "—",
+            },
+          ]
+        : []),
       {
         field: "status",
         headerName: "Status",
@@ -782,7 +1000,7 @@ export default function UserManagement() {
       {
         field: "actions",
         headerName: "Actions",
-        width: 160,
+        width: canMutateUsers ? 160 : 80,
         sortable: false,
         renderCell: (params) => (
           <Stack direction="row" spacing={0.5}>
@@ -795,44 +1013,58 @@ export default function UserManagement() {
                 <VisibilityIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            <Tooltip title="Edit">
-              <IconButton
-                size="small"
-                color="info"
-                onClick={() => handleEdit(params.row)}
-              >
-                <EditIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <Tooltip
-              title={params.row.status === "active" ? "Suspend" : "Activate"}
-            >
-              <IconButton
-                size="small"
-                color={params.row.status === "active" ? "error" : "success"}
-                onClick={() => handleToggleStatus(params.row, "Seller")}
-              >
-                {params.row.status === "active" ? (
-                  <BlockIcon fontSize="small" />
-                ) : (
-                  <CheckCircleIcon fontSize="small" />
-                )}
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Delete">
-              <IconButton
-                size="small"
-                color="error"
-                onClick={() => handleOpenDeleteDialog(params.row)}
-              >
-                <DeleteForeverIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            {canMutateUsers ? (
+              <>
+                <Tooltip title="Edit">
+                  <IconButton
+                    size="small"
+                    color="info"
+                    onClick={() => handleEdit(params.row)}
+                  >
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip
+                  title={
+                    params.row.status === "active" ? "Suspend" : "Activate"
+                  }
+                >
+                  <IconButton
+                    size="small"
+                    color={params.row.status === "active" ? "error" : "success"}
+                    onClick={() => handleToggleStatus(params.row, "Seller")}
+                  >
+                    {params.row.status === "active" ? (
+                      <BlockIcon fontSize="small" />
+                    ) : (
+                      <CheckCircleIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Delete">
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => handleOpenDeleteDialog(params.row)}
+                  >
+                    <DeleteForeverIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </>
+            ) : null}
           </Stack>
         ),
       },
     ],
-    [formatDate, handleEdit, handleToggleStatus, handleView, handleOpenDeleteDialog],
+    [
+      canMutateUsers,
+      formatDate,
+      handleEdit,
+      handleToggleStatus,
+      handleView,
+      handleOpenDeleteDialog,
+      isReferralViewer,
+    ],
   );
 
   // User columns
@@ -875,6 +1107,20 @@ export default function UserManagement() {
           />
         ),
       },
+      ...(!isReferralViewer
+        ? [
+            {
+              field: "registeredBy",
+              headerName: "Registered By",
+              flex: 1,
+              minWidth: 160,
+              valueGetter: (_value, row) =>
+                row.registeredBy?.name ||
+                row.registeredBy?.email ||
+                "—",
+            },
+          ]
+        : []),
       {
         field: "status",
         headerName: "Status",
@@ -897,7 +1143,7 @@ export default function UserManagement() {
       {
         field: "actions",
         headerName: "Actions",
-        width: 140,
+        width: canMutateUsers ? 140 : 80,
         sortable: false,
         renderCell: (params) => (
           <Stack direction="row" spacing={0.5}>
@@ -910,13 +1156,165 @@ export default function UserManagement() {
                 <VisibilityIcon fontSize="small" />
               </IconButton>
             </Tooltip>
+            {canMutateUsers ? (
+              <>
+                <Tooltip
+                  title={
+                    params.row.status === "active" ? "Deactivate" : "Activate"
+                  }
+                >
+                  <IconButton
+                    size="small"
+                    color={params.row.status === "active" ? "error" : "success"}
+                    onClick={() => handleToggleStatus(params.row, "User")}
+                  >
+                    {params.row.status === "active" ? (
+                      <BlockIcon fontSize="small" />
+                    ) : (
+                      <CheckCircleIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Delete">
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => handleOpenDeleteDialog(params.row)}
+                  >
+                    <DeleteForeverIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </>
+            ) : null}
+          </Stack>
+        ),
+      },
+    ],
+    [
+      canMutateUsers,
+      formatDate,
+      handleToggleStatus,
+      handleView,
+      handleOpenDeleteDialog,
+      isReferralViewer,
+    ],
+  );
+
+  const ambassadorColumns = useMemo(
+    () => [
+      {
+        field: "name",
+        headerName: "Name",
+        flex: 1.25,
+        minWidth: 220,
+        renderCell: (params) => (
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <Avatar
+              sx={{ width: 32, height: 32, bgcolor: "#ff7043", fontSize: 14 }}
+            >
+              {params.row.firstName?.charAt(0)}
+              {params.row.lastName?.charAt(0)}
+            </Avatar>
+            <Typography fontSize={13} fontWeight={500}>
+              {params.row.firstName} {params.row.lastName}
+            </Typography>
+          </Stack>
+        ),
+      },
+      { field: "email", headerName: "Email", flex: 1.2 },
+      {
+        field: "referralCode",
+        headerName: "Referral Code",
+        width: 140,
+        renderCell: (params) => (
+          <Chip
+            size="small"
+            label={params.value || "—"}
+            sx={{
+              bgcolor: alpha("#ff7043", 0.12),
+              color: "#e64a19",
+              fontWeight: 700,
+            }}
+          />
+        ),
+      },
+      {
+        field: "referralsCount",
+        headerName: "Referrals",
+        width: 130,
+        renderCell: (params) => {
+          const count = Number(params.value ?? 0);
+          return (
+            <Chip
+              size="small"
+              clickable={count > 0}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (count > 0) handleViewReferrals(params.row);
+              }}
+              label={count}
+              title={count > 0 ? "View referred people" : undefined}
+              sx={{
+                bgcolor: alpha("#667eea", 0.1),
+                color: "#667eea",
+                fontWeight: 700,
+                cursor: count > 0 ? "pointer" : "default",
+              }}
+            />
+          );
+        },
+      },
+      {
+        field: "status",
+        headerName: "Status",
+        width: 120,
+        renderCell: (params) => (
+          <Chip
+            color={params.value === "active" ? "success" : "default"}
+            label={params.value}
+            size="small"
+            sx={{ fontWeight: 600 }}
+          />
+        ),
+      },
+      {
+        field: "dateCreated",
+        headerName: "Joined",
+        width: 120,
+        renderCell: (params) => formatDate(params.value),
+      },
+      {
+        field: "actions",
+        headerName: "Actions",
+        width: 160,
+        sortable: false,
+        renderCell: (params) => (
+          <Stack direction="row" spacing={0.5}>
+            <Tooltip title="View">
+              <IconButton
+                size="small"
+                color="primary"
+                onClick={() => handleView(params.row, "Referral partner")}
+              >
+                <VisibilityIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Edit">
+              <IconButton
+                size="small"
+                color="info"
+                onClick={() => handleEdit(params.row)}
+              >
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
             <Tooltip
               title={params.row.status === "active" ? "Deactivate" : "Activate"}
             >
               <IconButton
                 size="small"
                 color={params.row.status === "active" ? "error" : "success"}
-                onClick={() => handleToggleStatus(params.row, "User")}
+                onClick={() => handleToggleStatus(params.row, "Referral partner")}
               >
                 {params.row.status === "active" ? (
                   <BlockIcon fontSize="small" />
@@ -938,7 +1336,7 @@ export default function UserManagement() {
         ),
       },
     ],
-    [formatDate, handleToggleStatus, handleView, handleOpenDeleteDialog],
+    [formatDate, handleEdit, handleToggleStatus, handleView, handleOpenDeleteDialog, handleViewReferrals],
   );
 
   const activeAdminsCount = adminRows.filter(
@@ -953,49 +1351,90 @@ export default function UserManagement() {
   const activeUsersCount = buyerRows.filter(
     (user) => String(user.status || "").toLowerCase() === "active",
   ).length;
+  const activeAmbassadorsCount = ambassadorRows.filter(
+    (ambassador) =>
+      String(ambassador.status || "").toLowerCase() === "active",
+  ).length;
 
   const totalBuyerOrders = buyerRows.reduce(
     (sum, user) => sum + Number(user.orders || 0),
     0,
   );
 
-  const userOverviewCards = [
-    {
-      label: "Admin Accounts",
-      value: `${adminRows.length}`,
-      sub: `${activeAdminsCount} active admins`,
-      accent: "primary.main",
-    },
-    {
-      label: "Lister Accounts",
-      value: `${sellerRows.length}`,
-      sub: `${activeSellersCount} active listers`,
-      accent: "success.main",
-    },
-    {
-      label: "Verified Listers",
-      value: `${verifiedSellersCount}`,
-      sub: "Trusted and verified businesses",
-      accent: "warning.main",
-    },
-    {
-      label: "Buyer Accounts",
-      value: `${buyerRows.length}`,
-      sub: `${activeUsersCount} active buyers`,
-      accent: "secondary.main",
-    },
-    {
-      label: "Buyer Orders",
-      value: totalBuyerOrders.toLocaleString("en-ZA"),
-      sub: "Combined order activity",
-      accent: "info.main",
-    },
-  ];
+  const userOverviewCards = isReferralViewer
+    ? [
+        {
+          label: "Referred Listers",
+          value: `${sellerRows.length}`,
+          sub: `${activeSellersCount} active`,
+          accent: "success.main",
+        },
+        {
+          label: "Referred Shoppers",
+          value: `${buyerRows.length}`,
+          sub: `${activeUsersCount} active`,
+          accent: "secondary.main",
+        },
+        {
+          label: "Buyer Orders",
+          value: totalBuyerOrders.toLocaleString("en-ZA"),
+          sub: "From referred users",
+          accent: "info.main",
+        },
+      ]
+    : [
+        {
+          label: "Admin Accounts",
+          value: `${adminRows.length}`,
+          sub: `${activeAdminsCount} active admins`,
+          accent: "primary.main",
+        },
+        {
+          label: "Lister Accounts",
+          value: `${sellerRows.length}`,
+          sub: `${activeSellersCount} active listers`,
+          accent: "success.main",
+        },
+        {
+          label: "Verified Listers",
+          value: `${verifiedSellersCount}`,
+          sub: "Trusted and verified businesses",
+          accent: "warning.main",
+        },
+        {
+          label: "Buyer Accounts",
+          value: `${buyerRows.length}`,
+          sub: `${activeUsersCount} active buyers`,
+          accent: "secondary.main",
+        },
+        {
+          label: "Referral Partners",
+          value: `${ambassadorRows.length}`,
+          sub: `${activeAmbassadorsCount} active`,
+          accent: "error.main",
+        },
+        {
+          label: "Buyer Orders",
+          value: totalBuyerOrders.toLocaleString("en-ZA"),
+          sub: "Combined order activity",
+          accent: "info.main",
+        },
+      ];
 
   const loadErrorMessage =
     error?.response?.data?.message ||
     error?.message ||
     "Failed to load user management data";
+
+  // Sellers without referral powers cannot use this page
+  if (
+    (isSellerRole(role) || isAmbassadorRole(role)) &&
+    !canMutateUsers &&
+    !hasReferralPowers(profileData) &&
+    !isPending
+  ) {
+    return <Navigate to="/inventory" replace />;
+  }
 
   return (
     <Box sx={{ py: { xs: 1.25, sm: 2, md: 3 }, px: { xs: 1.25, sm: 2, md: 3 } }}>
@@ -1008,13 +1447,91 @@ export default function UserManagement() {
       >
         <Box>
           <Typography variant="h5" fontWeight={700} sx={{ fontSize: { xs: 22, sm: 28 } }}>
-            User Management
+            {isReferralViewer ? "Referrals" : "User Management"}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Manage admins, listers, and users
+            {isReferralViewer
+              ? "View shoppers and listers you referred"
+              : "Manage admins, referral partners, listers, and users"}
           </Typography>
         </Box>
       </Stack>
+
+      {isReferralViewer && ambassadorLinks ? (
+        <Paper
+          variant="outlined"
+          sx={{
+            mb: 2.5,
+            p: 2,
+            borderRadius: 2,
+            bgcolor: alpha("#667eea", 0.04),
+          }}
+        >
+          <Typography fontWeight={700} sx={{ mb: 1 }}>
+            Your referral links
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Code:{" "}
+            <Box component="span" sx={{ fontWeight: 700, color: "text.primary" }}>
+              {ambassadorMe?.referralCode || ambassadorLinks.referralCode || "—"}
+            </Box>
+          </Typography>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1}
+            flexWrap="wrap"
+          >
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<ContentCopyIcon />}
+              onClick={() =>
+                copyText(
+                  ambassadorMe?.referralCode || ambassadorLinks.referralCode,
+                  "Referral code",
+                )
+              }
+              sx={{ borderRadius: 2 }}
+            >
+              Copy code
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<ContentCopyIcon />}
+              onClick={() =>
+                copyText(
+                  ambassadorLinks.shopper || ambassadorLinks.shopperLink,
+                  "Shopper referral link",
+                )
+              }
+              sx={{ borderRadius: 2 }}
+            >
+              Copy shopper link
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<ContentCopyIcon />}
+              onClick={() =>
+                copyText(
+                  ambassadorLinks.lister || ambassadorLinks.listerLink,
+                  "Lister referral link",
+                )
+              }
+              sx={{ borderRadius: 2 }}
+            >
+              Copy lister link
+            </Button>
+          </Stack>
+          <ReferralQrCodes
+            shopperUrl={
+              ambassadorLinks.shopper || ambassadorLinks.shopperLink
+            }
+            listerUrl={ambassadorLinks.lister || ambassadorLinks.listerLink}
+          />
+        </Paper>
+      ) : null}
 
       {isPending && (
         <Box sx={{ display: "flex", justifyContent: "center", mb: 2.5 }}>
@@ -1030,7 +1547,7 @@ export default function UserManagement() {
 
       <Box sx={{ mb: 2.5 }}>
         <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.2 }}>
-          User Overview
+          {isReferralViewer ? "Referrals overview" : "User Overview"}
         </Typography>
         <Grid container spacing={1.5}>
           {userOverviewCards.map((card) => (
@@ -1088,11 +1605,13 @@ export default function UserManagement() {
             "& .MuiTabs-indicator": { bgcolor: "#667eea" },
           }}
         >
-          <Tab
-            icon={<AdminPanelSettingsIcon sx={{ fontSize: 20 }} />}
-            iconPosition="start"
-            label={`Admins (${filteredAdmins.length})`}
-          />
+          {tabUserTypes.includes("admin") ? (
+            <Tab
+              icon={<AdminPanelSettingsIcon sx={{ fontSize: 20 }} />}
+              iconPosition="start"
+              label={`Admins (${filteredAdmins.length})`}
+            />
+          ) : null}
           <Tab
             icon={<StorefrontIcon sx={{ fontSize: 20 }} />}
             iconPosition="start"
@@ -1101,12 +1620,19 @@ export default function UserManagement() {
           <Tab
             icon={<PeopleIcon sx={{ fontSize: 20 }} />}
             iconPosition="start"
-            label={`Users (${filteredUsers.length})`}
+            label={`${isReferralViewer ? "Shoppers" : "Users"} (${filteredUsers.length})`}
           />
+          {tabUserTypes.includes("ambassador") ? (
+            <Tab
+              icon={<CampaignIcon sx={{ fontSize: 20 }} />}
+              iconPosition="start"
+              label={`Referral partners (${filteredAmbassadors.length})`}
+            />
+          ) : null}
         </Tabs>
 
         {/* Admins Tab */}
-        {activeTab === 0 && (
+        {activeUserType === "admin" && (
           <Box
             sx={{
               p: { xs: 1.5, sm: 3 },
@@ -1147,21 +1673,23 @@ export default function UserManagement() {
                 >
                   Export
                 </Button>
-                <Button
-                  variant="contained"
-                  startIcon={<PersonAddIcon />}
-                  onClick={handleOpenAddDialog}
-                  sx={{
-                    backgroundImage: gradientPrimary,
-                    color: "#fff",
-                    minWidth: { xs: "100%", sm: 160 },
-                    whiteSpace: "nowrap",
-                    borderRadius: 2,
-                    px: 3,
-                  }}
-                >
-                  Add Admin
-                </Button>
+                {canMutateUsers ? (
+                  <Button
+                    variant="contained"
+                    startIcon={<PersonAddIcon />}
+                    onClick={handleOpenAddDialog}
+                    sx={{
+                      backgroundImage: gradientPrimary,
+                      color: "#fff",
+                      minWidth: { xs: "100%", sm: 160 },
+                      whiteSpace: "nowrap",
+                      borderRadius: 2,
+                      px: 3,
+                    }}
+                  >
+                    Add Admin
+                  </Button>
+                ) : null}
               </Stack>
             </Stack>
             {isMobile ? (
@@ -1296,7 +1824,7 @@ export default function UserManagement() {
         )}
 
         {/* Sellers Tab */}
-        {activeTab === 1 && (
+        {activeUserType === "seller" && (
           <Box
             sx={{
               p: { xs: 1.5, sm: 3 },
@@ -1337,21 +1865,23 @@ export default function UserManagement() {
                 >
                   Export
                 </Button>
-                <Button
-                  variant="contained"
-                  startIcon={<PersonAddIcon />}
-                  onClick={handleOpenAddDialog}
-                  sx={{
-                    backgroundImage: gradientPrimary,
-                    color: "#fff",
-                    minWidth: { xs: "100%", sm: 160 },
-                    whiteSpace: "nowrap",
-                    borderRadius: 2,
-                    px: 3,
-                  }}
-                >
-                  Add Lister
-                </Button>
+                {canMutateUsers ? (
+                  <Button
+                    variant="contained"
+                    startIcon={<PersonAddIcon />}
+                    onClick={handleOpenAddDialog}
+                    sx={{
+                      backgroundImage: gradientPrimary,
+                      color: "#fff",
+                      minWidth: { xs: "100%", sm: 160 },
+                      whiteSpace: "nowrap",
+                      borderRadius: 2,
+                      px: 3,
+                    }}
+                  >
+                    Add Lister
+                  </Button>
+                ) : null}
               </Stack>
             </Stack>
             {isMobile ? (
@@ -1453,33 +1983,39 @@ export default function UserManagement() {
                         >
                           <VisibilityIcon fontSize="small" />
                         </IconButton>
-                        <IconButton
-                          size="small"
-                          color="info"
-                          onClick={() => handleEdit(seller)}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color={
-                            seller.status === "active" ? "error" : "success"
-                          }
-                          onClick={() => handleToggleStatus(seller, "Seller")}
-                        >
-                          {seller.status === "active" ? (
-                            <BlockIcon fontSize="small" />
-                          ) : (
-                            <CheckCircleIcon fontSize="small" />
-                          )}
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => handleOpenDeleteDialog(seller)}
-                        >
-                          <DeleteForeverIcon fontSize="small" />
-                        </IconButton>
+                        {canMutateUsers ? (
+                          <>
+                            <IconButton
+                              size="small"
+                              color="info"
+                              onClick={() => handleEdit(seller)}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              color={
+                                seller.status === "active" ? "error" : "success"
+                              }
+                              onClick={() =>
+                                handleToggleStatus(seller, "Seller")
+                              }
+                            >
+                              {seller.status === "active" ? (
+                                <BlockIcon fontSize="small" />
+                              ) : (
+                                <CheckCircleIcon fontSize="small" />
+                              )}
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => handleOpenDeleteDialog(seller)}
+                            >
+                              <DeleteForeverIcon fontSize="small" />
+                            </IconButton>
+                          </>
+                        ) : null}
                       </Stack>
                     </Stack>
                   </Paper>
@@ -1510,7 +2046,7 @@ export default function UserManagement() {
         )}
 
         {/* Users Tab */}
-        {activeTab === 2 && (
+        {activeUserType === "user" && (
           <Box
             sx={{
               p: { xs: 1.5, sm: 3 },
@@ -1551,21 +2087,23 @@ export default function UserManagement() {
                 >
                   Export
                 </Button>
-                <Button
-                  variant="contained"
-                  startIcon={<PersonAddIcon />}
-                  onClick={handleOpenAddDialog}
-                  sx={{
-                    backgroundImage: gradientPrimary,
-                    color: "#fff",
-                    minWidth: { xs: "100%", sm: 160 },
-                    whiteSpace: "nowrap",
-                    borderRadius: 2,
-                    px: 3,
-                  }}
-                >
-                  Add User
-                </Button>
+                {canMutateUsers ? (
+                  <Button
+                    variant="contained"
+                    startIcon={<PersonAddIcon />}
+                    onClick={handleOpenAddDialog}
+                    sx={{
+                      backgroundImage: gradientPrimary,
+                      color: "#fff",
+                      minWidth: { xs: "100%", sm: 160 },
+                      whiteSpace: "nowrap",
+                      borderRadius: 2,
+                      px: 3,
+                    }}
+                  >
+                    Add User
+                  </Button>
+                ) : null}
               </Stack>
             </Stack>
             {isMobile ? (
@@ -1647,24 +2185,30 @@ export default function UserManagement() {
                         >
                           <VisibilityIcon fontSize="small" />
                         </IconButton>
-                        <IconButton
-                          size="small"
-                          color={user.status === "active" ? "error" : "success"}
-                          onClick={() => handleToggleStatus(user, "User")}
-                        >
-                          {user.status === "active" ? (
-                            <BlockIcon fontSize="small" />
-                          ) : (
-                            <CheckCircleIcon fontSize="small" />
-                          )}
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => handleOpenDeleteDialog(user)}
-                        >
-                          <DeleteForeverIcon fontSize="small" />
-                        </IconButton>
+                        {canMutateUsers ? (
+                          <>
+                            <IconButton
+                              size="small"
+                              color={
+                                user.status === "active" ? "error" : "success"
+                              }
+                              onClick={() => handleToggleStatus(user, "User")}
+                            >
+                              {user.status === "active" ? (
+                                <BlockIcon fontSize="small" />
+                              ) : (
+                                <CheckCircleIcon fontSize="small" />
+                              )}
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => handleOpenDeleteDialog(user)}
+                            >
+                              <DeleteForeverIcon fontSize="small" />
+                            </IconButton>
+                          </>
+                        ) : null}
                       </Stack>
                     </Stack>
                   </Paper>
@@ -1672,7 +2216,9 @@ export default function UserManagement() {
                 {filteredUsers.length === 0 && (
                   <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
                     <Typography color="text.secondary" fontSize={13}>
-                      No users found.
+                      {isReferralViewer
+                        ? "No shoppers found."
+                        : "No users found."}
                     </Typography>
                   </Paper>
                 )}
@@ -1693,9 +2239,212 @@ export default function UserManagement() {
             )}
           </Box>
         )}
-      </Box>
 
-      {/* Deactivate/Activate Dialog */}
+        {/* Ambassadors Tab */}
+        {activeUserType === "ambassador" && (
+          <Box
+            sx={{
+              p: { xs: 1.5, sm: 3 },
+              bgcolor: (theme) => alpha(theme.palette.primary.main, 0.015),
+            }}
+          >
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={2}
+              sx={{ mb: 3 }}
+              alignItems={{ xs: "stretch", sm: "center" }}
+            >
+              <TextField
+                value={ambassadorQuery}
+                onChange={(e) => setAmbassadorQuery(e.target.value)}
+                placeholder="Search partner name, email, or code..."
+                size="small"
+                fullWidth
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon sx={{ color: "text.secondary" }} />
+                    </InputAdornment>
+                  ),
+                  sx: { borderRadius: 2, bgcolor: alpha("#ff7043", 0.04) },
+                }}
+              />
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                spacing={1}
+                sx={{ width: { xs: "100%", sm: "auto" } }}
+              >
+                <Button
+                  variant="outlined"
+                  startIcon={<DownloadIcon />}
+                  onClick={handleExport}
+                  sx={{ borderRadius: 2, width: { xs: "100%", sm: "auto" } }}
+                >
+                  Export
+                </Button>
+              </Stack>
+            </Stack>
+            {isMobile ? (
+              <Stack spacing={1.25}>
+                {filteredAmbassadors.map((ambassador) => (
+                  <Paper
+                    key={ambassador.id || ambassador.userId}
+                    variant="outlined"
+                    sx={{ p: 1.5, borderRadius: 2 }}
+                  >
+                    <Stack spacing={1.25}>
+                      <Stack direction="row" spacing={1.25} alignItems="center">
+                        <Avatar
+                          sx={{
+                            width: 34,
+                            height: 34,
+                            bgcolor: "#ff7043",
+                            fontSize: 13,
+                          }}
+                        >
+                          {ambassador.firstName?.charAt(0)}
+                          {ambassador.lastName?.charAt(0)}
+                        </Avatar>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography fontWeight={600} fontSize={14} noWrap>
+                            {ambassador.firstName} {ambassador.lastName}
+                          </Typography>
+                          <Typography
+                            fontSize={12}
+                            color="text.secondary"
+                            noWrap
+                          >
+                            {ambassador.email}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                      <Stack
+                        direction="row"
+                        spacing={0.75}
+                        sx={{ flexWrap: "wrap", rowGap: 0.75 }}
+                      >
+                        <Chip
+                          size="small"
+                          label={ambassador.referralCode || "—"}
+                          sx={{
+                            bgcolor: alpha("#ff7043", 0.12),
+                            color: "#e64a19",
+                            fontWeight: 700,
+                          }}
+                        />
+                        <Chip
+                          size="small"
+                          clickable={(ambassador.referralsCount ?? 0) > 0}
+                          onClick={() => {
+                            if ((ambassador.referralsCount ?? 0) > 0) {
+                              handleViewReferrals(ambassador);
+                            }
+                          }}
+                          label={`${ambassador.referralsCount ?? 0} referrals`}
+                          sx={{
+                            bgcolor: alpha("#667eea", 0.1),
+                            color: "#667eea",
+                            fontWeight: 700,
+                            cursor:
+                              (ambassador.referralsCount ?? 0) > 0
+                                ? "pointer"
+                                : "default",
+                          }}
+                        />
+                        <Chip
+                          size="small"
+                          color={
+                            ambassador.status === "active"
+                              ? "success"
+                              : "default"
+                          }
+                          label={ambassador.status}
+                          sx={{ fontWeight: 600 }}
+                        />
+                      </Stack>
+                      <Typography fontSize={12} color="text.secondary">
+                        Joined: {formatDate(ambassador.dateCreated)}
+                      </Typography>
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        justifyContent="flex-end"
+                      >
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          onClick={() =>
+                            handleView(ambassador, "Referral partner")
+                          }
+                        >
+                          <VisibilityIcon fontSize="small" />
+                        </IconButton>
+                        {canMutateUsers ? (
+                          <>
+                            <IconButton
+                              size="small"
+                              color="info"
+                              onClick={() => handleEdit(ambassador)}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              color={
+                                ambassador.status === "active"
+                                  ? "error"
+                                  : "success"
+                              }
+                              onClick={() =>
+                                handleToggleStatus(ambassador, "Referral partner")
+                              }
+                            >
+                              {ambassador.status === "active" ? (
+                                <BlockIcon fontSize="small" />
+                              ) : (
+                                <CheckCircleIcon fontSize="small" />
+                              )}
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() =>
+                                handleOpenDeleteDialog(ambassador)
+                              }
+                            >
+                              <DeleteForeverIcon fontSize="small" />
+                            </IconButton>
+                          </>
+                        ) : null}
+                      </Stack>
+                    </Stack>
+                  </Paper>
+                ))}
+                {filteredAmbassadors.length === 0 && (
+                  <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                    <Typography color="text.secondary" fontSize={13}>
+                      No referral partners found.
+                    </Typography>
+                  </Paper>
+                )}
+              </Stack>
+            ) : (
+              <MetricsDataGrid
+                rows={filteredAmbassadors}
+                columns={ambassadorColumns}
+                autoHeight
+                pageSize={10}
+                sx={{
+                  "& .MuiDataGrid-cell": {
+                    display: "flex",
+                    alignItems: "center",
+                  },
+                }}
+              />
+            )}
+          </Box>
+        )}
+      </Box>
       <Dialog
         open={deactivateDialogOpen}
         onClose={() => setDeactivateDialogOpen(false)}
@@ -1801,7 +2550,13 @@ export default function UserManagement() {
             lastName: editUser?.lastName || "",
             email: editUser?.email || "",
             phone: editUser?.phone && editUser.phone !== "-" ? editUser.phone : "",
-            userType: editUser?.userType || editUser?.entityType?.toLowerCase() || "seller",
+            userType:
+              String(editUser?.userType || "").toLowerCase() === "ambassador"
+                ? "seller"
+                : editUser?.userType ||
+                  editUser?.entityType?.toLowerCase() ||
+                  "seller",
+            referralsEnabled: Boolean(editUser?.referralCode),
           }}
           validationSchema={createUserValidationSchema}
           validateOnBlur
@@ -1809,7 +2564,7 @@ export default function UserManagement() {
           onSubmit={handleUpdateUser}
           enableReinitialize
         >
-          {({ isSubmitting, isValid, submitCount }) => (
+          {({ isSubmitting, isValid, submitCount, values, setFieldValue }) => (
             <Form noValidate>
               <DialogContent>
                 <Stack spacing={2}>
@@ -1860,6 +2615,41 @@ export default function UserManagement() {
                       { value: "user", label: "User" },
                     ]}
                   />
+                  {String(values.userType || "").toLowerCase() === "seller" ? (
+                    <Box>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={Boolean(values.referralsEnabled)}
+                            onChange={(event) =>
+                              setFieldValue(
+                                "referralsEnabled",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                        }
+                        label="Referrals enabled"
+                      />
+                      {values.referralsEnabled && editUser?.referralCode ? (
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ mt: 0.5 }}
+                        >
+                          Code: {editUser.referralCode}
+                        </Typography>
+                      ) : null}
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        display="block"
+                      >
+                        Lets this lister share referral links and view people
+                        they referred.
+                      </Typography>
+                    </Box>
+                  ) : null}
                 </Stack>
                 {submitCount > 0 && !isValid ? (
                   <Typography
@@ -1913,7 +2703,7 @@ export default function UserManagement() {
       <AdminPasswordDialog
         open={editAdminPasswordOpen}
         title="Change User Role"
-        description={`Enter your admin password to change this user's role to "${pendingEditPayload?.payload?.userType}". This affects their access across the platform.`}
+        description={`Enter your admin password to change this user's role to "${ADD_USER_LABELS[pendingEditPayload?.payload?.userType] || pendingEditPayload?.payload?.userType}". This affects their access across the platform.`}
         confirmText="Confirm Role Change"
         loading={updateUserMutation.isPending}
         error={editAdminPasswordError}
@@ -1989,6 +2779,7 @@ export default function UserManagement() {
             lastName: "",
             email: "",
             phone: "",
+            referralsEnabled: false,
           }}
           validationSchema={createUserValidationSchema}
           validateOnBlur
@@ -1996,7 +2787,7 @@ export default function UserManagement() {
           onSubmit={handleCreateUser}
           enableReinitialize
         >
-          {({ isSubmitting, isValid, submitCount }) => (
+          {({ isSubmitting, isValid, submitCount, values, setFieldValue }) => (
             <Form noValidate>
               <DialogContent>
                 <DialogContentText sx={{ mb: 2 }}>
@@ -2042,6 +2833,22 @@ export default function UserManagement() {
                     autoComplete="tel"
                     placeholder="0821234567"
                   />
+                  {activeUserType === "seller" ? (
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={Boolean(values.referralsEnabled)}
+                          onChange={(event) =>
+                            setFieldValue(
+                              "referralsEnabled",
+                              event.target.checked,
+                            )
+                          }
+                        />
+                      }
+                      label="Enable referral powers"
+                    />
+                  ) : null}
                 </Stack>
                 {submitCount > 0 && !isValid ? (
                   <Typography
@@ -2109,7 +2916,9 @@ export default function UserManagement() {
                     ? "#9c27b0"
                     : viewUser?.entityType === "User"
                       ? "#00bcd4"
-                      : "#667eea",
+                      : viewUser?.entityType === "Referral partner"
+                        ? "#ff7043"
+                        : "#667eea",
                 fontSize: 14,
               }}
             >
@@ -2182,6 +2991,151 @@ export default function UserManagement() {
                 value={String(viewUser?.orders ?? 0)}
               />
             )}
+            {viewUser?.entityType === "Referral partner" && (
+              <>
+                <Divider sx={{ my: 0.5 }} />
+                <DetailRow
+                  label="Referral code"
+                  value={viewUser?.referralCode || "—"}
+                />
+                <DetailRow
+                  label="Referrals"
+                  value={
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography fontSize={14}>
+                        {String(viewUser?.referralsCount ?? 0)}
+                      </Typography>
+                      {(viewUser?.referralsCount ?? 0) > 0 ? (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => {
+                            setViewDialogOpen(false);
+                            handleViewReferrals(viewUser);
+                          }}
+                          sx={{ borderRadius: 2, textTransform: "none" }}
+                        >
+                          View people
+                        </Button>
+                      ) : null}
+                    </Stack>
+                  }
+                />
+                {(() => {
+                  const links =
+                    viewUser?.ambassadorLinks ||
+                    viewUser?.referralLinks ||
+                    buildReferralShareLinks(viewUser?.referralCode);
+                  if (!links) return null;
+                  return (
+                    <Box sx={{ width: "100%" }}>
+                      <Stack
+                        direction={{ xs: "column", sm: "row" }}
+                        spacing={1}
+                        sx={{ mb: 1 }}
+                        flexWrap="wrap"
+                      >
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<ContentCopyIcon />}
+                          onClick={() =>
+                            copyText(
+                              links.shopper || links.shopperLink,
+                              "Shopper referral link",
+                            )
+                          }
+                          sx={{ borderRadius: 2 }}
+                        >
+                          Copy shopper link
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<ContentCopyIcon />}
+                          onClick={() =>
+                            copyText(
+                              links.lister || links.listerLink,
+                              "Lister referral link",
+                            )
+                          }
+                          sx={{ borderRadius: 2 }}
+                        >
+                          Copy lister link
+                        </Button>
+                      </Stack>
+                      <ReferralQrCodes
+                        shopperUrl={links.shopper || links.shopperLink}
+                        listerUrl={links.lister || links.listerLink}
+                        size={112}
+                      />
+                    </Box>
+                  );
+                })()}
+              </>
+            )}
+            {viewUser?.entityType === "Seller" && viewUser?.referralCode ? (
+              <>
+                <DetailRow
+                  label="Referral code"
+                  value={viewUser.referralCode}
+                />
+                {(() => {
+                  const links = buildReferralShareLinks(viewUser.referralCode);
+                  if (!links) return null;
+                  return (
+                    <Box sx={{ width: "100%" }}>
+                      <Stack
+                        direction={{ xs: "column", sm: "row" }}
+                        spacing={1}
+                        sx={{ mb: 1 }}
+                        flexWrap="wrap"
+                      >
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<ContentCopyIcon />}
+                          onClick={() =>
+                            copyText(links.shopper, "Shopper referral link")
+                          }
+                          sx={{ borderRadius: 2 }}
+                        >
+                          Copy shopper link
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<ContentCopyIcon />}
+                          onClick={() =>
+                            copyText(links.lister, "Lister referral link")
+                          }
+                          sx={{ borderRadius: 2 }}
+                        >
+                          Copy lister link
+                        </Button>
+                      </Stack>
+                      <ReferralQrCodes
+                        shopperUrl={links.shopper}
+                        listerUrl={links.lister}
+                        size={112}
+                      />
+                    </Box>
+                  );
+                })()}
+              </>
+            ) : null}
+            {!isReferralViewer &&
+            (viewUser?.entityType === "Seller" ||
+              viewUser?.entityType === "User") ? (
+              <DetailRow
+                label="Registered by"
+                value={
+                  viewUser?.registeredBy?.name ||
+                  viewUser?.registeredBy?.email ||
+                  "—"
+                }
+              />
+            ) : null}
             <Divider sx={{ my: 0.5 }} />
             <DetailRow
               label="Joined"
@@ -2196,6 +3150,139 @@ export default function UserManagement() {
         <DialogActions sx={{ p: 2, pt: 1 }}>
           <Button
             onClick={() => setViewDialogOpen(false)}
+            variant="contained"
+            sx={{
+              borderRadius: 2,
+              backgroundImage: gradientPrimary,
+              color: "#fff",
+            }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Referred people dialog */}
+      <Dialog
+        open={Boolean(referralsAmbassador)}
+        onClose={() => setReferralsAmbassador(null)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}
+      >
+        <DialogTitle>
+          <Stack spacing={0.5}>
+            <Typography fontWeight={700}>
+              Referred by{" "}
+              {[
+                referralsAmbassador?.firstName,
+                referralsAmbassador?.lastName,
+              ]
+                .filter(Boolean)
+                .join(" ") || "ambassador"}
+            </Typography>
+            <Typography fontSize={13} color="text.secondary">
+              {referralsAmbassador?.referralCode
+                ? `Code ${referralsAmbassador.referralCode} · `
+                : ""}
+              {referralsList.length}{" "}
+              {referralsList.length === 1 ? "person" : "people"}
+            </Typography>
+          </Stack>
+        </DialogTitle>
+        <DialogContent dividers>
+          {referralsList.length === 0 ? (
+            <Typography color="text.secondary" fontSize={14}>
+              No referred users yet.
+            </Typography>
+          ) : (
+            <Stack spacing={1.25}>
+              {referralsList.map((person) => (
+                <Paper
+                  key={`${person.referralKind}-${person.id || person.userId}`}
+                  variant="outlined"
+                  sx={{ p: 1.5, borderRadius: 2 }}
+                >
+                  <Stack
+                    direction="row"
+                    spacing={1.25}
+                    alignItems="center"
+                    justifyContent="space-between"
+                  >
+                    <Stack
+                      direction="row"
+                      spacing={1.25}
+                      alignItems="center"
+                      sx={{ minWidth: 0, flex: 1 }}
+                    >
+                      <Avatar
+                        sx={{
+                          width: 34,
+                          height: 34,
+                          bgcolor:
+                            person.referralKind === "Lister"
+                              ? "#9c27b0"
+                              : "#00bcd4",
+                          fontSize: 13,
+                        }}
+                      >
+                        {person.firstName?.charAt(0)}
+                        {person.lastName?.charAt(0)}
+                      </Avatar>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography fontWeight={600} fontSize={14} noWrap>
+                          {person.businessName ||
+                            `${person.firstName || ""} ${person.lastName || ""}`.trim() ||
+                            "User"}
+                        </Typography>
+                        <Typography
+                          fontSize={12}
+                          color="text.secondary"
+                          noWrap
+                        >
+                          {person.email}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                    <Stack direction="row" spacing={0.75} alignItems="center">
+                      <Chip
+                        size="small"
+                        label={person.referralKind}
+                        sx={{ fontWeight: 600 }}
+                      />
+                      <Chip
+                        size="small"
+                        color={
+                          person.status === "active" ? "success" : "default"
+                        }
+                        label={person.status || "—"}
+                        sx={{ fontWeight: 600 }}
+                      />
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={() => {
+                          setReferralsAmbassador(null);
+                          handleView(
+                            person,
+                            person.referralKind === "Lister"
+                              ? "Seller"
+                              : "User",
+                          );
+                        }}
+                      >
+                        <VisibilityIcon fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  </Stack>
+                </Paper>
+              ))}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            onClick={() => setReferralsAmbassador(null)}
             variant="contained"
             sx={{
               borderRadius: 2,

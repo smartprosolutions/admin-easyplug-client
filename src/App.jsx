@@ -220,7 +220,7 @@ const App = () => {
               <Route
                 path="userManagement"
                 element={
-                  <RoleRoute allow={["admin"]} fallbackTo="/inventory">
+                  <RoleRoute allow={["admin", "seller"]} fallbackTo="/inventory">
                     <UserManagement />
                   </RoleRoute>
                 }

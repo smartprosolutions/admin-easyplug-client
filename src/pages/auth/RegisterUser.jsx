@@ -37,6 +37,10 @@ import {
 } from "../../services/authService";
 import { createPasswordSchema } from "../../utils/passwordValidation";
 import {
+  captureReferralCodeFromUrl,
+  getStoredReferralCode,
+} from "../../utils/referral";
+import {
   createNameFieldSchema,
   sanitizeNameInput,
 } from "../../utils/nameValidation";
@@ -187,6 +191,7 @@ function RegistrationDraftSaver({
       codeSentTo,
       verifiedEmail,
       verificationToken,
+      referralCode: getStoredReferralCode() || undefined,
     });
   }, [values, step, codeSentTo, verifiedEmail, verificationToken]);
 
@@ -976,6 +981,10 @@ export default function RegisterUser() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const draft = React.useMemo(() => loadRegistrationDraft(), []);
+  const [referralCode] = React.useState(() => {
+    const fromUrl = captureReferralCodeFromUrl(window.location.search);
+    return fromUrl || getStoredReferralCode() || draft?.referralCode || "";
+  });
 
   const [uploadProgress, setUploadProgress] = React.useState(0);
   const [activeStep, setActiveStepState] = React.useState(() => {
@@ -1025,6 +1034,9 @@ export default function RegisterUser() {
           (params) => {
             const nextParams = new URLSearchParams(params);
             nextParams.set("step", REGISTRATION_STEP_KEYS[clamped]);
+            if (referralCode) {
+              nextParams.set("ref", referralCode);
+            }
             return nextParams;
           },
           { replace: true },
@@ -1032,7 +1044,7 @@ export default function RegisterUser() {
         return clamped;
       });
     },
-    [setSearchParams],
+    [referralCode, setSearchParams],
   );
 
   // Keep URL in sync on first load
@@ -1043,6 +1055,9 @@ export default function RegisterUser() {
         (params) => {
           const nextParams = new URLSearchParams(params);
           nextParams.set("step", REGISTRATION_STEP_KEYS[activeStep]);
+          if (referralCode) {
+            nextParams.set("ref", referralCode);
+          }
           return nextParams;
         },
         { replace: true },
@@ -1577,6 +1592,13 @@ export default function RegisterUser() {
                 );
                 if (linkingExisting) {
                   formData.set("existingEmail", values.existingEmail || "");
+                }
+                const code =
+                  referralCode ||
+                  getStoredReferralCode() ||
+                  captureReferralCodeFromUrl(window.location.search);
+                if (code) {
+                  formData.set("referralCode", code);
                 }
                 try {
                   await mutation.mutateAsync(formData);

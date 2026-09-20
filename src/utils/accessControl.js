@@ -43,18 +43,62 @@ export const resolveUserRole = (profileData) =>
 
 export const isSellerRole = (roleValue) => normalizeRole(roleValue) === "seller";
 
+/** @deprecated Legacy role; referring powers now live on sellers with referralCode */
+export const isAmbassadorRole = (roleValue) =>
+  normalizeRole(roleValue) === "ambassador";
+
 export const isAdminRole = (roleValue) => {
   const role = normalizeRole(roleValue);
   return role === "admin" || role === "superadmin";
 };
 
-/** Default landing page after login/switch. Sellers go to listings while dashboard is unfinished. */
-export const getDefaultHomePath = (roleValue) =>
-  isSellerRole(roleValue) ? "/inventory" : "/dashboard";
+const pickUserRecord = (profileData) =>
+  pickFirst(
+    profileData?.user,
+    profileData?.data?.user,
+    profileData?.data?.seller,
+    profileData?.seller,
+    profileData?.data,
+    profileData,
+  );
+
+/** Lister (or legacy ambassador) with an active referral code */
+export const hasReferralPowers = (profileData) => {
+  const user = pickUserRecord(profileData) || {};
+  const code = pickFirst(
+    user.referralCode,
+    profileData?.user?.referralCode,
+    profileData?.data?.user?.referralCode,
+    profileData?.referralCode,
+  );
+  if (!code) {
+    const links = pickFirst(
+      user.ambassadorLinks,
+      user.referralLinks,
+      profileData?.user?.ambassadorLinks,
+      profileData?.user?.referralLinks,
+      profileData?.ambassadorLinks,
+      profileData?.referralLinks,
+    );
+    if (!links?.referralCode && !links?.shopperLink && !links?.shopper) {
+      return false;
+    }
+  }
+  const role = resolveUserRole(profileData);
+  return isSellerRole(role) || isAmbassadorRole(role);
+};
+
+/** Default landing page after login/switch. */
+export const getDefaultHomePath = (roleValue) => {
+  if (isSellerRole(roleValue) || isAmbassadorRole(roleValue)) return "/inventory";
+  return "/dashboard";
+};
 
 /** Roles allowed to use this admin/seller dashboard app. */
 export const canAccessAdminApp = (roleValue) =>
-  isAdminRole(roleValue) || isSellerRole(roleValue);
+  isAdminRole(roleValue) ||
+  isSellerRole(roleValue) ||
+  isAmbassadorRole(roleValue);
 
 export const resolveOwnerUserId = (record) =>
   pickFirst(

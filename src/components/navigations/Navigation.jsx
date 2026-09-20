@@ -42,7 +42,9 @@ import { useState } from "react";
 import { useUnreadCounts } from "../../context/UnreadCountsContext";
 import { useUserProfileQuery } from "../../services/queries";
 import {
+  isAmbassadorRole,
   isSellerRole,
+  hasReferralPowers,
   resolveUserRole,
 } from "../../utils/accessControl";
 import AppTour from "../tour/AppTour";
@@ -218,6 +220,12 @@ const sellerNav = [
   },
 ];
 
+const sellerReferralNavItem = {
+  title: "Referrals",
+  icon: GroupRoundedIcon,
+  url: "/userManagement",
+};
+
 export default function Navigation({ currentTheme, setThemeMode }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -227,7 +235,9 @@ export default function Navigation({ currentTheme, setThemeMode }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const { messagesUnreadCount, notificationsUnreadCount } = useUnreadCounts();
   const { data: profileData } = useUserProfileQuery({ retry: false });
-  const isSeller = isSellerRole(resolveUserRole(profileData));
+  const role = resolveUserRole(profileData);
+  const isSeller = isSellerRole(role) || isAmbassadorRole(role);
+  const canRefer = hasReferralPowers(profileData);
   const [forceTour, setForceTour] = useState(false);
   const [tourActive, setTourActive] = useState(false);
 
@@ -259,16 +269,28 @@ export default function Navigation({ currentTheme, setThemeMode }) {
     navigate("/login", { replace: true });
   };
 
-  const menuToRender = isSeller ? sellerNav : adminNav;
+  const menuToRender = isSeller
+    ? canRefer
+      ? [...sellerNav.slice(0, 1), sellerReferralNavItem, ...sellerNav.slice(1)]
+      : sellerNav
+    : adminNav;
 
   const mobileNavItems = React.useMemo(() => {
     if (isSeller) {
-      return [
+      const items = [
         { title: "My Listings", icon: Inventory2RoundedIcon, url: "/inventory" },
         { title: "Messages", icon: MarkunreadIcon, url: "/messages" },
         { title: "Alerts", icon: NotificationsRoundedIcon, url: "/notifications" },
         { title: "Adverts", icon: CampaignRoundedIcon, url: "/advertisements" },
       ];
+      if (canRefer) {
+        items.splice(1, 0, {
+          title: "Referrals",
+          icon: GroupRoundedIcon,
+          url: "/userManagement",
+        });
+      }
+      return items;
     }
 
     return [
@@ -278,7 +300,7 @@ export default function Navigation({ currentTheme, setThemeMode }) {
       { title: "Messages", icon: MarkunreadIcon, url: "/messages" },
       { title: "Alerts", icon: NotificationsRoundedIcon, url: "/notifications" },
     ];
-  }, [isSeller]);
+  }, [canRefer, isSeller]);
 
   const mobileNavValue = React.useMemo(() => {
     const currentPath = location.pathname;
