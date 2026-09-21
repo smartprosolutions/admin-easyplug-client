@@ -4,7 +4,6 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
-import Divider from "@mui/material/Divider";
 import Stepper from "@mui/material/Stepper";
 import Step from "@mui/material/Step";
 import StepLabel from "@mui/material/StepLabel";
@@ -29,13 +28,11 @@ import TextFieldWrapper from "../../components/forms/TextFieldWrapper";
 import SelectFieldWrapper from "../../components/forms/SelectFieldWrapper";
 import LocationAutoComplete from "../../components/form-components/LocationAutoComplete";
 import ToastAlert from "../../components/alerts/ToastAlert";
-import SetPasswordModal from "../../components/modals/SetPasswordModal";
 import {
   registerSeller as registerSellerRequest,
   sendVerificationCode,
   verifyVerificationCode,
   login as loginRequest,
-  googleLogin as googleLoginRequest,
   checkSellerRegistrationConflict,
 } from "../../services/authService";
 import { createPasswordSchema } from "../../utils/passwordValidation";
@@ -62,38 +59,6 @@ const REGISTRATION_STEP_KEYS = [
   "review",
 ];
 const REGISTRATION_DRAFT_KEY = "easyplug_seller_registration_draft";
-const GOOGLE_IDENTITY_SCRIPT_ID = "google-identity-services";
-
-const loadGoogleIdentityScript = () =>
-  new Promise((resolve, reject) => {
-    if (typeof window === "undefined") {
-      reject(new Error("Google sign-in is not available in this environment."));
-      return;
-    }
-    if (window.google?.accounts?.id) {
-      resolve();
-      return;
-    }
-    const existing = document.getElementById(GOOGLE_IDENTITY_SCRIPT_ID);
-    if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener(
-        "error",
-        () => reject(new Error("Failed to load Google sign-in script.")),
-        { once: true },
-      );
-      return;
-    }
-    const script = document.createElement("script");
-    script.id = GOOGLE_IDENTITY_SCRIPT_ID;
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () =>
-      reject(new Error("Failed to load Google sign-in script."));
-    document.head.appendChild(script);
-  });
 
 const isSellerOrAdminUserType = (userType) => {
   const role = String(userType || "")
@@ -101,13 +66,6 @@ const isSellerOrAdminUserType = (userType) => {
     .toLowerCase();
   return role === "seller" || role.includes("admin");
 };
-
-function SyncGoogleAuthVisibility({ visible, onChange }) {
-  React.useEffect(() => {
-    onChange(visible);
-  }, [visible, onChange]);
-  return null;
-}
 
 const registrationConflictMessage = (err, fallback) =>
   err?.response?.data?.message || err?.message || fallback;
@@ -405,11 +363,6 @@ function StepOneFields({
   submitCount,
   requiresLogin,
   loginMutation,
-  googleLoginMutation,
-  googleButtonRef,
-  googleReady,
-  googleError,
-  googleConfigError,
   passwordInputProps,
   gradientPrimary,
 }) {
@@ -547,74 +500,29 @@ function StepOneFields({
             type="password"
           />
           {requiresLogin && (
-            <Stack spacing={1.5}>
-              <Button
-                variant="contained"
-                disabled={
-                  loginMutation.isPending || googleLoginMutation?.isPending
-                }
-                onClick={() =>
-                  loginMutation.mutate({
-                    email: values.existingEmail,
-                    password: values.existingPassword,
-                  })
-                }
-                sx={{
-                  color: "#fff",
-                  backgroundImage: gradientPrimary,
-                  boxShadow: "none",
-                  "&:hover": { opacity: 0.95 },
-                }}
-              >
-                {loginMutation.isPending
-                  ? "Authenticating..."
-                  : "Login & Continue"}
-              </Button>
-
-              <Divider>
-                <Typography variant="caption" color="text.secondary">
-                  or
-                </Typography>
-              </Divider>
-
-              {googleConfigError ? (
-                <Typography variant="caption" color="error">
-                  {googleConfigError}
-                </Typography>
-              ) : (
-                <Box
-                  ref={googleButtonRef}
-                  sx={{
-                    width: "100%",
-                    minHeight: 44,
-                    display: "flex",
-                    justifyContent: "center",
-                    opacity: googleReady ? 1 : 0.55,
-                    pointerEvents:
-                      googleLoginMutation?.isPending || !googleReady
-                        ? "none"
-                        : "auto",
-                  }}
-                />
-              )}
-              {googleError ? (
-                <Typography variant="caption" color="error">
-                  {googleError}
-                </Typography>
-              ) : null}
-              {googleLoginMutation?.isPending ? (
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <CircularProgress size={16} />
-                  <Typography variant="caption" color="text.secondary">
-                    Signing in with Google…
-                  </Typography>
-                </Stack>
-              ) : null}
-            </Stack>
+            <Button
+              variant="contained"
+              disabled={loginMutation.isPending}
+              onClick={() =>
+                loginMutation.mutate({
+                  email: values.existingEmail,
+                  password: values.existingPassword,
+                })
+              }
+              sx={{
+                color: "#fff",
+                backgroundImage: gradientPrimary,
+                boxShadow: "none",
+                "&:hover": { opacity: 0.95 },
+              }}
+            >
+              {loginMutation.isPending
+                ? "Authenticating..."
+                : "Login & Continue"}
+            </Button>
           )}
           <Typography variant="caption" color="text.secondary">
-            Existing account flow: sign in with email/password or Google, then
-            continue. Google shoppers will be asked to set a password.
+            Existing account flow: login first, then continue to the next steps.
           </Typography>
         </>
       ) : (
@@ -1101,22 +1009,6 @@ export default function RegisterUser() {
     severity: "info",
     message: "",
   });
-  const [linkedSessionTick, setLinkedSessionTick] = React.useState(0);
-  const [mustSetPassword, setMustSetPassword] = React.useState(false);
-  const [setPasswordOpen, setSetPasswordOpen] = React.useState(false);
-  const [linkedEmail, setLinkedEmail] = React.useState("");
-  const [googleAuthVisible, setGoogleAuthVisible] = React.useState(false);
-  const [googleReady, setGoogleReady] = React.useState(false);
-  const [googleError, setGoogleError] = React.useState("");
-  const googleButtonRef = React.useRef(null);
-  const googleCredentialHandlerRef = React.useRef(null);
-  const setFieldValueRef = React.useRef(null);
-  const googleClientId = String(
-    import.meta.env.VITE_GOOGLE_CLIENT_ID || "",
-  ).trim();
-  const googleConfigError = !googleClientId
-    ? "Google sign-in is not configured yet."
-    : "";
 
   const [initialValues] = React.useState(() => ({
     ...DEFAULT_REGISTRATION_VALUES,
@@ -1233,9 +1125,6 @@ export default function RegisterUser() {
       }
       const token = data?.accessToken || data?.token;
       if (token) localStorage.setItem("access_token", token);
-      setMustSetPassword(false);
-      setSetPasswordOpen(false);
-      setLinkedSessionTick((n) => n + 1);
       setAuthToast({
         open: true,
         severity: "success",
@@ -1250,188 +1139,6 @@ export default function RegisterUser() {
       setAuthToast({ open: true, severity: "error", message: msg });
     },
   });
-
-  const googleLoginMutation = useMutation({
-    mutationFn: async (credential) => {
-      const data = await googleLoginRequest(credential);
-      const email = data?.user?.email;
-      if (email) {
-        const conflictMessage = await assertNoSellerRegistrationConflict({
-          email,
-        });
-        if (conflictMessage) {
-          const error = new Error(conflictMessage);
-          error.code = "SELLER_ADMIN_CONFLICT";
-          throw error;
-        }
-      }
-      return data;
-    },
-    onSuccess: (data) => {
-      const userType =
-        data?.user?.userType ||
-        data?.user?.role ||
-        data?.data?.user?.userType ||
-        data?.userType;
-      if (isSellerOrAdminUserType(userType)) {
-        try {
-          localStorage.removeItem("access_token");
-        } catch {
-          /* ignore */
-        }
-        setAuthToast({
-          open: true,
-          severity: "error",
-          message: "This email is already registered as a seller or admin.",
-        });
-        return;
-      }
-
-      const token = data?.accessToken || data?.token;
-      if (token) localStorage.setItem("access_token", token);
-
-      const email = String(data?.user?.email || "").trim();
-      if (email) {
-        setLinkedEmail(email);
-        setFieldValueRef.current?.("existingEmail", email);
-        setFieldValueRef.current?.("alreadyHasAccount", "yes");
-      }
-
-      const hasPassword = data?.user?.hasPassword !== false;
-      if (!hasPassword) {
-        setMustSetPassword(true);
-        setSetPasswordOpen(true);
-        setAuthToast({
-          open: true,
-          severity: "info",
-          message: "Signed in with Google. Please set a password to continue.",
-        });
-      } else {
-        setMustSetPassword(false);
-        setSetPasswordOpen(false);
-        setAuthToast({
-          open: true,
-          severity: "success",
-          message: "Logged in with Google. Continue with business details.",
-        });
-      }
-      setLinkedSessionTick((n) => n + 1);
-    },
-    onError: (err) => {
-      const msg =
-        err?.code === "SELLER_ADMIN_CONFLICT"
-          ? err.message
-          : err?.response?.data?.message ||
-            err?.message ||
-            "Google sign-in failed";
-      setAuthToast({ open: true, severity: "error", message: msg });
-    },
-  });
-
-  const handleGoogleCredential = React.useCallback(
-    (credentialResponse) => {
-      const credential = credentialResponse?.credential;
-      if (!credential) {
-        setGoogleError("Google sign-in failed. Please try again.");
-        return;
-      }
-      setGoogleError("");
-      googleLoginMutation.mutate(credential);
-    },
-    [googleLoginMutation],
-  );
-
-  React.useEffect(() => {
-    googleCredentialHandlerRef.current = handleGoogleCredential;
-  }, [handleGoogleCredential]);
-
-  React.useEffect(() => {
-    if (!googleClientId || googleConfigError) return undefined;
-
-    let cancelled = false;
-    let renderTimer = 0;
-    let renderAttempts = 0;
-    const maxRenderAttempts = 24;
-
-    const initializeGoogle = async () => {
-      try {
-        await loadGoogleIdentityScript();
-        if (cancelled || !window.google?.accounts?.id) return;
-
-        window.google.accounts.id.initialize({
-          client_id: googleClientId,
-          callback: (credentialResponse) =>
-            googleCredentialHandlerRef.current?.(credentialResponse),
-          ux_mode: "popup",
-          auto_select: false,
-          cancel_on_tap_outside: true,
-        });
-
-        const renderGoogleButton = () => {
-          if (cancelled) return;
-          const googleButtonEl = googleButtonRef.current;
-          if (!googleButtonEl) {
-            if (renderAttempts < maxRenderAttempts) {
-              renderAttempts += 1;
-              renderTimer = window.setTimeout(renderGoogleButton, 140);
-            }
-            return;
-          }
-
-          const measuredWidth = Math.floor(
-            googleButtonEl.getBoundingClientRect().width ||
-              googleButtonEl.clientWidth ||
-              0,
-          );
-          if (measuredWidth < 160 && renderAttempts < maxRenderAttempts) {
-            renderAttempts += 1;
-            renderTimer = window.setTimeout(renderGoogleButton, 140);
-            return;
-          }
-
-          const width = Math.max(measuredWidth || 320, 240);
-          googleButtonEl.innerHTML = "";
-          window.google.accounts.id.renderButton(googleButtonEl, {
-            type: "standard",
-            theme: "outline",
-            size: "large",
-            text: "continue_with",
-            shape: "rectangular",
-            width,
-            logo_alignment: "left",
-          });
-
-          if (googleButtonEl.childElementCount === 0) {
-            if (renderAttempts < maxRenderAttempts) {
-              renderAttempts += 1;
-              renderTimer = window.setTimeout(renderGoogleButton, 180);
-              return;
-            }
-            setGoogleReady(false);
-            setGoogleError("Unable to render Google sign-in button.");
-            return;
-          }
-
-          setGoogleReady(true);
-          setGoogleError("");
-        };
-
-        renderGoogleButton();
-      } catch {
-        if (!cancelled) {
-          setGoogleReady(false);
-          setGoogleError("Unable to load Google sign-in right now.");
-        }
-      }
-    };
-
-    initializeGoogle();
-
-    return () => {
-      cancelled = true;
-      if (renderTimer) window.clearTimeout(renderTimer);
-    };
-  }, [googleClientId, googleConfigError, linkedSessionTick, googleAuthVisible]);
 
   const sendCodeMutation = useMutation({
     mutationFn: ({ email, firstName, lastName }) =>
@@ -1917,15 +1624,9 @@ export default function RegisterUser() {
             }) => {
               const showUserFields = values.alreadyHasAccount === "no";
               const isBusiness = values.registrationType === "business";
-              // Force re-read after Google/email link updates localStorage.
-              void linkedSessionTick;
-              setFieldValueRef.current = setFieldValue;
-              const hasLinkedToken = Boolean(
-                localStorage.getItem("access_token"),
-              );
               const requiresLogin =
                 values.alreadyHasAccount === "yes" &&
-                (!hasLinkedToken || mustSetPassword);
+                !localStorage.getItem("access_token");
               const currentStep = Math.min(activeStep, 4);
 
               const progress = getRegistrationProgress(values, {
@@ -2330,10 +2031,6 @@ export default function RegisterUser() {
 
               return (
                 <Form>
-                  <SyncGoogleAuthVisibility
-                    visible={requiresLogin}
-                    onChange={setGoogleAuthVisible}
-                  />
                   <RegistrationDraftSaver
                     values={values}
                     step={currentStep}
@@ -2463,11 +2160,6 @@ export default function RegisterUser() {
                         submitCount={submitCount}
                         requiresLogin={requiresLogin}
                         loginMutation={loginMutation}
-                        googleLoginMutation={googleLoginMutation}
-                        googleButtonRef={googleButtonRef}
-                        googleReady={googleReady}
-                        googleError={googleError}
-                        googleConfigError={googleConfigError}
                         passwordInputProps={passwordInputProps}
                         gradientPrimary={gradientPrimary}
                       />
@@ -2626,25 +2318,6 @@ export default function RegisterUser() {
           </Formik>
         </Stack>
       </Box>
-
-      <SetPasswordModal
-        open={setPasswordOpen}
-        required={mustSetPassword}
-        email={linkedEmail}
-        onSuccess={() => {
-          setMustSetPassword(false);
-          setSetPasswordOpen(false);
-          setLinkedSessionTick((n) => n + 1);
-          setAuthToast({
-            open: true,
-            severity: "success",
-            message: "Password saved. Continue with your lister details.",
-          });
-        }}
-        onClose={() => {
-          if (!mustSetPassword) setSetPasswordOpen(false);
-        }}
-      />
 
       <ToastAlert
         open={authToast.open}
