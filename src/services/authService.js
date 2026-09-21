@@ -6,19 +6,6 @@ export async function login({ email, password }) {
   return resp.data;
 }
 
-export async function googleLogin(credential) {
-  const resp = await axiosClient.post("/auth/login/google", { credential });
-  return resp.data;
-}
-
-export async function setPassword({ password, confirmPassword }) {
-  const resp = await axiosClient.post("/auth/set-password", {
-    password,
-    confirmPassword,
-  });
-  return resp.data;
-}
-
 export async function register(formData) {
   // Adjust endpoint path if your backend uses a different route
   const resp = await axiosClient.post("/auth/register", formData);
