@@ -1,3 +1,4 @@
+import { loadGoogleMaps, fetchAddressSuggestions, fetchAddressDetails } from "../../utils/googlePlaces";
 import * as React from "react";
 import Box from "@mui/material/Box";
 import TextField from "@mui/material/TextField";
@@ -6,54 +7,6 @@ import Slider from "@mui/material/Slider";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
 import Typography from "@mui/material/Typography";
 import { debounce } from "@mui/material/utils";
-
-const GOOGLE_MAPS_API_KEY = "AIzaSyB7cmi28zd3kXLEw1DcjFFIT7kvaKj-4Co";
-
-function loadScript(src, position, id) {
-  if (!position) return;
-
-  const existing = document.querySelector(`#${id}`);
-  if (existing) return;
-
-  const script = document.createElement("script");
-  script.setAttribute("async", "");
-  script.setAttribute("id", id);
-  script.src = src;
-  position.appendChild(script);
-}
-
-const autocompleteService = { current: null };
-
-function normalizeSuggestion(option) {
-  const prediction = option?.placePrediction || option;
-
-  const placeId = prediction?.placeId || prediction?.place_id;
-  const mainText =
-    prediction?.mainText?.text ||
-    prediction?.structuredFormat?.mainText?.text ||
-    prediction?.structured_formatting?.main_text ||
-    "";
-  const secondaryText =
-    prediction?.secondaryText?.text ||
-    prediction?.structuredFormat?.secondaryText?.text ||
-    prediction?.structured_formatting?.secondary_text ||
-    "";
-  const description =
-    prediction?.text?.text ||
-    prediction?.description ||
-    [mainText, secondaryText].filter(Boolean).join(", ");
-
-  if (!description) return null;
-
-  return {
-    description,
-    place_id: placeId || `suggestion-${description}`,
-    structured_formatting: {
-      main_text: mainText || description,
-      secondary_text: secondaryText || "",
-    },
-  };
-}
 
 function toNumber(value) {
   const parsed = Number(value);
@@ -170,58 +123,29 @@ export default function LocationAutoComplete({
     [onCurrentLocationLoadingChange],
   );
 
-  if (typeof window !== "undefined" && !loaded.current) {
-    loadScript(
-      `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places&loading=async`,
-      document.querySelector("head"),
-      "google-maps",
-    );
+  React.useEffect(() => {
+    if (typeof window === "undefined" || loaded.current) return;
     loaded.current = true;
-  }
+    loadGoogleMaps().catch((error) => {
+      console.error("Unable to initialize Google Maps:", error);
+    });
+  }, []);
 
   const fetch = React.useMemo(
     () =>
       debounce(async (request, callback) => {
-        const placesApi = window.google?.maps?.places;
-
-        if (placesApi?.AutocompleteSuggestion?.fetchAutocompleteSuggestions) {
-          try {
-            const response =
-              await placesApi.AutocompleteSuggestion.fetchAutocompleteSuggestions(
-                {
-                  input: request.input,
-                },
-              );
-
-            const normalizedOptions = (response?.suggestions || [])
-              .map(normalizeSuggestion)
-              .filter(Boolean);
-
-            callback(normalizedOptions);
-            return;
-          } catch {
-            // Fallback to legacy service below.
-          }
-        }
-
-        if (!autocompleteService.current && placesApi?.AutocompleteService) {
-          autocompleteService.current = new placesApi.AutocompleteService();
-        }
-
-        if (!autocompleteService.current) {
+        try {
+          callback(await fetchAddressSuggestions(request.input));
+        } catch (error) {
+          console.error("Unable to fetch address suggestions:", error);
           callback([]);
-          return;
         }
-
-        autocompleteService.current.getPlacePredictions(request, callback);
       }, 400),
     [],
   );
 
   React.useEffect(() => {
     let active = true;
-
-    if (!window.google?.maps?.places) return undefined;
 
     if (query === "") {
       setOptions(value ? [value] : []);
@@ -459,7 +383,7 @@ export default function LocationAutoComplete({
     setCurrentLocationLoading,
   ]);
 
-  const handlePlaceSelect = (place) => {
+  const handlePlaceSelect = async (place) => {
     if (!window.google?.maps) return;
 
     if (!place) {
@@ -472,8 +396,10 @@ export default function LocationAutoComplete({
 
     hasManualSelection.current = true;
 
-    const geocoder = new window.google.maps.Geocoder();
-    geocoder.geocode({ placeId: place.place_id }, (results, status) => {
+    try {
+      const addressResult = await fetchAddressDetails(place);
+      const results = [addressResult];
+      const status = "OK";
       if (status !== "OK" || !results?.[0]) return;
 
       const result = results[0];
@@ -507,7 +433,10 @@ export default function LocationAutoComplete({
       setInputValue(place.description || "");
       setQuery("");
       extractAddressInfo(result);
-    });
+    } catch (error) {
+      console.error("Unable to fetch address details:", error);
+      setLocationError("Unable to resolve the selected address. Please try again.");
+    }
   };
 
   return (
