@@ -108,6 +108,7 @@ export default function LocationAutoComplete({
   const [options, setOptions] = React.useState([]);
   const [radius, setRadius] = React.useState(50);
   const loaded = React.useRef(false);
+  const [mapsReady, setMapsReady] = React.useState(false);
   const locationInitialized = React.useRef(false);
   const hasManualSelection = React.useRef(false);
   const hasDefaultApplied = React.useRef(false);
@@ -126,10 +127,12 @@ export default function LocationAutoComplete({
   React.useEffect(() => {
     if (typeof window === "undefined" || loaded.current) return;
     loaded.current = true;
-    loadGoogleMaps().catch((error) => {
+    loadGoogleMaps().then(() => setMapsReady(true)).catch((error) => {
       console.error("Unable to initialize Google Maps:", error);
+      setLocationError("Address lookup is unavailable. Please enter your address fields manually.");
+      setCurrentLocationLoading(false);
     });
-  }, []);
+  }, [setCurrentLocationLoading]);
 
   const fetch = React.useMemo(
     () =>
@@ -225,11 +228,12 @@ export default function LocationAutoComplete({
         }
         if (
           component.types.includes("sublocality") ||
-          component.types.includes("sublocality_level_1")
+          component.types.includes("sublocality_level_1") ||
+          component.types.includes("neighborhood")
         ) {
           suburb = component.long_name;
         }
-        if (component.types.includes("locality")) {
+        if (component.types.includes("locality") || component.types.includes("postal_town")) {
           city = component.long_name;
         }
         if (component.types.includes("administrative_area_level_1")) {
@@ -283,6 +287,8 @@ export default function LocationAutoComplete({
       return undefined;
     }
 
+    if (!mapsReady) return undefined;
+
     setCurrentLocationLoading(true);
 
     const intervalId = window.setInterval(() => {
@@ -292,7 +298,7 @@ export default function LocationAutoComplete({
         return;
       }
 
-      if (!window.google?.maps) return;
+      if (typeof window.google?.maps?.Geocoder !== "function") return;
 
       locationInitialized.current = true;
       window.clearInterval(intervalId);
@@ -347,11 +353,19 @@ export default function LocationAutoComplete({
                 setInputValue(description);
                 setOptions([resolvedLocationOption]);
                 setQuery("");
-                extractAddressInfo(result, accuracy, latitude, longitude);
+                const seenTypes = new Set();
+                const addressComponents = results.flatMap((entry) => entry.address_components || []).filter((component) => {
+                  const identity = component.types.join(",");
+                  if (seenTypes.has(identity)) return false;
+                  seenTypes.add(identity);
+                  return true;
+                });
+                extractAddressInfo({ ...result, address_components: addressComponents }, accuracy, latitude, longitude);
                 setCurrentLocationLoading(false);
                 return;
               }
 
+              setLocationError("Unable to look up your current address. Please select an address or enter the fields manually.");
               setAddressInfor({
                 latitude: String(latitude),
                 longitude: String(longitude),
@@ -377,6 +391,7 @@ export default function LocationAutoComplete({
       setCurrentLocationLoading(false);
     };
   }, [
+    mapsReady,
     defaultAddressValues,
     extractAddressInfo,
     setAddressInfor,
