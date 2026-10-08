@@ -357,6 +357,7 @@ function StepOneFields({
   submitCount,
   requiresLogin,
   loginMutation,
+  onGoogleAuthenticated,
   passwordInputProps,
   gradientPrimary,
 }) {
@@ -497,7 +498,7 @@ function StepOneFields({
           {requiresLogin && (
             <ShopperGoogleLogin
               disabled={loginMutation.isPending}
-              onAuthenticated={loginMutation.options?.onSuccess}
+              onAuthenticated={onGoogleAuthenticated}
             />
           )}
           {requiresLogin && (
@@ -1343,7 +1344,10 @@ export default function RegisterUser() {
                 }),
                 existingPassword: Yup.string().when("alreadyHasAccount", {
                   is: "yes",
-                  then: (s) => s.required("Required"),
+                  then: (s) =>
+                    localStorage.getItem("access_token")
+                      ? s
+                      : s.required("Required"),
                 }),
                 title: Yup.string().when("alreadyHasAccount", {
                   is: "no",
@@ -2166,6 +2170,14 @@ export default function RegisterUser() {
                         submitCount={submitCount}
                         requiresLogin={requiresLogin}
                         loginMutation={loginMutation}
+                        onGoogleAuthenticated={(data) => {
+                          localStorage.setItem("access_token", data.accessToken);
+                          setAuthToast({
+                            open: true,
+                            severity: "success",
+                            message: "Logged in. Continue with business details.",
+                          });
+                        }}
                         passwordInputProps={passwordInputProps}
                         gradientPrimary={gradientPrimary}
                       />
