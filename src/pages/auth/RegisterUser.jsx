@@ -24,6 +24,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { gradientPrimary } from "../../theme/theme";
 import BrandLogo from "../../components/brand/BrandLogo";
+import ShopperGoogleLogin from "../../components/auth/ShopperGoogleLogin";
 import TextFieldWrapper from "../../components/forms/TextFieldWrapper";
 import SelectFieldWrapper from "../../components/forms/SelectFieldWrapper";
 import LocationAutoComplete from "../../components/form-components/LocationAutoComplete";
@@ -177,14 +178,7 @@ function RegistrationDraftSaver({
   verificationToken,
 }) {
   React.useEffect(() => {
-    const {
-      password,
-      confirmPassword,
-      existingPassword,
-      profilePicture,
-      businessPicture,
-      ...persistable
-    } = values;
+    const { ...persistable } = values;
     saveRegistrationDraft({
       step: REGISTRATION_STEP_KEYS[step],
       values: persistable,
@@ -409,7 +403,8 @@ function StepOneFields({
                   ? (theme) => alpha(theme.palette.primary.main, 0.12)
                   : "background.paper",
                 boxShadow: selected
-                  ? (theme) => `0 0 0 1px ${alpha(theme.palette.primary.main, 0.25)}`
+                  ? (theme) =>
+                      `0 0 0 1px ${alpha(theme.palette.primary.main, 0.25)}`
                   : "none",
                 transition: "all 180ms ease",
                 "&:hover": {
@@ -499,6 +494,12 @@ function StepOneFields({
             size="medium"
             type="password"
           />
+          {requiresLogin && (
+            <ShopperGoogleLogin
+              disabled={loginMutation.isPending}
+              onAuthenticated={loginMutation.options?.onSuccess}
+            />
+          )}
           {requiresLogin && (
             <Button
               variant="contained"
@@ -708,7 +709,8 @@ function StepTwoFields({
                         setAuthToast({
                           open: true,
                           severity: "error",
-                          message: "Enter first and last name before sending the code",
+                          message:
+                            "Enter first and last name before sending the code",
                         });
                         return;
                       }
@@ -950,7 +952,12 @@ function StepAddressFields({ setFieldValue, values }) {
           label="Suburb (optional)"
           size="medium"
         />
-        <TextFieldWrapper name="city" label="City / Town" size="medium" disabled />
+        <TextFieldWrapper
+          name="city"
+          label="City / Town"
+          size="medium"
+          disabled
+        />
       </Stack>
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
@@ -1279,10 +1286,7 @@ export default function RegisterUser() {
           />
         )}
 
-        <Stack
-          spacing={2.5}
-          sx={{ pt: { xs: 2, md: 2.5 } }}
-        >
+        <Stack spacing={2.5} sx={{ pt: { xs: 2, md: 2.5 } }}>
           <Box>
             <Typography
               sx={{
@@ -1405,7 +1409,10 @@ export default function RegisterUser() {
                     then: (s) =>
                       s
                         .required("Verification code is required")
-                        .min(4, "Enter the verification code sent to your email"),
+                        .min(
+                          4,
+                          "Enter the verification code sent to your email",
+                        ),
                     otherwise: (s) => s.notRequired(),
                   },
                 ),
@@ -1753,23 +1760,23 @@ export default function RegisterUser() {
                 return [];
               };
 
-                const handleRestartRegistration = () => {
-                  clearRegistrationCache();
-                  setCodeSentTo("");
-                  setVerifiedEmail("");
-                  setVerificationToken("");
-                  setUploadProgress(0);
-                  resetForm({ values: { ...DEFAULT_REGISTRATION_VALUES } });
-                  goToStep(0);
-                  setAuthToast({
-                    open: true,
-                    severity: "info",
-                    message:
-                      "Registration restarted. Cleared saved draft and login cache.",
-                  });
-                };
+              const handleRestartRegistration = () => {
+                clearRegistrationCache();
+                setCodeSentTo("");
+                setVerifiedEmail("");
+                setVerificationToken("");
+                setUploadProgress(0);
+                resetForm({ values: { ...DEFAULT_REGISTRATION_VALUES } });
+                goToStep(0);
+                setAuthToast({
+                  open: true,
+                  severity: "info",
+                  message:
+                    "Registration restarted. Cleared saved draft and login cache.",
+                });
+              };
 
-                const handleNext = async () => {
+              const handleNext = async () => {
                 const fields = getStepFields(currentStep);
                 const formErrors = await validateForm();
 
@@ -1973,8 +1980,7 @@ export default function RegisterUser() {
                   }
 
                   if (
-                    verifiedEmail.toLowerCase() !==
-                    String(email).toLowerCase()
+                    verifiedEmail.toLowerCase() !== String(email).toLowerCase()
                   ) {
                     if (!verificationToken) {
                       setAuthToast({
