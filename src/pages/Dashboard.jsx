@@ -620,22 +620,6 @@ export default function Dashboard() {
           to: "/advertisements",
           accent: "warning",
         },
-        {
-          label: "Transactions",
-          count: formatCompact(totals.transactionsTotal),
-          sub: `Value: ${formatCurrency(totals.totalTransactionValue)}`,
-          icon: <QuizRoundedIcon fontSize="small" />,
-          to: "/transactions",
-          accent: "info",
-        },
-        {
-          label: "Completed Revenue",
-          count: formatCurrency(totals.completedValue),
-          sub: `Conversion proxy: ${totals.conversionRate || 0}%`,
-          icon: <CheckCircleOutlineRoundedIcon fontSize="small" />,
-          to: "/transactions",
-          accent: "success",
-        },
       ];
 
   const growthData = data?.monthly || {
@@ -861,7 +845,7 @@ export default function Dashboard() {
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {summaryCards.map((card) => (
-          <Grid key={card.label} size={{ xs: 6, sm: 6, md: 4 }}>
+          <Grid key={card.label} size={{ xs: 6, sm: 6, md: 3 }}>
             <SummaryCard {...card} theme={theme} loading={isLoading} />
           </Grid>
         ))}
