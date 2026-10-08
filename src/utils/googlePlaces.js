@@ -3,7 +3,9 @@ let mapsReadyPromise;
 export function loadGoogleMaps() {
   if (mapsReadyPromise) return mapsReadyPromise;
   mapsReadyPromise = new Promise((resolve, reject) => {
-    const apiKey = String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "").trim();
+    const apiKey = String(
+      import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
+    ).trim();
     if (!apiKey) {
       reject(new Error("VITE_GOOGLE_MAPS_API_KEY is not configured."));
       return;
@@ -15,13 +17,17 @@ export function loadGoogleMaps() {
       reject(new Error(message));
     };
     window.gm_authFailure = () => {
-      fail("Google Maps rejected the API key. Check enabled APIs and website restrictions in Google Cloud.");
+      fail(
+        "Google Maps rejected the API key. Check enabled APIs and website restrictions in Google Cloud.",
+      );
       previousAuthFailure?.();
     };
     const ready = () => {
       clearTimeout(timeout);
       if (typeof window.google?.maps?.importLibrary !== "function") {
-        fail("Google Maps did not initialize. Check the API key and Google Cloud configuration.");
+        fail(
+          "Google Maps did not initialize. Check the API key and Google Cloud configuration.",
+        );
         return;
       }
       resolve(window.google.maps);
@@ -31,17 +37,26 @@ export function loadGoogleMaps() {
       return;
     }
     window.easyplugMapsReady = ready;
-    timeout = setTimeout(() => fail("Google Maps initialization timed out. Check the network and API key restrictions."), 15000);
+    timeout = setTimeout(
+      () =>
+        fail(
+          "Google Maps initialization timed out. Check the network and API key restrictions.",
+        ),
+      15000,
+    );
     const existing = document.querySelector("#google-maps");
     if (existing) {
-      fail("Google Maps was loaded by another script before initialization. Reload the page.");
+      fail(
+        "Google Maps was loaded by another script before initialization. Reload the page.",
+      );
       return;
     }
     const script = document.createElement("script");
     script.id = "google-maps";
     script.async = true;
     script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&loading=async&v=weekly&callback=easyplugMapsReady`;
-    script.onerror = () => fail("Unable to download Google Maps. Check your network connection.");
+    script.onerror = () =>
+      fail("Unable to download Google Maps. Check your network connection.");
     document.head.appendChild(script);
   });
   return mapsReadyPromise;
